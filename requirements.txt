@@ -2,6 +2,7 @@
 
 Flask
 requests
+openai
 # Add any other libraries you might need, e.g.:
 # python-dotenv  # If you use a .env file for secrets
 # gunicorn       # Optional: For production serving within Replit (though Replit often handles this)
