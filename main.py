@@ -1,110 +1,103 @@
-print("\U0001F7E2 Final OpenPhone Monitor — HTML + SendGrid + media + GPT + full history")
-
 import os
-import json
+import re
 import traceback
+import base64
 import requests
-from flask import Flask, request, abort, render_template_string
+import mimetypes
 from datetime import datetime
-import sqlite3
+from flask import Flask, request, Response, render_template_string, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text, inspect
 from openai import OpenAI
+from dotenv import load_dotenv
 
+# ─── Load environment variables ────────────────────────────────────────────
+load_dotenv()
+OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+FROM_EMAIL       = os.getenv("FROM_EMAIL", "phil@sincityrentals.com")
+TO_EMAIL         = os.getenv("TO_EMAIL", "oakweb@gmail.com")
+MY_NAME          = os.getenv("MY_NAME", "Me")
+DATABASE_URL     = os.getenv("DATABASE_URL", "sqlite:///messages.db")
+
+# ─── Flask & Database Setup ────────────────────────────────────────────────
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# --- Database Initialization ---
-def init_db():
-    conn = sqlite3.connect("messages.db")
-    c = conn.cursor()
+db = SQLAlchemy(app)
 
-    # --- messages table ---
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT,
-      phone_number TEXT,
-      contact_name TEXT,
-      direction TEXT,
-      message TEXT,
-      media_urls TEXT
-    )
-    """)
+# ─── Models ────────────────────────────────────────────────────────────────
+class Contact(db.Model):
+    __tablename__ = 'contact'
+    phone_number = db.Column(db.String, primary_key=True)
+    contact_name = db.Column(db.String, nullable=False)
 
-    # --- contacts table ---
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS contacts (
-      phone_number TEXT PRIMARY KEY,
-      contact_name TEXT
-    )
-    """)
+class Message(db.Model):
+    __tablename__ = 'message'
+    id           = db.Column(db.Integer, primary_key=True)
+    timestamp    = db.Column(db.DateTime, default=datetime.utcnow)
+    phone_number = db.Column(db.String, nullable=False)
+    contact_name = db.Column(db.String, nullable=True)
+    direction    = db.Column(db.String, nullable=False)
+    message      = db.Column(db.Text)
+    media_urls   = db.Column(db.Text)
 
-    conn.commit()
-    conn.close()
+# ─── Create tables and patch schema ────────────────────────────────────────
+with app.app_context():
+    db.create_all()
+    engine = db.engine
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    table = Message.__tablename__  # 'message'
+    if table in tables:
+        cols = [col['name'] for col in inspector.get_columns(table)]
+        if 'media_urls' not in cols:
+            db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN media_urls TEXT"))
+            db.session.commit()
 
-# ←––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-# RUN init_db() EXACTLY ONCE, ON THE FIRST REQUEST
-first_request = True
+# ─── Initialize OpenAI client ──────────────────────────────────────────────
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-@app.before_request
-def _init_db_once():
-    global first_request
-    if first_request:
-        init_db()
-        first_request = False
-# ←––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+# ─── Email Helpers ────────────────────────────────────────────────────────
+def wrap_email_html(inner: str) -> str:
+    year = datetime.utcnow().year
+    return f"""
+<!DOCTYPE html>
+<html lang=\"en\"><head><meta charset=\"utf-8\">
+  <style>
+    body {{ margin:0; padding:20px; font-family:Arial,sans-serif; background:#f4f4f4; }}
+    .container {{ max-width:600px; margin:auto; background:#fff; padding:20px; border-radius:8px; }}
+    img {{ max-width:100%; border-radius:8px; margin-top:8px; }}
+    .footer {{ font-size:0.75em; color:#888; text-align:center; margin-top:2em; }}
+    a {{ color:#6B30FF; text-decoration:none; }}
+  </style>
+</head><body>
+  <div class=\"container\">
+    <h1>OpenPhone Notification</h1>
+    {inner}
+    <div class=\"footer\">© {year}</div>
+  </div>
+</body></html>"""
 
-# --- Config ---
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
-FROM_EMAIL = "phil@sincityrentals.com"
-TO_EMAIL = "oakweb@gmail.com"
-MY_NAME = "Me"
-# temporarily hard-code OpenAI API key until env var is fixed# temporarily hard-code OpenAI API key until env var is fixed\urllib.parse
-OPENAI_API_KEY = "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"
-conversation_history = {}
-MAX_HISTORY = 5
 
-# --- Index Route ---
-@app.route("/")
-def index():
-    return "🟢 OpenPhone Monitor is running."
-
-# --- Format Message Bubbles ---
-def format_bubble_html(messages):
-    html = '<div style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 16px;">'
-    for msg in messages:
-        is_outgoing = msg.get("direction") == "outgoing"
-        sender = MY_NAME if is_outgoing else msg.get("display_name", msg.get("from"))
-        time = msg.get("timestamp", "")
-        body = msg.get("body", "").replace("\n", "<br>")
-        media = msg.get("media", [])
-        align = "right" if is_outgoing else "left"
-        bubble_color = "#007BFF" if is_outgoing else "#EDEDED"
-
-        html += f'''
-        <div style="text-align:{align}; margin-bottom:12px;">
-            <div style="font-size:0.75em; color:#555;">{sender} — {time}</div>
-            <div style="display:inline-block; background:{bubble_color}; padding:10px 14px; border-radius:12px; max-width:75%; word-wrap:break-word;">
-                {body}'''
-        for m in media:
-            if m.get("type", "").startswith("image/"):
-                html += f'<br><img src="{m.get("url")}" alt="image" style="max-width:100%; border-radius:8px; margin-top:8px;">'
-            else:
-                html += f'<br><a href="{m.get("url")}" target="_blank" style="color:#007bff;">{m.get("type") or "Download File"}</a>'
-        html += '</div></div>'
-    html += '</div>'
-    return html
-
-# --- Send Email ---
-def send_email(subject, html_body, plain_body):
+def send_email(subject: str, html_body: str, plain_body: str, attachments=None):
+    if attachments is None:
+        attachments = []
+    if not SENDGRID_API_KEY:
+        print("⚠️ No SendGrid API key, skipping email.")
+        return
+    payload = {
+        "personalizations": [{"to": [{"email": TO_EMAIL}], "subject": subject}],
+        "from": {"email": FROM_EMAIL},
+        "content": [
+            {"type": "text/plain", "value": plain_body},
+            {"type": "text/html",  "value": wrap_email_html(html_body)}
+        ],
+        "attachments": attachments
+    }
     try:
-        payload = {
-            "personalizations": [{"to": [{"email": TO_EMAIL}], "subject": subject}],
-            "from": {"email": FROM_EMAIL},
-            "content": [
-                {"type": "text/plain", "value": plain_body},
-                {"type": "text/html", "value": html_body}
-            ]
-        }
-        response = requests.post(
+        resp = requests.post(
             "https://api.sendgrid.com/v3/mail/send",
             headers={
                 "Authorization": f"Bearer {SENDGRID_API_KEY}",
@@ -112,123 +105,156 @@ def send_email(subject, html_body, plain_body):
             },
             json=payload
         )
-        if response.status_code != 202:
-            print(f"❌ SendGrid error {response.status_code}: {response.text}")
+        if resp.status_code == 202:
+            print("✅ Email sent with attachments.")
+        else:
+            print(f"❌ SendGrid error {resp.status_code}: {resp.text}")
     except Exception:
         traceback.print_exc()
 
-# --- Save Message to DB ---
-def save_message_to_db(phone_number, direction, message, media_urls=[]):
-    conn = sqlite3.connect("messages.db")
-    c = conn.cursor()
-    normalized = ''.join(filter(str.isdigit, phone_number or ""))
-    contact_name = ""
-    c.execute("SELECT contact_name FROM contacts WHERE phone_number LIKE ?", ('%' + normalized[-10:],))
-    row = c.fetchone()
-    if row:
-        contact_name = row[0]
-
-    c.execute(
-        "INSERT INTO messages (timestamp, phone_number, contact_name, direction, message, media_urls) VALUES (?,?,?,?,?,?)",
-        (datetime.utcnow().isoformat(), phone_number or "unknown", contact_name, direction, message, ",".join(media_urls))
-    )
-    conn.commit()
-    conn.close()
-
-# --- Webhook Endpoint ---
-@app.route("/webhook", methods=["POST"])
+# ─── Webhook Route ─────────────────────────────────────────────────────────
+@app.route('/webhook', methods=['POST'])
 def webhook():
-    try:
-        payload = request.get_json(force=True)
-        et = payload.get("type") or payload.get("event")
-        obj = payload.get("data", {}).get("object", {})
-        dirn = 'incoming' if et == 'message.received' else 'outgoing'
+    data = request.get_json(force=True)
+    obj = data.get('data', {}).get('object', {})
+    direction = 'incoming' if data.get('type') == 'message.received' else 'outgoing'
+    phone = obj.get('from') if direction == 'incoming' else obj.get('to')
+    text = obj.get('body', '')
+    media_items = obj.get('media', []) or []
 
-        phone = obj.get("from") if dirn == 'incoming' else obj.get("to")
-        text = obj.get("body", "")
-        media = [m.get("fileUrl") for m in obj.get("media", [])] if obj.get("media") else []
+    # Extract media URLs
+    urls = []
+    for m in media_items:
+        url = m.get('url') or m.get('fileUrl')
+        if url:
+            urls.append(url)
 
-        save_message_to_db(phone, dirn, text, media)
+    # Get contact
+    key = phone[-10:]
+    contact = Contact.query.get(key)
+    name = contact.contact_name if contact else phone
 
-        if obj.get("object") == "message":
-            cid = obj.get("conversationId")
-            msg = {"id":obj.get("id"),"timestamp":obj.get("createdAt"),"direction":dirn,"from":phone,"to":obj.get("to"),"body":text,"media":obj.get("media",[]),"display_name":phone}
-            conversation_history.setdefault(cid, []).append(msg)
-            convo = conversation_history[cid][-MAX_HISTORY:]
-            html = format_bubble_html(convo)
-            plain = "\n\n".join(f"{m['direction']} — {m['body']}" for m in convo)
-            cnum = phone[-10:]
-            conn = sqlite3.connect("messages.db"); curs = conn.cursor()
-            curs.execute("SELECT contact_name FROM contacts WHERE phone_number LIKE ?",('%'+cnum,))
-            rn = curs.fetchone(); conn.close()
-            name = rn[0] if rn else phone
-            subj = f"New Message from {name} — {msg['id'][-6:]}"
-            send_email(subj, html, plain)
-    except Exception:
-        traceback.print_exc()
-        return "Webhook error",500
-    return "OK",200
-
-# --- Ask Route ---
-@app.route("/ask", methods=["GET","POST"])
-def ask():
-    if request.method=="POST":
-        prompt = request.form.get("prompt","")
-        logs=""
-        conn=sqlite3.connect("messages.db"); cur=conn.cursor()
-        cur.execute("SELECT timestamp,contact_name,direction,message FROM messages ORDER BY timestamp DESC LIMIT 100")
-        for ts,name,dirn,msg in reversed(cur.fetchall()):
-            who=name if dirn=='incoming' else MY_NAME
-            logs+=f"{who}@{ts}: {msg}\n"
-        conn.close()
-
-        full_prompt = (
-            f"Conversation logs:\n{logs}\nSearch: {prompt}\n"
-            "Find matching message plus 3 before and 2 after."
-        )
-        try:
-            resp = OpenAI(api_key=OPENAI_API_KEY).chat.completions.create(
-                model="gpt-4", messages=[{"role":"system","content":"You analyze logs."},{"role":"user","content":full_prompt}]
-            )
-            answer=resp.choices[0].message.content
-        except Exception as e:
-            answer=f"Error: {e}"
-        return render_template_string(
-            """
-            <form method='POST'><textarea name='prompt' required></textarea><button>Ask</button></form><div>{{answer}}</div>
-            """,answer=answer)
-
-    return render_template_string(
-        """
-        <form method='POST'><textarea name='prompt' required></textarea><button>Ask</button></form>
-        """
+    # Save to DB
+    msg = Message(
+        phone_number=phone,
+        contact_name=name,
+        direction=direction,
+        message=text,
+        media_urls=','.join(urls)
     )
+    db.session.add(msg)
+    db.session.commit()
 
-# --- Contacts Route ---
-@app.route("/contacts", methods=["GET","POST"])
-def contacts():
-    conn=sqlite3.connect("messages.db"); cur=conn.cursor()
-    if request.method=="POST":
-        p=request.form['phone']; n=request.form['name']
-        cur.execute("INSERT OR REPLACE INTO contacts(phone_number,contact_name) VALUES(?,?)",(p,n)); conn.commit()
-    cur.execute("SELECT phone_number,contact_name FROM contacts ORDER BY contact_name")
-    saved=cur.fetchall()
-    cur.execute("SELECT DISTINCT phone_number FROM messages WHERE phone_number NOT IN(SELECT phone_number FROM contacts) ORDER BY timestamp DESC LIMIT 5")
-    unknowns=[r[0] for r in cur.fetchall()]
-    conn.close()
-    return render_template_string(
-        """
-        <h2>📇 Contacts</h2><ul>{% for ph,nm in saved %}<li>{{nm}}: {{ph}}</li>{% endfor %}</ul>
-        <h3>Unknowns</h3><ul>{% for x in unknowns %}<li>{{x}}</li>{% endfor %}</ul>
-        """,saved=saved,unknowns=unknowns)
+    # Prepare email content
+    plain_parts = [f"{name} — {datetime.utcnow()}: {text}"]
+    html_parts = [f"<p><b>{name}</b>: {text}</p>"]
+    attachments = []
+    cid_index = 0
+    for url in urls:
+        try:
+            r = requests.get(url)
+            r.raise_for_status()
+            data_b64 = base64.b64encode(r.content).decode('utf-8')
+            mime_type = mimetypes.guess_type(url)[0] or 'application/octet-stream'
+            filename = os.path.basename(url)
+            cid = f"image{cid_index}"
+            cid_index += 1
+            # Inline attachment
+            attachments.append({
+                "content": data_b64,
+                "filename": filename,
+                "type": mime_type,
+                "disposition": "inline",
+                "content_id": cid
+            })
+            # Reference via CID
+            html_parts.append(f"<img src=\"cid:{cid}\" style=\"max-width:300px;margin-top:5px;\"><br>")
+            plain_parts.append(f"[Image CID: {cid}]")
+        except Exception as e:
+            print(f"⚠️ Failed to fetch {url}: {e}")
 
-# --- Messages Route ---
-@app.route("/messages")
-def messages():
-    conn=sqlite3.connect("messages.db"); cur=conn.cursor()
-    cur.execute("SELECT timestamp,contact_name,direction,message FROM messages ORDER BY timestamp DESC LIMIT 50")
-    rows=cur.fetchall(); conn.close(); rows.reverse()
-    return render_template_string("<ul>{% for t,n,d,m in rows %}<li>{{n}}({{d}})@{{t}}:{{m}}</li>{% endfor %}</ul>",rows=rows)
+    subject = f"New message {'from' if direction=='incoming' else 'to'} {name}"
+    plain_body = "\n\n".join(plain_parts)
+    html_body = "".join(html_parts)
 
-# --- Start ---
-if __name__=="__main__": app.run(host="0.0.0.0",port=8080)
+    send_email(subject, html_body, plain_body, attachments)
+    return Response(status=200)
+
+# ─── HTTP Views ─────────────────────────────────────────────────────────────
+@app.route('/')
+def index():
+    return render_template_string("""
+    🟢 OpenPhone Monitor is running.<br>
+    <a href=\"/messages\">Messages</a> | 
+    <a href=\"/contacts\">Contacts</a> | 
+    <a href=\"/contacts/add\">Add Contact</a> | 
+    <a href=\"/ask\">Ask GPT</a>
+    """)
+
+@app.route('/messages')
+def messages_view():
+    msgs = Message.query.order_by(Message.id.desc()).limit(100).all()
+    return render_template_string("""
+    <h2>Last 100 Messages</h2>
+    <ul>{% for m in msgs %}<li>[{{m.timestamp}}] {{m.contact_name or m.phone_number}} ({{ '📤' if m.direction=='outgoing' else '📥' }}): {{m.message}}</li>{% endfor %}</ul>
+    """, msgs=msgs)
+
+@app.route('/contacts', methods=['GET'])
+def contacts_view():
+    contacts = Contact.query.all()
+    return render_template_string("""
+    <h2>Contacts</h2>
+    <ul>{% for c in contacts %}<li>{{c.contact_name}}: {{c.phone_number}}</li>{% endfor %}</ul>
+    <a href=\"/contacts/add\">Add new contact</a>
+    """, contacts=contacts)
+
+@app.route('/contacts/add', methods=['GET','POST'])
+def contacts_add():
+    if request.method == 'POST':
+        num = request.form.get('phone', '').strip()
+        name = request.form.get('name', '').strip()
+        if num and name:
+            key = num[-10:]
+            db.session.merge(Contact(phone_number=key, contact_name=name))
+            db.session.commit()
+            return redirect(url_for('contacts_view'))
+        return 'Phone and name required', 400
+    return render_template_string("""
+    <h2>Add Contact</h2>
+    <form method=\"post\">
+      <input name=\"name\" placeholder=\"Contact Name\" required/><br>
+      <input name=\"phone\" placeholder=\"Phone Number\" required/><br>
+      <button type=\"submit\">Add</button>
+    </form>
+    """)
+
+@app.route('/ask', methods=['GET','POST'])
+def ask_view():
+    if request.method == 'POST':
+        query = request.form.get('query', '').strip()
+        if not query or not openai_client:
+            return "Provide a search term and ensure OpenAI is configured.", 400
+        recent = Message.query.order_by(Message.id.desc()).limit(20).all()[::-1]
+        convo = "\n".join(
+            f"{m.contact_name or m.phone_number} ({'out' if m.direction=='outgoing' else 'in'}): {m.message}" for m in recent
+        )
+        prompt = f"You are a message-search assistant.\nRecent conversation:\n{convo}\n\nFind the first message containing '{query}', plus two before and one after."
+        resp = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role":"user","content":prompt}]
+        )
+        answer = resp.choices[0].message.content
+        return render_template_string("""
+        <h2>Results</h2>
+        <pre>{{answer}}</pre>
+        <a href=\"/ask\">Back</a>
+        """, answer=answer)
+    return render_template_string("""
+    <h2>Search Messages</h2>
+    <form method=\"post\">
+      <input name=\"query\" placeholder=\"Keyword…\"/><button type=\"submit\">Search</button>
+    </form>
+    """)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
