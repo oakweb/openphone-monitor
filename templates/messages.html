@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sin City Rentals | Recent Messages</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" rel="stylesheet">
+  <style>
+    body { margin:0; padding:0; font-family:'Segoe UI',sans-serif; background:#121416; color:#fff; }
+    .header { background:#202327; padding:10px; position:sticky; top:0; z-index:100; border-bottom:1px solid #3a8bab; }
+    .header-content { max-width:1200px; margin:0 auto; display:flex; align-items:center; }
+    .logo-area { display:flex; align-items:center; }
+    .logo-area i { font-size:1.5rem; margin-right:0.5rem; color:#6cb9d3; }
+    .logo-text { margin:0; font-size:1.25rem; font-weight:600; }
+    .logo-subtext { margin:0; font-size:0.8rem; color:#6cb9d3; }
+    main { max-width:1200px; margin:20px auto; padding:0 15px; }
+    .controls { display:flex; gap:1rem; margin-bottom:1rem; }
+    .controls select, .controls button { background:#2c3035; color:#fff; border:1px solid #3a8bab; }
+    .controls button { margin-left:auto; }
+    .card { background:#202327; border:1px solid #3a8bab; }
+    .list-group-item { background:#2c3035; border-bottom:1px solid #3a8bab; color:#fff; }
+    .message-header { display:flex; justify-content:space-between; align-items:center; padding:0.75rem 1rem; }
+    .message-body { padding:0.5rem 1rem; background:#1e2226; }
+    .message-text { margin:0.5rem 0; }
+    .message-link { color:#6cb9d3; text-decoration:underline; margin:0.5rem 0; display:block; }
+    .message-media img { max-width:100%; border-radius:6px; margin:0.5rem 0; }
+    .footer { text-align:center; padding:1rem 0; background:#202327; border-top:1px solid #3a8bab; font-size:0.8rem; color:#6cb9d3; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-content">
+      <div class="logo-area">
+        <i class="fas fa-phone-alt"></i>
+        <div>
+          <p class="logo-text">Sin City Rentals</p>
+          <p class="logo-subtext">Recent Messages</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm mb-3">
+      <i class="fas fa-arrow-left"></i> Home
+    </a>
+    <div class="controls">
+      <select id="sortOrder" class="form-select form-select-sm">
+        <option value="newest">Newest First</option>
+        <option value="oldest">Oldest First</option>
+      </select>
+      <select id="filterBy" class="form-select form-select-sm">
+        <option value="all">All Messages</option>
+        <option value="today">Today Only</option>
+        <option value="unread">Unread</option>
+      </select>
+      <button id="refreshBtn" class="btn btn-success btn-sm">
+        <i class="fas fa-sync-alt"></i> Refresh
+      </button>
+    </div>
+
+    <div class="card">
+      <ul id="messagesList" class="list-group list-group-flush">
+        {% if messages and messages|length > 0 %}
+          {% for msg in messages %}
+            <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}" data-is-read="{{ msg.is_read }}">
+              <div class="message-header">
+                <div><i class="fas fa-user-circle me-2"></i><strong>{{ msg.contact_name or msg.phone_number }}</strong></div>
+                <span class="text-muted">{{ msg.timestamp.strftime('%m-%d %H:%M') }}</span>
+              </div>
+              <div class="message-body">
+                <p class="message-text">{{ msg.message }}</p>
+                <!-- Inline and attachment images -->
+                {% for img in msg.image_urls %}
+                  <div class="message-media">
+                    <img src="{{ img }}" class="img-fluid"
+                         onerror="this.onerror=null;this.src='{{ url_for('static', filename='placeholder-image.png') }}';">
+                  </div>
+                {% endfor %}
+                <!-- Other links -->
+                {% for link in msg.other_links %}
+                  <a href="{{ link }}" target="_blank" class="message-link">{{ link }}</a>
+                {% endfor %}
+              </div>
+            </li>
+          {% endfor %}
+        {% else %}
+          <li class="list-group-item text-center text-muted">No messages found</li>
+        {% endif %}
+      </ul>
+    </div>
+  </main>
+
+  <footer class="footer">© 2025 Sin City Rentals. All rights reserved.</footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('refreshBtn').addEventListener('click', () => window.location.reload());
+      document.getElementById('sortOrder').addEventListener('change', function() {
+        const order = this.value;
+        const list = document.getElementById('messagesList');
+        Array.from(list.children)
+          .sort((a, b) => order === 'newest'
+            ? new Date(b.dataset.timestamp) - new Date(a.dataset.timestamp)
+            : new Date(a.dataset.timestamp) - new Date(b.dataset.timestamp)
+          )
+          .forEach(i => list.appendChild(i));
+      });
+      document.getElementById('filterBy').addEventListener('change', function() {
+        const crit = this.value;
+        const todayStart = new Date().setHours(0,0,0,0);
+        document.querySelectorAll('#messagesList .list-group-item').forEach(item => {
+          let show = true;
+          const ts = new Date(item.dataset.timestamp).getTime();
+          if (crit === 'today') show = ts >= todayStart;
+          if (crit === 'unread') show = item.dataset.is_read == 'False';
+          item.style.display = show ? '' : 'none';
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -11,7 +11,7 @@ language = "python3"
 requiredFiles = [".replit", "replit.nix"]
 
 [deployment]
-run = ["python3", "main.py"]
+run = "gunicorn main:app --bind 0.0.0.0:$PORT"
 deploymentTarget = "cloudrun"
 
 [[ports]]
@@ -21,3 +21,7 @@ externalPort = 5000
 [[ports]]
 localPort = 8080
 externalPort = 80
+
+[[ports]]
+localPort = 43497
+externalPort = 3002
