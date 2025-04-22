@@ -1,226 +1,62 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sin City Rentals | Manage Contacts</title> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
-    <style>
-        /* Your existing CSS styles remain unchanged here... */
-        /* Ensure you have styles for .contact-name if needed, or adjust below */
-        /* Example addition for clarity within the list item */
-        .contact-info {
-            flex-grow: 1; /* Allow info to take available space */
-        }
-        .contact-name strong {
-            font-size: 1.05rem; /* Slightly larger name */
-            color: #e9ecef; /* White-ish name */
-        }
-        .contact-number { /* Existing style */
-            font-weight: 600;
-            color: #6cb9d3;
-        }
-        .text-muted { /* Bootstrap class for lighter text */
-             color: #adb5bd !important;
-             font-size: 0.9em;
-        }
-         /* Adjust list-group-item for flex */
-        .list-group-item {
-            background-color: rgba(25, 30, 35, 0.7);
-            color: #fff;
-            border: none;
-            border-bottom: 1px solid rgba(108, 185, 211, 0.2);
-            padding: 15px;
-            transition: all 0.3s;
-            /* Use flexbox to align items */
-            display: flex;
-            justify-content: space-between; /* Puts space between info and button */
-            align-items: center; /* Vertically aligns items */
-            gap: 15px; /* Adds some space between items */
-        }
-         /* Ensure form inside list item doesn't cause weird spacing */
-         .list-group-item form {
-            margin-bottom: 0;
-            flex-shrink: 0; /* Prevent delete button/form from shrinking */
-         }
-         /* Style for the secondary 'Recent Unknown' list title */
-         .secondary-title {
-             color: #fff;
-             margin-top: 30px;
-             margin-bottom: 15px;
-             font-size: 1.5rem;
-             font-weight: 600;
-             text-align: center;
-         }
-         /* Reusing styles for the 'Recent Unknown' list items */
-         .recent-call-item .contact-number { /* Style specifically for the number in the second list */
-             display: block; /* Make number block for spacing */
-             margin-bottom: 5px;
-         }
-         .recent-call-item .contact-message { /* Existing style */
-             color: #e9ecef;
-             font-size: 0.95rem;
-             display: block; /* Make message block */
-             margin-bottom: 10px;
-         }
-         .recent-call-item .contact-form { /* Existing style */
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 10px;
-         }
-         /* Your other existing styles... */
-         body {
-             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-             line-height: 1.6;
-             margin: 0;
-             padding: 0;
-             color: #fff;
-             min-height: 100vh;
-             display: flex;
-             flex-direction: column;
-             background-color: #121416;
-         }
-         .bg-wrapper {
-             position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
-             background: linear-gradient(rgba(18, 20, 22, 0.7), rgba(18, 20, 22, 0.7)), url("{{ url_for('static', filename='server-visualization.jpg') }}");
-             background-size: cover; background-position: center; background-repeat: no-repeat;
-         }
-         .header {
-             background-color: rgba(18, 20, 22, 0.85); box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-             padding: 15px 0; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid rgba(108, 185, 211, 0.2);
-         }
-         .header-content {
-             max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between;
-             align-items: center; padding: 0 15px;
-         }
-         .logo-text { font-size: 1.5rem; font-weight: 700; color: #6cb9d3; margin: 0; }
-         .back-btn {
-             background: linear-gradient(90deg, #3a8bab, #6cb9d3); color: #fff; border: none;
-             padding: 10px 20px; border-radius: 5px; font-weight: 600; display: inline-flex;
-             align-items: center; gap: 8px; text-decoration: none; transition: all 0.3s ease;
-         }
-         .back-btn:hover {
-             background: linear-gradient(90deg, #357d9a, #5eaac4); transform: translateY(-2px);
-             box-shadow: 0 4px 15px rgba(0,0,0,0.3); color: #fff;
-         }
-         .main-content { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; }
-         .content-container { max-width: 800px; width: 100%; }
-         .page-title {
-             color: #fff; margin-bottom: 25px; font-size: 2.2rem; font-weight: 700;
-             text-shadow: 0 2px 10px rgba(0,0,0,0.5); letter-spacing: 1px; text-align: center;
-         }
-         .tech-divider {
-             height: 3px; width: 120px; background: linear-gradient(90deg, #6cb9d3, #3a8bab);
-             margin: 0 auto 30px; border-radius: 2px; box-shadow: 0 0 10px rgba(108, 185, 211, 0.5);
-         }
-         .card {
-             border-radius: 10px; box-shadow: 0 5px 25px rgba(0,0,0,0.5); border: 1px solid rgba(108, 185, 211, 0.2);
-             background-color: rgba(22, 26, 30, 0.85); backdrop-filter: blur(10px);
-             padding: 10px; margin-bottom: 20px;
-         }
-         .card-body { padding: 20px; }
-         ul.list-group { border-radius: 8px; overflow: hidden; }
-         .list-group-item:last-child { border-bottom: none; }
-         .list-group-item:hover { background-color: rgba(30, 40, 50, 0.9); }
-         .form-control {
-             background-color: rgba(30, 40, 50, 0.7); border: 1px solid rgba(108, 185, 211, 0.3); color: #fff;
-             padding: 8px 12px; border-radius: 5px; flex: 1;
-         }
-         .btn-success, .btn-danger {
-             flex-shrink: 0; padding: 8px 15px; font-weight: 600; border-radius: 5px; transition: all 0.3s;
-         }
-         /* Ensure Bootstrap default button colors are used if gradients fail */
-         .btn-success { background-color: #198754; border-color: #198754;}
-         .btn-danger { background-color: #dc3545; border-color: #dc3545;}
-         .btn-success:hover { background-color: #157347; border-color: #146c43; background-image: linear-gradient(90deg, #157347, #1ba97e); }
-         .btn-danger:hover { background-color: #bb2d3b; border-color: #b02a37; background-image: linear-gradient(90deg, #bb2d3b, #eb6404); }
-         .footer {
-             background-color: rgba(18, 20, 22, 0.85); color: #fff; padding: 20px 0; text-align: center;
-             border-top: 1px solid rgba(108, 185, 211, 0.2);
-         }
-         .copyright { font-size: 0.9rem; color: #6c757d; margin-bottom: 0; }
-         @media (max-width: 768px) {
-             .page-title { font-size: 1.8rem; }
-             .content-container { padding: 0 15px; }
-             .contact-form { flex-direction: column; }
-             .list-group-item { flex-direction: column; align-items: flex-start;} /* Stack on mobile */
-             .list-group-item form { width: 100%; margin-top: 10px;}
-             .list-group-item form button { width: 100%; }
-         }
+{% extends 'base.html' %}
 
-    </style>
-</head>
-<body>
-    <div class="bg-wrapper"></div>
+{% block title %}Manage Contacts{% endblock %}
 
-    <header class="header">
-        <div class="header-content">
-            <p class="logo-text">Sin City Rentals &ndash; Manage Contacts</p>
-            <a href="{{ url_for('index') }}" class="back-btn"><i class="fas fa-home"></i> Home</a>
+{% block content %}
+<div class="content-container"> <h1 class="page-title">Manage Existing Contacts</h1>
+    <div class="tech-divider"></div> <div class="card">
+        <div class="card-body">
+            {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+            {% endif %}
+
+            <ul class="list-group list-group-flush"> {% if known_contacts and known_contacts|length > 0 %}
+                    {% for contact in known_contacts %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div class="contact-info">
+                                <span class="contact-name"><strong>{{ contact.contact_name }}</strong></span>
+                                <br>
+                                <span class="contact-number text-muted">{{ contact.phone_number }}</span>
+                            </div>
+                            <form method="POST" style="margin-bottom: 0;">
+                                <input type="hidden" name="phone" value="{{ contact.phone_number }}">
+                                <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-trash-alt"></i> Delete
+                                </button>
+                            </form>
+                        </li>
+                    {% endfor %}
+                {% else %}
+                    <li class="list-group-item text-center">No contacts found in database.</li>
+                {% endif %}
+            </ul>
         </div>
-    </header>
+    </div> {% if recent_calls and recent_calls|length > 0 %}
+        <h3 class="secondary-title">Recent Unknown Numbers</h3>
+        <div class="card">
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    {% for call in recent_calls %}
+                        <li class="list-group-item recent-call-item">
+                            <span class="contact-number">{{ call.phone_number }}</span>
+                            {% if call.message %}
+                                <span class="contact-message text-muted">Last message: "{{ call.message|truncate(80) }}"</span>
+                            {% endif %}
+                            <div class="contact-form mt-2"> <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2">
+                                    <input type="hidden" name="phone" value="{{ call.phone_number }}">
+                                    <input type="text" name="name" placeholder="Enter name to add" class="form-control form-control-sm" required style="flex-grow: 1;">
+                                    <button type="submit" name="action" value="add" class="btn btn-success btn-sm flex-shrink-0">Add</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('contacts_view') }}" class="ms-auto"> <input type="hidden" name="phone" value="{{ call.phone_number }}">
+                                    <button type="submit" name="action" value="ignore" class="btn btn-secondary btn-sm flex-shrink-0">Ignore</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div> {% endif %}
+    </div> {% endblock %}
 
-    <main class="main-content">
-        <div class="content-container">
-            <h1 class="page-title">Manage Existing Contacts</h1>
-            <div class="tech-divider"></div>
-
-            <div class="card">
-                <div class="card-body">
-                    {% if error %}
-                        <div class="alert alert-danger">{{ error }}</div>
-                    {% endif %}
-
-                    <ul class="list-group">
-                        {% if known_contacts and known_contacts|length > 0 %}
-                            {% for contact in known_contacts %}
-                                <li class="list-group-item">
-                                    <div class="contact-info">
-                                        <span class="contact-name"><strong>{{ contact.contact_name }}</strong></span>
-                                        <br>
-                                        <span class="contact-number text-muted">{{ contact.phone_number }}</span>
-                                    </div>
-                                    <form method="POST" style="margin-bottom: 0;">
-                                        <input type="hidden" name="phone" value="{{ contact.phone_number }}">
-                                        <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm">
-                                            <i class="fas fa-trash-alt"></i> Delete
-                                        </button>
-                                    </form>
-                                </li>
-                            {% endfor %}
-                        {% else %}
-                            <li class="list-group-item text-center">No contacts found in database.</li>
-                        {% endif %}
-                    </ul>
-                </div>
-            </div> {% if recent_calls and recent_calls|length > 0 %}
-                <h3 class="secondary-title">Recent Unknown Numbers</h3>
-                <div class="card">
-                    <div class="card-body">
-                        <ul class="list-group">
-                            {% for call in recent_calls %}
-                                <li class="list-group-item recent-call-item"> <span class="contact-number">{{ call.phone_number }}</span>
-                                    {% if call.message %}
-                                        <span class="contact-message text-muted">Last message: "{{ call.message|truncate(80) }}"</span>
-                                    {% endif %}
-                                    <div class="contact-form">
-                                        <form method="POST" action="{{ url_for('contacts_view') }}"> <input type="hidden" name="phone" value="{{ call.phone_number }}">
-                                            <input type="text" name="name" placeholder="Enter name to add" class="form-control form-control-sm" required>
-                                            <button type="submit" name="action" value="add" class="btn btn-success btn-sm">Add</button>
-                                        </form>
-                                        <form method="POST" action="{{ url_for('contacts_view') }}"> <input type="hidden" name="phone" value="{{ call.phone_number }}">
-                                            <button type="submit" name="action" value="ignore" class="btn btn-secondary btn-sm">Ignore</button> </form>
-                                    </div>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div> {% endif %}
-            </div> </main>
-
-    <footer class="footer">
-        <p class="copyright">© {{ current_year }} Sin City Rentals. All rights reserved.</p> </footer>
-
-    </body>
-</html>
+{% block scripts %}
+{% endblock %}

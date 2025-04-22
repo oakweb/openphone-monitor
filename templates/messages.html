@@ -1,124 +1,158 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sin City Rentals | Recent Messages</title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" rel="stylesheet">
-  <style>
-    body { margin:0; padding:0; font-family:'Segoe UI',sans-serif; background:#121416; color:#fff; }
-    .header { background:#202327; padding:10px; position:sticky; top:0; z-index:100; border-bottom:1px solid #3a8bab; }
-    .header-content { max-width:1200px; margin:0 auto; display:flex; align-items:center; }
-    .logo-area { display:flex; align-items:center; }
-    .logo-area i { font-size:1.5rem; margin-right:0.5rem; color:#6cb9d3; }
-    .logo-text { margin:0; font-size:1.25rem; font-weight:600; }
-    .logo-subtext { margin:0; font-size:0.8rem; color:#6cb9d3; }
-    main { max-width:1200px; margin:20px auto; padding:0 15px; }
-    .controls { display:flex; gap:1rem; margin-bottom:1rem; }
-    .controls select, .controls button { background:#2c3035; color:#fff; border:1px solid #3a8bab; }
-    .controls button { margin-left:auto; }
-    .card { background:#202327; border:1px solid #3a8bab; }
-    .list-group-item { background:#2c3035; border-bottom:1px solid #3a8bab; color:#fff; }
-    .message-header { display:flex; justify-content:space-between; align-items:center; padding:0.75rem 1rem; }
-    .message-body { padding:0.5rem 1rem; background:#1e2226; }
-    .message-text { margin:0.5rem 0; }
-    .message-link { color:#6cb9d3; text-decoration:underline; margin:0.5rem 0; display:block; }
-    .message-media img { max-width:100%; border-radius:6px; margin:0.5rem 0; }
-    .footer { text-align:center; padding:1rem 0; background:#202327; border-top:1px solid #3a8bab; font-size:0.8rem; color:#6cb9d3; }
-  </style>
-</head>
-<body>
-  <header class="header">
-    <div class="header-content">
-      <div class="logo-area">
-        <i class="fas fa-phone-alt"></i>
-        <div>
-          <p class="logo-text">Sin City Rentals</p>
-          <p class="logo-subtext">Recent Messages</p>
-        </div>
-      </div>
-    </div>
-  </header>
+{% extends 'base.html' %}
 
-  <main>
-    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm mb-3">
-      <i class="fas fa-arrow-left"></i> Home
-    </a>
-    <div class="controls">
-      <select id="sortOrder" class="form-select form-select-sm">
-        <option value="newest">Newest First</option>
-        <option value="oldest">Oldest First</option>
-      </select>
-      <select id="filterBy" class="form-select form-select-sm">
-        <option value="all">All Messages</option>
-        <option value="today">Today Only</option>
-        <option value="unread">Unread</option>
-      </select>
-      <button id="refreshBtn" class="btn btn-success btn-sm">
-        <i class="fas fa-sync-alt"></i> Refresh
-      </button>
+{% block title %}Recent Messages{% endblock %}
+
+{% block head_extra %}
+    <style>
+        /* Styles specifically for the messages list items */
+        main .card { margin-bottom: 1rem; }
+        #messagesList .list-group-item {
+            padding: 0;
+            background-color: #2c3035;
+            border-bottom: 1px solid #3a8bab !important;
+            color: #fff;
+        }
+         .list-group-flush > .list-group-item { border-width: 0 0 1px; }
+         .list-group-flush:last-child .list-group-item:last-child { border-bottom-width: 0; }
+        .message-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.75rem 1rem; background-color: #2c3035;
+            border-bottom: 1px solid rgba(58, 139, 171, 0.3);
+        }
+         .message-header strong { color: #e9ecef; }
+         .message-header .text-muted.small { font-size: 0.8em; color: #adb5bd !important;}
+        .message-body {
+            padding: 0.75rem 1rem 1rem 1rem; background: #1e2226;
+        }
+        .message-text {
+            margin: 0.5rem 0; white-space: pre-wrap; word-wrap: break-word;
+        }
+        .message-link {
+            color: #6cb9d3; text-decoration: underline; margin: 0.5rem 0;
+            display: block; word-break: break-all;
+        }
+        .message-media img {
+            max-width: 100%; max-height: 200px; border-radius: 6px;
+            margin: 0.5rem 0; border: 1px solid #3a8bab;
+        }
+        .add-contact-section {
+            padding: 0.75rem 1rem; background-color: rgba(58, 139, 171, 0.1);
+            border-top: 1px dashed rgba(58, 139, 171, 0.4); margin-top: -1px;
+        }
+        .add-contact-section .form-control {
+             background-color: rgba(30, 40, 50, 0.7);
+             border: 1px solid rgba(108, 185, 211, 0.3); color: #fff;
+         }
+         .controls { gap: 0.5rem; flex-wrap: wrap;} /* Added wrap */
+         .controls select, .controls button { padding: 0.375rem 0.75rem; }
+         @media (max-width: 576px) {
+            .controls { justify-content: center;}
+            .controls button { margin-left: 0; width: 100%; margin-top: 0.5rem;}
+        }
+    </style>
+{% endblock %} {# End head_extra block #}
+
+
+{% block content %}
+    {# Removed Home button as it's in navbar now #}
+    <div class="controls mb-3">
+        <select id="sortOrder" class="form-select form-select-sm" style="max-width: 150px;">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+        </select>
+        <select id="filterBy" class="form-select form-select-sm" style="max-width: 150px;">
+            <option value="all">All Messages</option>
+            <option value="today">Today Only</option>
+        </select>
+        <button id="refreshBtn" class="btn btn-success btn-sm">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
     </div>
 
     <div class="card">
-      <ul id="messagesList" class="list-group list-group-flush">
-        {% if messages and messages|length > 0 %}
-          {% for msg in messages %}
-            <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}" data-is-read="{{ msg.is_read }}">
-              <div class="message-header">
-                <div><i class="fas fa-user-circle me-2"></i><strong>{{ msg.contact_name or msg.phone_number }}</strong></div>
-                <span class="text-muted">{{ msg.timestamp.strftime('%m-%d %H:%M') }}</span>
-              </div>
-              <div class="message-body">
-                <p class="message-text">{{ msg.message }}</p>
-                <!-- Inline and attachment images -->
-                {% for img in msg.image_urls %}
-                  <div class="message-media">
-                    <img src="{{ img }}" class="img-fluid"
-                         onerror="this.onerror=null;this.src='{{ url_for('static', filename='placeholder-image.png') }}';">
-                  </div>
-                {% endfor %}
-                <!-- Other links -->
-                {% for link in msg.other_links %}
-                  <a href="{{ link }}" target="_blank" class="message-link">{{ link }}</a>
-                {% endfor %}
-              </div>
-            </li>
-          {% endfor %}
-        {% else %}
-          <li class="list-group-item text-center text-muted">No messages found</li>
-        {% endif %}
-      </ul>
-    </div>
-  </main>
+        <ul id="messagesList" class="list-group list-group-flush">
+             {% if messages and messages|length > 0 %}
+                 {% for msg in messages %}
+                     {% set is_known = known_contact_phones is defined and msg.phone_number in known_contact_phones %}
+                     <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}">
+                         <div class="message-header">
+                             <div><i class="fas fa-user-circle me-2"></i><strong>{{ msg.contact_name or msg.phone_number }}</strong></div>
+                             <span class="text-muted small">{{ msg.timestamp.strftime('%m-%d %H:%M') }}</span>
+                         </div>
+                         <div class="message-body">
+                             <p class="message-text">{{ msg.message }}</p>
+                             {% if msg.media_urls %}
+                                 {% set urls = msg.media_urls.split(',') %}
+                                 {% for url in urls %}
+                                     {% if url %} {# Check if url is not empty #}
+                                         <div class="message-media">
+                                             {# ALWAYS try to render an img tag #}
+                                             <img src="{{ url }}" class="img-fluid" style="max-height: 200px;"
+                                                  onerror="this.onerror=null;this.style.display='none'; this.alt='Attachment (cannot display inline)';"> {# Hide on error, add alt text #}
+                                         </div>
+                                     {% endif %}
+                                 {% endfor %}
+                             {% endif %}
+                         </div>
 
-  <footer class="footer">© 2025 Sin City Rentals. All rights reserved.</footer>
+                         {% if not is_known %}
+                         <div class="add-contact-section">
+                             <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2">
+                                 <input type="hidden" name="phone" value="{{ msg.phone_number }}">
+                                 <input type="text" name="name" placeholder="Enter name to add" class="form-control form-control-sm" required style="flex-grow: 1;">
+                                 <button type="submit" name="action" value="add" class="btn btn-success btn-sm flex-shrink-0">
+                                     <i class="fas fa-user-plus"></i> Add
+                                 </button>
+                             </form>
+                         </div>
+                         {% endif %}
+                         </li> {# End list-group-item #}
+                 {% endfor %} {# End message loop #}
+             {% else %}
+                 <li class="list-group-item text-center text-muted p-3">No messages found</li>
+             {% endif %} {# End if messages #}
+         </ul>
+     </div>
+{% endblock %} {# End content block #}
 
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      document.getElementById('refreshBtn').addEventListener('click', () => window.location.reload());
-      document.getElementById('sortOrder').addEventListener('change', function() {
-        const order = this.value;
-        const list = document.getElementById('messagesList');
-        Array.from(list.children)
-          .sort((a, b) => order === 'newest'
-            ? new Date(b.dataset.timestamp) - new Date(a.dataset.timestamp)
-            : new Date(a.dataset.timestamp) - new Date(b.dataset.timestamp)
-          )
-          .forEach(i => list.appendChild(i));
-      });
-      document.getElementById('filterBy').addEventListener('change', function() {
-        const crit = this.value;
-        const todayStart = new Date().setHours(0,0,0,0);
-        document.querySelectorAll('#messagesList .list-group-item').forEach(item => {
-          let show = true;
-          const ts = new Date(item.dataset.timestamp).getTime();
-          if (crit === 'today') show = ts >= todayStart;
-          if (crit === 'unread') show = item.dataset.is_read == 'False';
-          item.style.display = show ? '' : 'none';
+{% block scripts %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => window.location.reload());
+            }
+            const sortOrderSelect = document.getElementById('sortOrder');
+            if (sortOrderSelect) {
+                sortOrderSelect.addEventListener('change', function() {
+                    const order = this.value;
+                    const list = document.getElementById('messagesList');
+                    if (!list) return;
+                    const items = Array.from(list.children);
+                    items.forEach(item => list.removeChild(item));
+                    items.sort((a, b) => {
+                        const tsA = a.dataset.timestamp ? new Date(a.dataset.timestamp) : null;
+                        const tsB = b.dataset.timestamp ? new Date(b.dataset.timestamp) : null;
+                        if (!tsA && !tsB) return 0; if (!tsA) return 1; if (!tsB) return -1;
+                        return order === 'newest' ? tsB - tsA : tsA - tsB;
+                    }).forEach(item => list.appendChild(item));
+                });
+                 sortOrderSelect.dispatchEvent(new Event('change'));
+            }
+            const filterBySelect = document.getElementById('filterBy');
+            if (filterBySelect) {
+                filterBySelect.addEventListener('change', function() {
+                    const crit = this.value;
+                    const todayStart = new Date().setHours(0, 0, 0, 0);
+                    document.querySelectorAll('#messagesList .list-group-item').forEach(item => {
+                        let show = true;
+                        const ts = item.dataset.timestamp ? new Date(item.dataset.timestamp).getTime() : null;
+                        if (crit === 'today') { show = (ts !== null && ts >= todayStart); }
+                        item.style.display = show ? '' : 'none';
+                    });
+                });
+                 filterBySelect.dispatchEvent(new Event('change'));
+            }
         });
-      });
-    });
-  </script>
-</body>
-</html>
+    </script>
+{% endblock %} {# End scripts block #}

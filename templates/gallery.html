@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}Image Gallery{% endblock %}
+
+{% block head_extra %}
+<style>
+    .gallery-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* Responsive grid */
+        gap: 1rem;
+        padding: 1rem;
+    }
+    .gallery-item img {
+        width: 100%;
+        height: 120px; /* Fixed height for thumbnails */
+        object-fit: cover; /* Crop images nicely */
+        border-radius: 8px;
+        border: 2px solid #3a8bab;
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        cursor: pointer;
+    }
+     .gallery-item img:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 15px rgba(58, 139, 171, 0.5);
+     }
+     /* Basic Lightbox Styling (can be improved with JS library later) */
+     .lightbox {
+        display: none; position: fixed; z-index: 1050;
+        left: 0; top: 0; width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.8);
+        justify-content: center; align-items: center; padding: 20px;
+     }
+     .lightbox img { max-width: 90%; max-height: 90%; }
+     .lightbox-close { position: absolute; top: 20px; right: 30px; font-size: 30px; color: #fff; cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Image Gallery</h1>
+<div class="tech-divider"></div>
+
+{% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if image_files and image_files|length > 0 %}
+    <div class="gallery-container">
+        {% for image_path in image_files %}
+            <div class="gallery-item">
+                {# Generate URL for static file #}
+                {% set image_url = url_for('static', filename=image_path) %}
+                {# Link thumbnail to full image or use lightbox #}
+                <a href="{{ image_url }}" target="_blank" onclick="openLightbox('{{ image_url }}'); return false;">
+                    <img src="{{ image_url }}" alt="Gallery image {{ loop.index }}">
+                </a>
+                {# Optional: Display filename #}
+                {# <p class="text-center text-muted small mt-1">{{ image_path.split('/')[-1]|truncate(20) }}</p> #}
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="card">
+        <div class="card-body text-center text-muted">
+            No images found in the upload folder ({{ url_for('static', filename='uploads/') }}). Ensure the webhook is saving images locally.
+        </div>
+    </div>
+{% endif %}
+
+<div id="imageLightbox" class="lightbox" onclick="closeLightbox()">
+    <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+    <img id="lightboxImage" src="" alt="Full size image">
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function openLightbox(imageUrl) {
+        document.getElementById('lightboxImage').src = imageUrl;
+        document.getElementById('imageLightbox').style.display = 'flex';
+        document.body.style.overflow = 'hidden'; // Prevent background scroll
+    }
+
+    function closeLightbox() {
+        document.getElementById('imageLightbox').style.display = 'none';
+        document.getElementById('lightboxImage').src = ''; // Clear src
+        document.body.style.overflow = 'auto'; // Restore scroll
+    }
+
+    // Close lightbox with Escape key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && document.getElementById('imageLightbox').style.display === 'flex') {
+            closeLightbox();
+        }
+    });
+</script>
+{% endblock %}
