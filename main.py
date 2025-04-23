@@ -1,38 +1,39 @@
 import os
-import re # Keep this import - might be needed if you add regex later
-import json # Keep this import
-from flask import Flask, render_template, request, jsonify, url_for, redirect # Corrected import list
+import re  # Keep this import - might be needed if you add regex later
+import json  # Keep this import
+from flask import Flask, render_template, request, jsonify, url_for, redirect  # Ensure all needed are here
 from dotenv import load_dotenv
 from extensions import db
-from models import Contact, Message
-from webhook_route import webhook_bp # Assuming webhook_route.py exists
-from sqlalchemy import text, func, distinct # Added distinct here just in case
-from sqlalchemy.exc import OperationalError # Added this import
+from models import Contact, Message, Property  # Added Property
+# --- UNCOMMENTED BELOW ---
+from webhook_route import webhook_bp
+from sqlalchemy import text, func, distinct
+from sqlalchemy.exc import OperationalError  # Added this import
 from datetime import datetime, timedelta
 import openai
-import glob # To find files
+# import glob # Removed - no longer used by gallery route
+import traceback  # Needed for gallery error logging
 
-# --- Load environment variables ----
+# --- Load environment variables ---
 load_dotenv()
 
 # --- Initialize Flask app ---
-# Using 4 spaces for indentation now
+# Using 4 regular spaces for indentation now
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URL', 'sqlite:///instance/messages.db'
-)
+    'DATABASE_URL', 'sqlite:///instance/messages.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
     'pool_recycle': 300,
 }
 app.secret_key = os.getenv('FLASK_SECRET', 'default_secret')
-# Auto-reload templates during development (Gunicorn might handle this differently)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
 
 # Ensure SQLite instance folder exists
-if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:') and 'instance' in app.config['SQLALCHEMY_DATABASE_URI']:
+if app.config['SQLALCHEMY_DATABASE_URI'].startswith(
+        'sqlite:') and 'instance' in app.config['SQLALCHEMY_DATABASE_URI']:
     instance_path = os.path.join(app.root_path, 'instance')
     # Use exist_ok=True to avoid error if folder exists
     os.makedirs(instance_path, exist_ok=True)
@@ -40,13 +41,13 @@ if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:') and 'instance' in
 
 # Initialize database and register blueprint
 db.init_app(app)
+# --- UNCOMMENTED BELOW ---
 app.register_blueprint(webhook_bp)
 
 # Configure OpenAI
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Create tables on startup
-# This is generally okay for development, but consider Flask-Migrate for production
 print("Attempting to create database tables...")
 try:
     with app.app_context():
@@ -61,45 +62,48 @@ except Exception as init_e:
 def index():
     db_status = 'Unknown'
     summary_today = summary_week = 'Unavailable'
-    current_year = datetime.utcnow().year # Define here
+    current_year = datetime.utcnow().year
     try:
         db.session.execute(text('SELECT 1'))
         db_status = 'Connected'
-
         now = datetime.utcnow()
         start_today = datetime.combine(now.date(), datetime.min.time())
         start_week = start_today - timedelta(days=now.weekday())
-
-        count_today = ( db.session.query(func.count(Message.id))
-                        .filter(Message.timestamp >= start_today)
-                        .scalar() )
-        count_week = ( db.session.query(func.count(Message.id))
-                       .filter(Message.timestamp >= start_week)
-                       .scalar() )
-
+        count_today = db.session.query(func.count(
+            Message.id)).filter(Message.timestamp >= start_today).scalar()
+        count_week = db.session.query(func.count(
+            Message.id)).filter(Message.timestamp >= start_week).scalar()
         summary_today = f"{count_today} message(s) today."
         summary_week = f"{count_week} message(s) this week."
     except Exception as e:
         db.session.rollback()
         db_status = f"Error: {e}"
+    return render_template('index.html',
+                           db_status=db_status,
+                           summary_today=summary_today,
+                           summary_week=summary_week,
+                           current_year=current_year)
 
-    return render_template(
-        'index.html',
-        db_status=db_status,
-        summary_today=summary_today,
-        summary_week=summary_week,
-        current_year=current_year # Pass year to template
-    )
 
-# --- Messages Route (Handles HTML and JSON, Passes Known Contacts for HTML) ---
+# --- Messages Route ---
 @app.route('/messages')
 def messages_view():
     error = None
-    current_year = datetime.utcnow().year # Needed for base template footer
+    current_year = datetime.utcnow().year
+    messages_query = []
+    properties = []
+    known_contact_phones = set()
+    count_today = 0
+    count_week = 0
+    summary_for_html = "N/A"
+
     try:
-        messages_query = Message.query.order_by(Message.timestamp.desc()).limit(50).all()
+        messages_query = Message.query.options(
+            db.joinedload(Message.property)  # Correct eager loading syntax
+        ).order_by(Message.timestamp.desc()).limit(50).all()
 
         if request.args.get('format') == 'json':
+            # JSON Logic... (kept as is)
             messages_list = []
             for msg in messages_query:
                 messages_list.append({
@@ -110,147 +114,243 @@ def messages_view():
                     'direction': msg.direction,
                     'message': msg.message,
                     'media_urls': msg.media_urls,
-                    'is_read': True # Placeholder
+                    'is_read':
+                    True  # Assuming all viewed messages are read for JSON
                 })
-            # Calculate Stats for JSON
             now = datetime.utcnow()
             start_today = datetime.combine(now.date(), datetime.min.time())
             start_week = start_today - timedelta(days=now.weekday())
-            count_today = db.session.query(func.count(Message.id)).filter(
-                Message.timestamp >= start_today).scalar()
-            count_week = db.session.query(func.count(Message.id)).filter(
-                Message.timestamp >= start_week).scalar()
+            count_today = db.session.query(func.count(
+                Message.id)).filter(Message.timestamp >= start_today).scalar()
+            count_week = db.session.query(func.count(
+                Message.id)).filter(Message.timestamp >= start_week).scalar()
             summary = f"{count_today} message(s) received today."
             stats_data = {
-                'messages_today': count_today, 'messages_week': count_week,
-                'unread_messages': 0, 'response_rate': 93, # Placeholders
+                'messages_today': count_today,
+                'messages_week': count_week,
+                'unread_messages': 0,  # Placeholder
+                'response_rate': 93,  # Placeholder
                 'summary_today': summary
             }
             return jsonify({'messages': messages_list, 'stats': stats_data})
-
         else:
-            # --- RENDER HTML ---
-            known_contact_phones_query = db.session.query(Contact.phone_number).all()
-            known_contact_phones = {phone for (phone,) in known_contact_phones_query}
-            print(f"--- DEBUG: Passing {len(known_contact_phones)} known numbers to messages template ---")
-
-            # Calculate stats for HTML template
+            # RENDER HTML
+            known_contact_phones_query = db.session.query(
+                Contact.phone_number).all()
+            known_contact_phones = {
+                phone
+                for (phone, ) in known_contact_phones_query
+            }
+            print(
+                f"--- DEBUG: Passing {len(known_contact_phones)} known numbers to messages template ---"
+            )
+            try:
+                properties = Property.query.order_by(Property.name).all()
+                print(
+                    f"--- DEBUG: Fetched {len(properties)} properties for dropdown ---"
+                )
+            except Exception as prop_e:
+                print(f"❌ Error fetching properties: {prop_e}")
+                properties = []
+                error = error or f"Error fetching properties: {prop_e}"
             now = datetime.utcnow()
             start_today = datetime.combine(now.date(), datetime.min.time())
             start_week = start_today - timedelta(days=now.weekday())
-            count_today = db.session.query(func.count(Message.id)).filter(
-                Message.timestamp >= start_today).scalar()
-            count_week = db.session.query(func.count(Message.id)).filter(
-                Message.timestamp >= start_week).scalar()
+            count_today = db.session.query(func.count(
+                Message.id)).filter(Message.timestamp >= start_today).scalar()
+            count_week = db.session.query(func.count(
+                Message.id)).filter(Message.timestamp >= start_week).scalar()
             summary_for_html = f"{count_today} message(s) today."
-
-            return render_template(
-                'messages.html',
-                messages=messages_query,
-                error=error,
-                messages_today=count_today,
-                messages_week=count_week,
-                summary_today=summary_for_html,
-                known_contact_phones=known_contact_phones,
-                current_year=current_year # Pass year
-            )
-
+            return render_template('messages.html',
+                                   messages=messages_query,
+                                   error=error,
+                                   messages_today=count_today,
+                                   messages_week=count_week,
+                                   summary_today=summary_for_html,
+                                   known_contact_phones=known_contact_phones,
+                                   properties=properties,
+                                   current_year=current_year)
     except Exception as e:
         db.session.rollback()
         error = f"Error fetching messages: {e}"
         print(f"❌ Error in /messages: {e}")
+        traceback.print_exc()
         if request.args.get('format') == 'json':
-             return jsonify({'error': str(e)}), 500
+            return jsonify({'error': str(e)}), 500
         else:
-             return render_template(
-                 'messages.html', messages=[], error=error, messages_today=0,
-                 messages_week=0, summary_today="Error loading summary.",
-                 known_contact_phones=set(), current_year=current_year # Pass defaults
-            )
+            return render_template('messages.html',
+                                   messages=[],
+                                   error=error,
+                                   messages_today=0,
+                                   messages_week=0,
+                                   summary_today="Error loading messages.",
+                                   known_contact_phones=set(),
+                                   properties=[],
+                                   current_year=current_year)
 
 
-# --- Contacts Route (Shows EXISTING contacts & handles ADD/DELETE) ---
+# --- Contacts Route ---
 @app.route('/contacts', methods=['GET', 'POST'])
 def contacts_view():
     error = None
     known_contacts = []
-    current_year = datetime.utcnow().year # Needed for base template footer
+    current_year = datetime.utcnow().year
+    recent_calls = []  # Define recent_calls before try block
 
     if request.method == 'POST':
         action = request.form.get('action')
         phone = request.form.get('phone')
-
         if action == 'add':
             name = request.form.get('name', '').strip()
-            if not phone:
-                error = "Phone number missing from submission."
-                print(f"❌ Contact form error: {error}")
-            elif not name:
-                error = "Name required to add contact."
+            if not phone or not name:
+                error = "Phone/name required."
                 print(f"❌ Contact form error: {error}")
             else:
                 try:
-                    existing_contact = Contact.query.get(phone)
-                    if not existing_contact:
-                        new_contact = Contact(phone_number=phone, contact_name=name)
-                        db.session.add(new_contact)
-                        db.session.commit()
-                        print(f"✅ Added contact via messages page: {name} ({phone})")
-                        return redirect(url_for('messages_view')) # Redirect after add
-                    else:
-                        print(f"ℹ️ Contact already exists, attempted add ignored: {name} ({phone})")
-                        error = f"Contact {phone} already exists."
-                        return redirect(url_for('messages_view')) # Still redirect
+                    # Normalize phone number before DB operations
+                    normalized_phone = ''.join(filter(str.isdigit,
+                                                      phone))[-10:]
+                    if len(normalized_phone) < 10:
+                        normalized_phone = phone  # Fallback if less than 10 digits
 
+                    existing = Contact.query.get(normalized_phone)
+                    if not existing:
+                        db.session.add(
+                            Contact(phone_number=normalized_phone,
+                                    contact_name=name))
+                        db.session.commit()
+                        print(f"✅ Added contact: {name} ({normalized_phone})")
+                        # Redirect to contacts view after adding
+                        return redirect(url_for('contacts_view'))
+                    else:
+                        print(
+                            f"ℹ️ Contact already exists: {name} ({normalized_phone})"
+                        )
+                        error = f"Contact {normalized_phone} already exists."
+                        # Still redirect to contacts, but maybe flash a message later
+                        return redirect(url_for('contacts_view'))
                 except Exception as e:
                     db.session.rollback()
-                    print(f"❌ Error processing add request: {e}")
-                    error = f"Error processing add: {e}"
-
+                    print(f"❌ Error processing add contact: {e}")
+                    traceback.print_exc()
+                    error = f"Error adding contact: {e}"
         elif action == 'delete':
-            phone_to_delete = phone
-            if phone_to_delete:
+            if phone:
                 try:
-                    contact_to_delete = Contact.query.get(phone_to_delete)
-                    if contact_to_delete:
-                        db.session.delete(contact_to_delete)
+                    # Normalize phone number before DB operations
+                    normalized_phone = ''.join(filter(str.isdigit,
+                                                      phone))[-10:]
+                    if len(normalized_phone) < 10:
+                        normalized_phone = phone  # Fallback
+
+                    contact = Contact.query.get(normalized_phone)
+                    if contact:
+                        db.session.delete(contact)
                         db.session.commit()
-                        print(f"✅ Deleted contact: {contact_to_delete.contact_name} ({phone_to_delete})")
+                        print(
+                            f"✅ Deleted contact: {getattr(contact, 'contact_name', 'N/A')} ({normalized_phone})"
+                        )
                     else:
-                        print(f"⚠️ Attempted to delete non-existent contact: {phone_to_delete}")
-                        error = f"Contact {phone_to_delete} not found."
-                    return redirect(url_for('contacts_view')) # Redirect after delete
+                        print(
+                            f"⚠️ Delete non-existent contact: {normalized_phone}"
+                        )
+                        error = f"Contact {normalized_phone} not found for deletion."
+                    return redirect(url_for('contacts_view'))
                 except Exception as e:
                     db.session.rollback()
-                    print(f"❌ Error processing delete request: {e}")
-                    error = f"Error processing delete: {e}"
+                    print(f"❌ Error processing delete contact: {e}")
+                    traceback.print_exc()
+                    error = f"Error deleting contact: {e}"
             else:
-                 error = "Phone number missing for delete action."
-                 print(f"❌ Contact form error: {error}")
-
+                error = "Phone number missing for delete action."
+                print(f"❌ Contact form error: {error}")
         else:
-            error = "Invalid action specified."
+            error = "Invalid action specified for contacts."
             print(f"❌ Contact form error: {error}")
-            # Fall through to GET render with error
 
-    # --- Handle GET requests (or fall through from POST error) ---
+    # GET request or fall through from POST error/redirect
     try:
         known_contacts = Contact.query.order_by(Contact.contact_name).all()
-        print(f"--- DEBUG: Fetched {len(known_contacts)} known contacts for display ---")
-        recent_calls = [] # Add logic here if needed later
+        print(f"--- DEBUG: Fetched {len(known_contacts)} known contacts ---")
+        # Add recent unknown logic later if desired, currently recent_calls is empty
     except Exception as e:
         db.session.rollback()
-        error = f"Error fetching contacts: {e}" if not error else error
+        error = f"Error fetching contacts: {e}" if not error else error  # Preserve POST errors
         print(f"❌ Error in /contacts GET: {e}")
+        traceback.print_exc()
         known_contacts = []
-        recent_calls = []
+        # recent_calls = [] # Already initialized
 
-    # Pass current_year for footer in base template
-    return render_template('contacts.html',
-                           known_contacts=known_contacts,
-                           recent_calls=recent_calls,
-                           error=error,
-                           current_year=current_year) # Pass year
+    return render_template(
+        'contacts.html',
+        known_contacts=known_contacts,
+        recent_calls=recent_calls,  # Pass empty list for now
+        error=error,
+        current_year=current_year)
+
+
+# --- Assign Property Route ---
+@app.route('/assign_property', methods=['POST'])
+def assign_property():
+    # error = None # Not used here
+    message_id = request.form.get('message_id')
+    property_id = request.form.get('property_id')
+    redirect_url = url_for('messages_view')  # Default redirect
+
+    if not message_id:
+        print("❌ Assign Property Error: message_id missing.")
+        # Consider flashing a message here instead of just redirecting
+        return redirect(redirect_url)
+
+    try:
+        message = Message.query.get(message_id)
+        if not message:
+            print(
+                f"❌ Assign Property Error: Message ID {message_id} not found.")
+            return redirect(redirect_url)  # Redirect even if message not found
+
+        redirect_url += f"#msg-{message_id}"  # Add fragment for successful find
+
+        if not property_id or property_id == '':  # Unassign
+            if message.property_id is not None:
+                message.property_id = None
+                db.session.commit()
+                print(f"ℹ️ Unassigned property from msg ID {message_id}")
+            else:
+                print(f"ℹ️ Msg {message_id} already unassigned.")
+        else:  # Assign
+            try:
+                prop_id_int = int(property_id)
+                prop = Property.query.get(prop_id_int)
+                if prop:
+                    if message.property_id != prop_id_int:
+                        message.property_id = prop_id_int
+                        db.session.commit()
+                        print(
+                            f"✅ Assigned property '{prop.name}' to msg ID {message_id}"
+                        )
+                    else:
+                        print(
+                            f"ℹ️ Msg {message_id} already assigned to prop {prop_id_int}."
+                        )
+                else:
+                    print(
+                        f"❌ Assign Property Error: Property ID {prop_id_int} not found."
+                    )
+                    # Consider flashing an error message
+            except ValueError:
+                print(
+                    f"❌ Assign Property Error: Invalid Property ID format '{property_id}'."
+                )
+                # Consider flashing an error message
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Assign Property Error: {e}")
+        traceback.print_exc()
+        # Consider flashing an error message
+        redirect_url = url_for('messages_view')  # Reset redirect URL on error
+
+    return redirect(redirect_url)
 
 
 # --- Ask Route ---
@@ -259,31 +359,36 @@ def ask_view():
     response_text = None
     error_message = None
     query = ""
-    current_year = datetime.utcnow().year # Needed for base template footer---
-
+    current_year = datetime.utcnow().year
     if request.method == 'POST':
         query = request.form.get('query', '').strip()
         if not query:
             error_message = "Please enter a question."
         elif not os.getenv("OPENAI_API_KEY"):
-             error_message = "❌ OpenAI API key is not configured."
+            error_message = "❌ OpenAI API key not configured."
+            print(error_message)  # Also log it
         else:
             try:
-                # Using OpenAI v0.x syntax as per previous code
+                print(f"--- Sending query to OpenAI: '{query[:50]}...' ---")
                 completion = openai.ChatCompletion.create(
-                    model="gpt-4", # Or specify the model you have access to
-                    messages=[{"role": "user", "content": query}]
-                )
+                    model=
+                    "gpt-4",  # Consider using a newer/cheaper model if applicable
+                    messages=[{
+                        "role": "user",
+                        "content": query
+                    }])
                 response_text = completion.choices[0].message['content']
+                print("--- Received response from OpenAI ---")
             except Exception as e:
                 error_message = f"❌ Error communicating with OpenAI: {e}"
                 print(f"❌ OpenAI API Error: {e}")
+                traceback.print_exc()  # Log the full error
 
     return render_template('ask.html',
                            response=response_text,
                            error=error_message,
                            current_query=query,
-                           current_year=current_year) # Pass year
+                           current_year=current_year)
 
 
 # --- Gallery Route ---
@@ -291,90 +396,102 @@ def ask_view():
 def gallery_view():
     error = None
     image_files = []
-    upload_folder_name = 'uploads' # Folder name inside 'static'
-    # Construct the absolute path to the upload folder
+    upload_folder_name = 'uploads'
+    current_year = datetime.utcnow().year
+    # Use app.static_folder which is Flask's way of knowing the static path
     upload_folder_path = os.path.join(app.static_folder, upload_folder_name)
     print(f"--- DEBUG: Looking for images in: {upload_folder_path} ---")
 
     try:
-        # Check if the upload directory exists
         if os.path.isdir(upload_folder_path):
             print(f"--- DEBUG: Scanning folder: {upload_folder_path} ---")
-            # Define allowed image extensions (case-insensitive)
-            allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'} # Added .webp
-
-            # List all items in the directory
+            allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
             all_items_in_dir = os.listdir(upload_folder_path)
-            print(f"--- DEBUG: Found {len(all_items_in_dir)} total items in folder. ---")
+            print(f"--- DEBUG: Found {len(all_items_in_dir)} total items. ---")
 
-            # Filter for files with allowed extensions
+            valid_image_files = []
             for filename in all_items_in_dir:
-                full_path = os.path.join(upload_folder_path, filename)
-                # Make sure it's a file (not a subdirectory)
-                if os.path.isfile(full_path):
-                    file_ext = os.path.splitext(filename)[1].lower() # Get lowercased extension
-                    if file_ext in allowed_extensions:
-                        # Construct path relative to 'static' folder for url_for
-                        relative_path = os.path.join(upload_folder_name, filename).replace(os.path.sep, '/')
-                        image_files.append(relative_path)
-                        # print(f"--- DEBUG: Added image file: {relative_path} ---") # Optional: log each found file
-                # else: # Optional: log skipped directories
-                #     print(f"--- DEBUG: Skipping non-file item: {filename} ---")
+                # Check if it looks like a file generated by the webhook
+                # Adjust this check if your unique_filename format changes
+                if filename.startswith('msg') and '_' in filename:
+                    full_path = os.path.join(upload_folder_path, filename)
+                    if os.path.isfile(full_path):
+                        file_ext = os.path.splitext(filename)[1].lower()
+                        if file_ext in allowed_extensions:
+                            # Create the relative path needed by url_for('static', ...)
+                            relative_path = os.path.join(
+                                upload_folder_name,
+                                filename).replace(os.path.sep, '/')
+                            valid_image_files.append({
+                                'path':
+                                relative_path,
+                                'mtime':
+                                os.path.getmtime(
+                                    full_path)  # Store mod time for sorting
+                            })
 
-            print(f"--- DEBUG: Found {len(image_files)} image files matching extensions using os.listdir. ---")
+            print(
+                f"--- DEBUG: Found {len(valid_image_files)} valid image files matching pattern/extensions. ---"
+            )
 
-            # Optional: Sort images by modification time (newest first)
-            try:
-                image_files.sort(key=lambda f: os.path.getmtime(os.path.join(app.static_folder, f)), reverse=True)
-                print("--- DEBUG: Sorted image files by modification time. ---")
-            except Exception as sort_e:
-                 print(f"--- DEBUG: Error sorting image files: {sort_e} ---") # Non-critical if sorting fails
+            # Sort by modification time, newest first
+            valid_image_files.sort(key=lambda f: f['mtime'], reverse=True)
+            # Extract just the paths after sorting
+            image_files = [f['path'] for f in valid_image_files]
+
+            if valid_image_files:
+                print(
+                    "--- DEBUG: Sorted image files by modification time. ---")
 
         else:
-            print(f"--- DEBUG: Upload folder not found: {upload_folder_path} ---")
-            error = "Upload folder not found. Ensure webhook is saving files to static/uploads."
+            print(
+                f"--- DEBUG: Upload folder not found or is not a directory: {upload_folder_path} ---"
+            )
+            error = "Upload folder not found. Ensure 'static/uploads' directory exists."
 
     except Exception as e:
         print(f"❌ Error accessing gallery images: {e}")
-        traceback.print_exc() # Print full traceback for gallery errors
-        error = "Error loading gallery."
-        image_files = [] # Ensure list is empty on error
+        traceback.print_exc()
+        error = "Error loading gallery images."
+        image_files = []  # Ensure it's empty on error
 
-    # Pass the list of relative image paths and other context
-    return render_template(
-        'gallery.html',
-        image_files=image_files,
-        error=error,
-        current_year=datetime.utcnow().year
-    )
-    
+    return render_template('gallery.html',
+                           image_files=image_files,
+                           error=error,
+                           current_year=current_year)
+
+
+# --- Test Route ---  <<<<<<<<<< MODIFIED BELOW >>>>>>>>>>
+@app.route('/ping')  # Changed path to /ping
+def ping_route():  # Changed function name
+    print("--- /ping route accessed ---")  # Changed print message
+    return "Pong!", 200  # Changed return message
 
 
 # --- DEBUG URL MAP ---
-# Added AFTER all routes and blueprint registrations
+# Keep this block for verifying routes on startup
 try:
     with app.app_context():
         print("\n--- Registered URL Endpoints ---")
-        # Sort rules for easier reading
-        rules = sorted(list(app.url_map.iter_rules()), key=lambda rule: rule.endpoint)
+        rules = sorted(list(app.url_map.iter_rules()),
+                       key=lambda rule: rule.endpoint)
         for rule in rules:
-            # Limit methods shown for brevity if needed, or use str(rule.methods)
-            methods = ','.join(sorted([m for m in rule.methods if m not in ('HEAD', 'OPTIONS')]))
-            print(f"Endpoint: {rule.endpoint:<30} Methods: {methods:<20} Rule: {rule}")
+            # Exclude built-in endpoints like 'static' if desired for cleaner output
+            # if rule.endpoint == 'static': continue
+            methods = ','.join(
+                sorted(
+                    [m for m in rule.methods if m not in ('HEAD', 'OPTIONS')]))
+            print(
+                f"Endpoint: {rule.endpoint:<30} Methods: {methods:<20} Rule: {rule}"
+            )
         print("--- End Registered URL Endpoints ---\n")
 except Exception as map_e:
     print(f"--- Error inspecting URL map: {map_e} ---")
 # --- END DEBUG URL MAP ---
 
-
 # --- Main execution block ---
 if __name__ == '__main__':
-    # This block is mainly for local development testing.
-    # Gunicorn (or another WSGI server) specified in .replit run command
-    # will directly interact with the 'app' object in deployment.
-    print("Starting Flask development server (DO NOT USE IN PRODUCTION DEPLOYMENT)...")
-    port = int(os.getenv("PORT", 8080)) # Use PORT for local consistency if needed
-    # app.run(host='0.0.0.0', port=port, debug=False) # Commented out - Gunicorn runs the app
-    # If you *want* to run locally using `python main.py`, uncomment app.run
-    # but ensure debug=False if testing production-like behavior.
-    pass # Keep the block structure valid even with app.run commented out
+    # Gunicorn runs the app in deployment via the .replit file config.
+    # For local development testing (optional):
+    # app.run(debug=True, host='0.0.0.0', port=8080)
+    pass  # Keep structure valid for Gunicorn
