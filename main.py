@@ -14,7 +14,7 @@ import openai
 # import glob # Removed - no longer used by gallery route
 import traceback  # Needed for gallery error logging
 
-# --- Load environment variables ---
+# --- Load environment variables -----
 load_dotenv()
 
 # --- Initialize Flask app ---
