@@ -3,22 +3,54 @@
 {% block title %}Manage Contacts{% endblock %}
 
 {% block content %}
-<div class="content-container"> <h1 class="page-title">Manage Existing Contacts</h1>
-    <div class="tech-divider"></div> <div class="card">
+<div class="content-container">
+    <h1 class="page-title">Manage Contacts</h1>
+    <div class="tech-divider"></div>
+
+    <div class="card">
         <div class="card-body">
+            {# Display errors if any occurred during POST processing #}
             {% if error %}
                 <div class="alert alert-danger">{{ error }}</div>
             {% endif %}
 
-            <ul class="list-group list-group-flush"> {% if known_contacts and known_contacts|length > 0 %}
+            {# --- Add New Contact Form --- #}
+            <h3 class="secondary-title mt-2 mb-3">Add New Contact</h3> {# Adjusted margin top #}
+            <form method="POST" action="{{ url_for('contacts_view') }}" class="mb-4 p-3 border rounded" style="background-color: rgba(255, 255, 255, 0.05);">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md">
+                        <label for="phone" class="form-label small">Phone Number:</label>
+                        <input type="tel" class="form-control form-control-sm" id="phone" name="phone" placeholder="+1XXXXXXXXXX" required>
+                    </div>
+                    <div class="col-md">
+                        <label for="name" class="form-label small">Contact Name:</label>
+                        <input type="text" class="form-control form-control-sm" id="name" name="name" placeholder="Enter name" required>
+                    </div>
+                    <div class="col-md-auto">
+                        {# This button triggers the 'add' action in main.py #}
+                        <button type="submit" name="action" value="add" class="btn btn-success btn-sm w-100">
+                            <i class="fas fa-plus"></i> Add Contact
+                        </button>
+                    </div>
+                </div>
+            </form>
+            {# --- End of Add New Contact form --- #}
+
+            {# --- Existing Contacts List --- #}
+            <h3 class="secondary-title mt-4 mb-3">Existing Contacts</h3> {# Added heading #}
+            <ul class="list-group list-group-flush"> {# Only one UL tag here #}
+                {% if known_contacts and known_contacts|length > 0 %}
                     {% for contact in known_contacts %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <li class="list-group-item d-flex justify-content-between align-items-center" style="background-color: transparent; border-color: rgba(108, 185, 211, 0.2);"> {# Style list items #}
                             <div class="contact-info">
-                                <span class="contact-name"><strong>{{ contact.contact_name }}</strong></span>
+                                {# Display name or fallback text if name is missing #}
+                                <span class="contact-name"><strong>{{ contact.contact_name or '(No Name Set)' }}</strong></span>
                                 <br>
-                                <span class="contact-number text-muted">{{ contact.phone_number }}</span>
+                                {# Display the phone number used as ID #}
+                                <span class="contact-number text-muted small">{{ contact.phone_number }}</span>
                             </div>
-                            <form method="POST" style="margin-bottom: 0;">
+                            {# Delete form for each contact #}
+                            <form method="POST" action="{{ url_for('contacts_view') }}" style="margin-bottom: 0;">
                                 <input type="hidden" name="phone" value="{{ contact.phone_number }}">
                                 <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm">
                                     <i class="fas fa-trash-alt"></i> Delete
@@ -27,12 +59,18 @@
                         </li>
                     {% endfor %}
                 {% else %}
-                    <li class="list-group-item text-center">No contacts found in database.</li>
-                {% endif %}
-            </ul>
-        </div>
-    </div> {% if recent_calls and recent_calls|length > 0 %}
-        <h3 class="secondary-title">Recent Unknown Numbers</h3>
+                    {# Message shown if database table has no contacts #}
+                    <li class="list-group-item text-center text-muted" style="background-color: transparent;">No contacts found in database.</li>
+                {% endif %} {# Closes the 'if known_contacts' block #}
+            </ul> {# Closes the list group #}
+            {# --- End of Existing Contacts List --- #}
+
+        </div> {# Closes card-body #}
+    </div> {# Closes the card div #}
+
+    {# Section for recent unknown calls (currently not populated by main.py) #}
+    {% if recent_calls and recent_calls|length > 0 %}
+        <h3 class="secondary-title mt-4">Recent Unknown Numbers</h3>
         <div class="card">
             <div class="card-body">
                 <ul class="list-group list-group-flush">
@@ -42,21 +80,23 @@
                             {% if call.message %}
                                 <span class="contact-message text-muted">Last message: "{{ call.message|truncate(80) }}"</span>
                             {% endif %}
-                            <div class="contact-form mt-2"> <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2">
+                            <div class="contact-form mt-2 d-flex">
+                                <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2 flex-grow-1">
                                     <input type="hidden" name="phone" value="{{ call.phone_number }}">
-                                    <input type="text" name="name" placeholder="Enter name to add" class="form-control form-control-sm" required style="flex-grow: 1;">
+                                    <input type="text" name="name" placeholder="Enter name to add" class="form-control form-control-sm" required>
                                     <button type="submit" name="action" value="add" class="btn btn-success btn-sm flex-shrink-0">Add</button>
-                                </form>
-                                <form method="POST" action="{{ url_for('contacts_view') }}" class="ms-auto"> <input type="hidden" name="phone" value="{{ call.phone_number }}">
-                                    <button type="submit" name="action" value="ignore" class="btn btn-secondary btn-sm flex-shrink-0">Ignore</button>
                                 </form>
                             </div>
                         </li>
                     {% endfor %}
                 </ul>
             </div>
-        </div> {% endif %}
-    </div> {% endblock %}
+        </div>
+    {% endif %} {# Closes the 'if recent_calls' block #}
+
+</div> {# Closes content-container #}
+{% endblock %} {# Closes the content block #}
 
 {% block scripts %}
-{% endblock %}
+{# You can add JavaScript here if needed later #}
+{% endblock %} {# Closes the scripts block #}

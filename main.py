@@ -1,3 +1,8 @@
+print("!!!!!!!!!!!!!!!!! MAIN.PY RELOADED AT LATEST TIMESTAMP !!!!!!!!!!!!!!!!")
+
+import os
+# ... rest of your imports ...
+
 import os
 import re  # Keep this import - might be needed if you add regex later
 import json  # Keep this import
@@ -14,7 +19,7 @@ import openai
 # import glob # Removed - no longer used by gallery route
 import traceback  # Needed for gallery error logging
 
-# --- Load environment variables -----
+# --- Load environment variables ----------
 load_dotenv()
 
 # --- Initialize Flask app ---
@@ -189,14 +194,18 @@ def messages_view():
                                    current_year=current_year)
 
 
+# In main.py - REPLACE the existing contacts_view function with this ------
+
+
 # --- Contacts Route ---
 @app.route('/contacts', methods=['GET', 'POST'])
 def contacts_view():
     error = None
     known_contacts = []
     current_year = datetime.utcnow().year
-    recent_calls = []  # Define recent_calls before try block
+    recent_calls = []  # Initialize recent_calls
 
+    # --- Handle POST Requests (Add/Delete) ---
     if request.method == 'POST':
         action = request.form.get('action')
         phone = request.form.get('phone')
@@ -211,29 +220,48 @@ def contacts_view():
                     normalized_phone = ''.join(filter(str.isdigit,
                                                       phone))[-10:]
                     if len(normalized_phone) < 10:
-                        normalized_phone = phone  # Fallback if less than 10 digits
+                        normalized_phone = phone  # Fallback
 
                     existing = Contact.query.get(normalized_phone)
                     if not existing:
+                        # Check if number exists in messages (for potential name update)
+                        messages_from_num = Message.query.filter_by(
+                            phone_number=normalized_phone).all()
+
                         db.session.add(
                             Contact(phone_number=normalized_phone,
                                     contact_name=name))
                         db.session.commit()
                         print(f"✅ Added contact: {name} ({normalized_phone})")
-                        # Redirect to contacts view after adding
-                        return redirect(url_for('contacts_view'))
+
+                        # Optional: Update contact_name in existing messages from this number
+                        if messages_from_num:
+                            for msg in messages_from_num:
+                                msg.contact_name = name
+                            try:
+                                db.session.commit()
+                                print(
+                                    f"ℹ️ Updated contact name in {len(messages_from_num)} existing messages for {normalized_phone}"
+                                )
+                            except Exception as update_err:
+                                db.session.rollback()
+                                print(
+                                    f"⚠️ Error updating names in existing messages: {update_err}"
+                                )
+
+                        return redirect(url_for(
+                            'contacts_view'))  # Redirect after successful add
                     else:
                         print(
                             f"ℹ️ Contact already exists: {name} ({normalized_phone})"
                         )
                         error = f"Contact {normalized_phone} already exists."
-                        # Still redirect to contacts, but maybe flash a message later
-                        return redirect(url_for('contacts_view'))
+                        # Don't redirect here, let the GET request handle showing the error below
                 except Exception as e:
                     db.session.rollback()
                     print(f"❌ Error processing add contact: {e}")
                     traceback.print_exc()
-                    error = f"Error adding contact: {e}"
+                    error = f"Error adding contact: {e}"  # Show error on page
         elif action == 'delete':
             if phone:
                 try:
@@ -255,38 +283,86 @@ def contacts_view():
                             f"⚠️ Delete non-existent contact: {normalized_phone}"
                         )
                         error = f"Contact {normalized_phone} not found for deletion."
-                    return redirect(url_for('contacts_view'))
+                    return redirect(url_for(
+                        'contacts_view'))  # Redirect after delete attempt
                 except Exception as e:
                     db.session.rollback()
                     print(f"❌ Error processing delete contact: {e}")
                     traceback.print_exc()
-                    error = f"Error deleting contact: {e}"
+                    error = f"Error deleting contact: {e}"  # Show error on page
             else:
                 error = "Phone number missing for delete action."
                 print(f"❌ Contact form error: {error}")
         else:
             error = "Invalid action specified for contacts."
             print(f"❌ Contact form error: {error}")
+    # --- End Handle POST ---
 
-    # GET request or fall through from POST error/redirect
+    # --- Handle GET Request (Fetch known contacts AND recent unknown numbers) ---
     try:
+        # Fetch all known contacts
         known_contacts = Contact.query.order_by(Contact.contact_name).all()
+        known_contact_phones = {c.phone_number for c in known_contacts}
+        # <<< LOOK FOR THIS LOG >>>
         print(f"--- DEBUG: Fetched {len(known_contacts)} known contacts ---")
-        # Add recent unknown logic later if desired, currently recent_calls is empty
+
+        # Find recent messages from numbers NOT in known contacts
+        cutoff_time = datetime.utcnow() - timedelta(
+            days=30)  # Look back 30 days (adjust as needed)
+
+        # Subquery to get the latest timestamp for each unknown incoming number
+        subq = db.session.query(
+            Message.phone_number,
+            func.max(Message.timestamp).label('max_ts')).filter(
+                Message.direction == 'incoming',
+                Message.timestamp >= cutoff_time,
+                ~Message.phone_number.in_(
+                    known_contact_phones)  # The ~ means NOT IN
+            ).group_by(Message.phone_number).subquery()
+
+        # Main query to get the message details for those latest timestamps
+        unknown_messages = db.session.query(Message).join(
+            subq, (Message.phone_number == subq.c.phone_number) &
+            (Message.timestamp == subq.c.max_ts)).order_by(
+                subq.c.max_ts.desc()).limit(20).all()  # Limit results
+
+        # Prepare the recent_calls list for the template
+        recent_calls = []
+        if unknown_messages:
+            # <<< LOOK FOR THIS LOG >>>
+            print(
+                f"--- DEBUG: Found {len(unknown_messages)} recent messages from unknown numbers ---"
+            )
+            for msg in unknown_messages:
+                recent_calls.append({
+                    'phone_number':
+                    msg.phone_number,  # Pass the number to the template
+                    'message': msg.message,  # Pass the last message text
+                    'timestamp': msg.timestamp  # Pass the timestamp
+                })
+        else:
+            # <<< OR LOOK FOR THIS LOG >>>
+            print(
+                "--- DEBUG: No recent messages from unknown numbers found ---")
+
     except Exception as e:
-        db.session.rollback()
-        error = f"Error fetching contacts: {e}" if not error else error  # Preserve POST errors
+        db.session.rollback()  # Rollback on error during GET
+        error = f"Error fetching contacts/messages: {e}" if not error else error  # Preserve POST errors
         print(f"❌ Error in /contacts GET: {e}")
         traceback.print_exc()
-        known_contacts = []
-        # recent_calls = [] # Already initialized
+        known_contacts = []  # Ensure lists are empty on error
+        recent_calls = []
 
+    # Render the template, passing both known and unknown contacts/calls
     return render_template(
         'contacts.html',
         known_contacts=known_contacts,
-        recent_calls=recent_calls,  # Pass empty list for now
-        error=error,
+        recent_calls=recent_calls,  # Pass the populated or empty list
+        error=error,  # Pass any error message from POST or GET
         current_year=current_year)
+
+
+# --- End contacts_view ---
 
 
 # --- Assign Property Route ---
