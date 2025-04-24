@@ -1,13 +1,12 @@
-print("!!!!!!!!!!!!!!!!! MAIN.PY RELOADED AT LATEST TIMESTAMP !!!!!!!!!!!!!!!!")
+print("!!!!!!!!!!!!!!!!! MAIN.PY RELOADED…")
+
+import os
+import re
+...
+
 # 🔍 Debug: show which DATABASE_URL we’re actually using
 print("👉 DATABASE_URL:", os.environ.get("DATABASE_URL"))
 
-
-import os
-# ... rest of your imports ...
-
-import os
-import re  # Keep this import - might be needed if you add regex later
 import json  # Keep this import
 from flask import Flask, render_template, request, jsonify, url_for, redirect  # Ensure all needed are here
 from dotenv import load_dotenv
