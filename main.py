@@ -65,16 +65,21 @@ app.register_blueprint(webhook_bp)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Create tables on startup
-print("✅ Database tables created/verified.")
-# 🔍 Debug: verify the row-count again after create_all
-with app.app_context():
-    try:
-        count2 = Property.query.count()
-        print(f"👉 Properties in DB after create_all: {count2}")
-    except Exception:
-        pass
+print("Attempting to create database tables...")
+try:
+    with app.app_context():
+        db.create_all()
+    print("✅ Database tables created/verified.")
+    # 🔍 Debug: verify the row-count again after create_all
+    with app.app_context():
+        try:
+            count2 = Property.query.count()
+            print(f"👉 Properties in DB after create_all: {count2}")
+        except Exception:
+            pass
 except Exception as init_e:
-print(f"❌ Error creating tables: {init_e}")
+    print(f"❌ Error creating tables: {init_e}")
+
 
 
 # --- Index Route ---
