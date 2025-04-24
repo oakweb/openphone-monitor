@@ -1,6 +1,9 @@
 print("!!!!!!!!!!!!!!!!! MAIN.PY RELOADED…")
 
+# 🔍 Debug: show which DATABASE_URL we’re using
 import os
+print("👉 DATABASE_URL:", os.environ.get("DATABASE_URL"))
+
 import re
 ...
 

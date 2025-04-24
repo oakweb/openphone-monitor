@@ -77,10 +77,11 @@ def webhook():
         db.session.add(msg)
         try:
             db.session.commit()
+            print(f"✅ Webhook saved Message ID {msg.id} from {msg.phone_number}")
             print(f"✅ Message saved to DB (ID: {msg.id})") # Log ID
         except Exception as e:
-            db.session.rollback(); print(f"❌ Error saving message: {e}"); traceback.print_exc()
-            return Response("Internal Server Error: Could not save message", status=500)
+            db.session.rollback()
+            print(f"❌ Webhook error saving message: {e}")
 
 
         # --- Handle Incoming Messages (Local Save & Email) ---
