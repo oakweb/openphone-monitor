@@ -1,4 +1,7 @@
 print("!!!!!!!!!!!!!!!!! MAIN.PY RELOADED AT LATEST TIMESTAMP !!!!!!!!!!!!!!!!")
+# 🔍 Debug: show which DATABASE_URL we’re actually using
+print("👉 DATABASE_URL:", os.environ.get("DATABASE_URL"))
+
 
 import os
 # ... rest of your imports ...
@@ -46,6 +49,15 @@ if app.config['SQLALCHEMY_DATABASE_URI'].startswith(
 
 # Initialize database and register blueprint
 db.init_app(app)
+# 🔍 Debug: once SQLAlchemy is bound, show how many properties exist
+with app.app_context():
+    try:
+        count = Property.query.count()
+        print(f"👉 Properties in DB at startup: {count}")
+    except Exception as _e:
+        print("❌ Could not count properties at startup:", _e)
+
+
 # --- UNCOMMENTED BELOW ---
 app.register_blueprint(webhook_bp)
 
@@ -53,13 +65,16 @@ app.register_blueprint(webhook_bp)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Create tables on startup
-print("Attempting to create database tables...")
-try:
-    with app.app_context():
-        db.create_all()
-    print("✅ Database tables created/verified.")
+print("✅ Database tables created/verified.")
+# 🔍 Debug: verify the row-count again after create_all
+with app.app_context():
+    try:
+        count2 = Property.query.count()
+        print(f"👉 Properties in DB after create_all: {count2}")
+    except Exception:
+        pass
 except Exception as init_e:
-    print(f"❌ Error creating tables: {init_e}")
+print(f"❌ Error creating tables: {init_e}")
 
 
 # --- Index Route ---
