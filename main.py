@@ -42,9 +42,10 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
 # Ensure SQLite instance folder exists if using sqlite
-if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:") and "instance" in app.config[
-    "SQLALCHEMY_DATABASE_URI"
-]:
+if (
+    app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:")
+    and "instance" in app.config["SQLALCHEMY_DATABASE_URI"]
+):
     instance_path = os.path.join(app.root_path, "instance")
     os.makedirs(instance_path, exist_ok=True)
     print("✅ Instance folder verified/created.")
@@ -190,9 +191,7 @@ def messages_view():
 
         try:
             properties = Property.query.order_by(Property.name).all()
-            print(
-                f"--- DEBUG: Fetched {len(properties)} properties for dropdown ---"
-            )
+            print(f"--- DEBUG: Fetched {len(properties)} properties for dropdown ---")
         except Exception as pe:
             print(f"❌ Error fetching properties: {pe}")
             properties = []
@@ -482,7 +481,9 @@ try:
     with app.app_context():
         print("\n--- Registered URL Endpoints ---")
         for rule in sorted(app.url_map.iter_rules(), key=lambda r: r.endpoint):
-            methods = ",".join(sorted(m for m in rule.methods if m not in ("HEAD", "OPTIONS")))
+            methods = ",".join(
+                sorted(m for m in rule.methods if m not in ("HEAD", "OPTIONS"))
+            )
             print(f"Endpoint: {rule.endpoint:<30} Methods: {methods:<20} Rule: {rule}")
         print("--- End Registered URL Endpoints ---\n")
 except Exception as e:
