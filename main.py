@@ -124,6 +124,22 @@ def index():
         current_year=current_year,
     )
 
+@app.route("/gallery/<int:property_id>")
+def gallery_for_property(property_id):
+    prop = Property.query.get_or_404(property_id)
+
+    msgs = (
+        Message.query
+        .filter(Message.property_id == property_id)
+        .filter(Message.local_media_paths.isnot(None))
+        .all()
+    )
+
+    for m in msgs:
+        print(f"[GALLERY DEBUG] msg.id={m.id}  media={m.local_media_paths}")
+
+    ...
+
 
 # --- Messages Route ---
 @app.route("/messages")
@@ -410,6 +426,36 @@ def ask_view():
 
 
 # --- Gallery Route ---
+@app.route("/gallery/<int:property_id>")
+def gallery_for_property(property_id):
+    # look up the property
+    prop = Property.query.get_or_404(property_id)
+
+    # find all messages with that property and local_media_paths set
+    msgs = (
+        Message.query
+        .filter(Message.property_id == property_id)
+        .filter(Message.local_media_paths.isnot(None))
+        .all()
+    )
+
+    # pull out all the relative paths
+    image_files = []
+    for m in msgs:
+        for p in m.local_media_paths.split(","):
+            image_files.append(p)
+
+    # sort by timestamp descending if you like
+    # image_files = sorted(image_files, reverse=True)
+
+    return render_template(
+        "gallery.html",
+        image_files=image_files,
+        property=prop,
+        current_year=datetime.utcnow().year,
+    )
+
+
 @app.route("/gallery")
 def gallery_view():
     error = None
