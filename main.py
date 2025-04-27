@@ -108,6 +108,23 @@ except Exception as init_e:
 #  Index Route
 # ═════════════════════════════════════════════════════════════════════════════
 
+@app.route("/gallery", endpoint="gallery_view")
+def gallery_view():
+    upload_folder = os.path.join(app.static_folder, "uploads")
+    image_files = []
+    if os.path.isdir(upload_folder):
+        for fn in os.listdir(upload_folder):
+            ext = os.path.splitext(fn)[1].lower()
+            if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+                image_files.append(f"uploads/{fn}")
+    return render_template(
+        "gallery.html",
+        image_files=image_files,
+        property=None,
+        current_year=datetime.utcnow().year,
+    )
+
+
 @app.route("/")
 def index():
     db_status = "Unknown"
