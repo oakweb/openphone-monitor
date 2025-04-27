@@ -306,7 +306,7 @@ def gallery_static():
 def gallery_for_property(property_id):
     prop = Property.query.get_or_404(property_id)
 
-    # 1) grab only messages with media paths
+    # 1️⃣ grab only messages that have local_media_paths
     msgs = (
         Message.query
         .filter_by(property_id=property_id)
@@ -314,12 +314,13 @@ def gallery_for_property(property_id):
         .all()
     )
 
-    # 2) flatten out & drop any empty strings
+    # 2️⃣ flatten, strip, and only keep files that actually exist on disk
     images = [
-        path
+        path.strip()
         for m in msgs
         for path in (m.local_media_paths or "").split(",")
         if path.strip()
+           and os.path.isfile(os.path.join(app.static_folder, path.strip()))
     ]
 
     return render_template(
@@ -328,8 +329,6 @@ def gallery_for_property(property_id):
         property=prop,
         current_year=datetime.utcnow().year,
     )
-
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 #   “All Galleries” overview
