@@ -378,6 +378,27 @@ def galleries_overview():
         current_year=datetime.utcnow().year,
     )
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  Static gallery (all uploaded images)
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/gallery", endpoint="gallery_view")
+def gallery_view():
+    upload_folder = os.path.join(app.static_folder, "uploads")
+    image_files = []
+    if os.path.isdir(upload_folder):
+        for fn in os.listdir(upload_folder):
+            ext = os.path.splitext(fn)[1].lower()
+            if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+                image_files.append(f"uploads/{fn}")
+
+    return render_template(
+        "gallery.html",
+        image_files=image_files,
+        property=None,               # no property filter
+        current_year=datetime.utcnow().year,
+    )
+
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #   Health check
