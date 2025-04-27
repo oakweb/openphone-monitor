@@ -3,6 +3,18 @@
 {% block title %}Recent Messages{% endblock %}
 
 {% block head_extra %}
+<style>
+    /* Constrain any message‐embedded img to 200×200px max */
+    .message-media img {
+      max-width: 200px !important;
+      max-height: 200px !important;
+      width: auto !important;
+      height: auto !important;
+      display: block;
+      margin-bottom: .5rem; /* match your other spacing */
+    }
+  </style>
+  
   <style>
     /* Messages page card + list styles */
     main .card { margin-bottom: 1rem; }

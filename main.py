@@ -25,6 +25,7 @@ from webhook_route import webhook_bp
 # ──────────────────────────────────────────────────────────────────────────────
 load_dotenv()
 
+app.jinja_env.globals.update(os=os, STATIC_FOLDER=app.static_folder)
 app = Flask(__name__)
 
 # --- make sure our "instance" folder and .db file live next to this main.py ---

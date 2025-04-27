@@ -4,14 +4,12 @@
 
 {% block head_extra %}
   <style>
-    /* lay out all gallery tiles in a row */
+    /* ── Thumbnail grid ───────────────────────────────────────────── */
     .gallery-summaries {
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
     }
-
-    /* each property-tile is exactly 150×150 */
     .gallery-summary {
       position: relative;
       flex: 0 0 auto;
@@ -20,44 +18,35 @@
       overflow: hidden;
       border: 1px solid #ccc;
       border-radius: 4px;
-      text-align: center;
-      background: #f8f9fa;
+      background: #1e2226;
     }
-
-    /* make the thumbnail cover the box */
     .gallery-summary img {
-      display: block;
       width: 100%;
       height: 100%;
       object-fit: cover;
+      display: block;
     }
-
-    /* placeholder when there’s no thumb */
     .gallery-summary .placeholder {
+      width: 100%;
+      height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 100%;
-      height: 100%;
-      background: #ddd;
-      color: #666;
+      color: #888;
       font-size: 0.9rem;
+      background: #2c3035;
     }
-
-    /* caption overlay at bottom */
     .gallery-summary .caption {
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0,0,0,0.6);
       color: #fff;
       font-size: 0.75rem;
       padding: 0.25rem;
       box-sizing: border-box;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      text-align: center;
     }
   </style>
 {% endblock %}
@@ -69,8 +58,14 @@
     {% for g in gallery_summaries %}
       <div class="gallery-summary">
         <a href="{{ url_for('gallery_for_property', property_id=g.property.id) }}">
-          {% if g.thumb %}
-            <img src="{{ url_for('static', filename=g.thumb) }}" alt="Thumbnail for {{ g.property.name }}">
+          {# only render the <img> if the file actually exists #}
+          {% if g.thumb and (g.thumb|length) and
+                ( (base_path := config['STATIC_FOLDER']) 
+                  and (base_path ~ '') 
+                  and ( (base_path ~ '') is not none ) )
+                and ( (path := (base_path ~ '/' ~ g.thumb)) 
+                      and (os.path.isfile(path)) ) %}
+            <img src="{{ url_for('static', filename=g.thumb) }}" alt="">
           {% else %}
             <div class="placeholder">No Image</div>
           {% endif %}
