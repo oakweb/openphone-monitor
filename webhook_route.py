@@ -1,6 +1,6 @@
 from flask import Blueprint, request, Response
 from extensions import db
-from models import Contact, Message        # Make sure Message now has a unique 'sid' column
+from models import Contact, Message        # Message model must include a unique 'sid' column
 from email_utils import send_email
 import os
 import traceback
@@ -97,13 +97,15 @@ def webhook():
             saved_paths = []
             upload_dir = os.path.join(os.getcwd(), "static", "uploads")
             os.makedirs(upload_dir, exist_ok=True)
+
             for idx, url in enumerate(urls):
                 try:
                     resp = requests.get(url, stream=True, timeout=30)
                     resp.raise_for_status()
                     ctype = resp.headers.get("Content-Type", "").split(";")[0].strip()
                     ext   = mimetypes.guess_extension(ctype) or ""
-                    if ext == ".jpe": ext = ".jpg"
+                    if ext == ".jpe":
+                        ext = ".jpg"
                     if ext.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
                         ext = ".jpg" if ctype.startswith("image/") else ".dat"
                     base = os.path.splitext(os.path.basename(urlparse(url).path))[0] or f"file{idx+1}"
@@ -119,6 +121,7 @@ def webhook():
                 except Exception as ex:
                     print(f"⚠️ Error saving media {url}: {ex}")
                     traceback.print_exc()
+
             # Update the DB with local paths
             if saved_paths:
                 msg.local_media_paths = ",".join(saved_paths)
@@ -129,8 +132,34 @@ def webhook():
                     db.session.rollback()
                     print(f"❌ Error updating media paths: {e}")
 
-        # 9️⃣ (Optional) send email, etc.
-        #    You can re-use your existing email code here
+                # 9️⃣ Send email notification if configured
+                to_addr = os.getenv("SENDGRID_TO_EMAIL")
+                if to_addr and saved_paths:
+                    print("📧 Sending notification email…")
+                    attachments = []
+                    for rel in saved_paths:
+                        full = os.path.join(os.getcwd(), "static", rel)
+                        with open(full, "rb") as f:
+                            content_b64 = base64.b64encode(f.read()).decode()
+                        attachments.append({
+                            "content": content_b64,
+                            "type": mimetypes.guess_type(full)[0] or "application/octet-stream",
+                            "filename": os.path.basename(full),
+                            "disposition": "attachment",
+                        })
+                    try:
+                        send_email(
+                            to_address=to_addr,
+                            subject=f"New image message from {contact.contact_name}",
+                            plain_content=text,
+                            html_content=f"<p>{text}</p>",
+                            attachments=attachments,
+                        )
+                        print("✅ Email sent.")
+                    except Exception as e:
+                        print(f"❌ Email send failed: {e}")
+                else:
+                    print("⚠️ No SENDGRID_TO_EMAIL set or no media; skipping email.")
 
         print("✅ Webhook processed successfully.")
         return Response("Webhook OK", status=200)
@@ -143,35 +172,3 @@ def webhook():
         except:
             pass
         return Response("Internal Server Error", status=500)
-
-# — after msg.local_media_paths = ",".join(saved_paths) and commit —
-
-to_addr = os.getenv("SENDGRID_TO_EMAIL")
-if to_addr and saved_paths:
-    print("📧 Sending notification email…")
-    attachments = []
-    for rel in saved_paths:
-        full = os.path.join(os.getcwd(), "static", rel)
-        with open(full, "rb") as f:
-            content_b64 = base64.b64encode(f.read()).decode()
-        attachments.append({
-            "content": content_b64,
-            "type": mimetypes.guess_type(full)[0] or "application/octet-stream",
-            "filename": os.path.basename(full),
-            "disposition": "attachment",
-        })
-    try:
-        send_email(
-            to_address=to_addr,
-            subject=f"New image message from {contact.contact_name}",
-            plain_content=text,
-            html_content=f"<p>{text}</p>",
-            attachments=attachments,
-        )
-        print("✅ Email sent.")
-    except Exception as e:
-        print(f"❌ Email send failed: {e}")
-else:
-    print("⚠️ No SENDGRID_TO_EMAIL set or no media; skipping email.")
-
-# --- End of webhook_route.py ---
