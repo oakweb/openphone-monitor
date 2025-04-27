@@ -4,29 +4,123 @@
 
 {% block head_extra %}
   <style>
-    /* — your existing styles — */
-    /* (omitted for brevity) */
-    /* Constrain inline message images to a small thumbnail */
-.message-media img {
-  max-width: 200px !important;
-  max-height: 200px !important;
-  width: auto !important;
-  height: auto !important;
-  display: block;
-  margin-bottom: 0.5rem;
-}
+    /* Messages page card + list styles */
+    main .card { margin-bottom: 1rem; }
+    #messagesList .list-group-item {
+      padding: 0;
+      background-color: #2c3035;
+      border-bottom: 1px solid #3a8bab !important;
+      color: #fff;
+    }
+    .list-group-flush > .list-group-item {
+      border-width: 0 0 1px;
+    }
+    .list-group-flush:last-child .list-group-item:last-child {
+      border-bottom-width: 0;
+    }
 
+    .message-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background-color: #2c3035;
+      border-bottom: 1px solid rgba(58, 139, 171, 0.3);
+    }
+    .message-header strong { color: #e9ecef; }
+    .message-header .text-secondary { font-size: 0.8em; color: #adb5bd; }
+
+    .message-body {
+      padding: 0.75rem 1rem 1rem;
+      background: #1e2226;
+    }
+    .message-text {
+      margin: 0.5rem 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .message-link {
+      color: #6cb9d3;
+      text-decoration: underline;
+      margin: 0.5rem 0;
+      display: block;
+      word-break: break-all;
+    }
+    .message-media img {
+      max-width: 100%;
+      max-height: 200px;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      border: 1px solid #3a8bab;
+    }
+
+    .add-contact-section {
+      padding: 0.75rem 1rem;
+      background-color: rgba(58, 139, 171, 0.1);
+      border-top: 1px dashed rgba(58, 139, 171, 0.4);
+      margin-top: -1px;
+    }
+    .add-contact-section .form-control {
+      background-color: rgba(30, 40, 50, 0.7);
+      border: 1px solid rgba(108, 185, 211, 0.3);
+      color: #fff;
+    }
+
+    .assign-property-section {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid rgba(108, 185, 211, 0.2);
+    }
+    .assign-property-section .form-label {
+      white-space: nowrap;
+      margin-right: 0.5rem;
+    }
+    .assign-property-section .form-select-sm {
+      height: calc(1.5em + 0.5rem + 2px);
+      padding: 0.25rem 0.5rem;
+    }
+    .assign-property-section .btn-sm {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.875rem;
+    }
+    .assign-property-section .badge {
+      font-size: 0.75em;
+    }
+
+    .controls { gap: 0.5rem; flex-wrap: wrap; }
+    .controls select, .controls button {
+      padding: 0.375rem 0.75rem;
+    }
+    @media (max-width: 576px) {
+      .controls { justify-content: center; }
+      .controls button { width: 100%; margin-top: 0.5rem; }
+      .assign-property-section .d-flex {
+        flex-direction: column;
+        align-items: stretch !important;
+      }
+      .assign-property-section .form-label {
+        margin-bottom: 0.25rem; margin-right: 0;
+      }
+      .assign-property-section button {
+        margin-top: 0.5rem;
+      }
+    }
   </style>
 {% endblock %}
 
-{% block content %}
-  <div style="background: yellow; padding: 0.5em; text-align: center;">
-    TEST: Messages template loaded
-  </div>
-  <!-- rest of your markup… -->
 
+{% block content %}
   <div class="controls mb-3">
-    <!-- your sort/filter controls -->
+    <select id="sortOrder" class="form-select form-select-sm" style="max-width:150px">
+      <option value="newest">Newest First</option>
+      <option value="oldest">Oldest First</option>
+    </select>
+    <select id="filterBy" class="form-select form-select-sm" style="max-width:150px">
+      <option value="all">All Messages</option>
+      <option value="today">Today Only</option>
+    </select>
+    <button id="refreshBtn" class="btn btn-success btn-sm">
+      <i class="fas fa-sync-alt"></i> Refresh
+    </button>
   </div>
 
   {% if error %}
@@ -39,76 +133,67 @@
         {% for msg in messages %}
           {% set is_known = msg.phone_number in known_contact_phones %}
           <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}">
-            <!-- Message Header -->
             <div class="message-header">
-              <div>
-                <i class="fas fa-user-circle me-2"></i>
+              <div><i class="fas fa-user-circle me-2"></i>
                 <strong>{{ msg.contact_name or msg.phone_number }}</strong>
               </div>
-              <div class="small text-secondary">
+              <div class="text-secondary small">
                 Media paths: {{ msg.local_media_paths or "None" }}
               </div>
             </div>
-
-            <!-- Message Body -->
             <div class="message-body">
               <p class="message-text">{{ msg.message }}</p>
               {% if msg.media_urls %}
                 {% for url in msg.media_urls.split(',') %}
                   {% if url %}
                     <div class="message-media">
-                      <img src="{{ url }}"
-                           onerror="this.style.display='none';"
-                           alt="Attachment">
+                      <img src="{{ url }}" onerror="this.style.display='none'">
                     </div>
                   {% endif %}
                 {% endfor %}
               {% endif %}
             </div>
 
-            <!-- Add Contact (if unknown) -->
             {% if not is_known %}
               <div class="add-contact-section">
                 <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2">
                   <input type="hidden" name="phone" value="{{ msg.phone_number }}">
-                  <input type="text" name="name" placeholder="Enter name" class="form-control form-control-sm" required>
-                  <button type="submit" name="action" value="add" class="btn btn-success btn-sm">
-                    <i class="fas fa-user-plus"></i>
+                  <input type="text" name="name" placeholder="Enter name" required
+                         class="form-control form-control-sm flex-grow-1">
+                  <button type="submit" name="action" value="add"
+                          class="btn btn-success btn-sm flex-shrink-0">
+                    <i class="fas fa-user-plus"></i> Add
                   </button>
                 </form>
               </div>
             {% endif %}
 
-            <!-- Assign Property -->
             <div class="assign-property-section">
-              <form method="POST" action="{{ url_for('assign_property') }}" class="d-flex gap-2 align-items-center">
+              <form method="POST" action="{{ url_for('assign_property') }}"
+                    class="d-flex gap-2 align-items-center">
                 <input type="hidden" name="message_id" value="{{ msg.id }}">
-                <label for="property_id_{{ msg.id }}" class="form-label mb-0 small text-muted">
+                <label for="property_id_{{msg.id}}" class="form-label mb-0 small text-muted">
                   Assign Property:
                 </label>
-                <select name="property_id" id="property_id_{{ msg.id }}"
-                        class="form-select form-select-sm" style="flex-grow:1;">
-                  <option value="">-- Select Property --</option>
-                  {% for prop in properties %}
-                    <option value="{{ prop.id }}" {% if msg.property_id==prop.id %}selected{% endif %}>
-                      {{ prop.name }}
+                <select name="property_id" id="property_id_{{msg.id}}"
+                        class="form-select form-select-sm flex-grow-1">
+                  <option value="">-- Select --</option>
+                  {% for p in properties %}
+                    <option value="{{p.id}}"
+                      {% if msg.property_id==p.id %}selected{% endif %}>
+                      {{p.name}}
                     </option>
                   {% endfor %}
                 </select>
-                <button type="submit" class="btn btn-primary btn-sm">
-                  <i class="fas fa-save"></i>
+                <button type="submit" class="btn btn-primary btn-sm flex-shrink-0">
+                  <i class="fas fa-save"></i> Assign
                 </button>
               </form>
-
               {% if msg.property %}
                 <div class="mt-1">
-                  <span class="badge bg-info">
-                    Assigned: {{ msg.property.name }}
-                  </span>
-                  &nbsp;
-                  <a href="{{ url_for('gallery_for_property', property_id=msg.property.id) }}" class="small">
-                    View Gallery
-                  </a>
+                  <span class="badge bg-info">Assigned: {{msg.property.name}}</span>
+                  <a href="{{ url_for('gallery_for_property', property_id=msg.property.id) }}"
+                     class="ms-2 text-decoration-none small">View Gallery</a>
                 </div>
               {% endif %}
             </div>
@@ -123,8 +208,38 @@
   </div>
 {% endblock %}
 
+
 {% block scripts %}
   <script>
-    // your existing JS (sort/filter/refresh)
+    document.addEventListener('DOMContentLoaded', () => {
+      // Refresh button
+      document.getElementById('refreshBtn')
+        .addEventListener('click', () => window.location.reload());
+
+      // Sort
+      const sortSel = document.getElementById('sortOrder');
+      sortSel.addEventListener('change', () => {
+        const list = document.getElementById('messagesList');
+        const items = Array.from(list.children);
+        items.sort((a,b) => {
+          const aT= new Date(a.dataset.timestamp), bT= new Date(b.dataset.timestamp);
+          return sortSel.value==='newest' ? bT - aT : aT - bT;
+        });
+        items.forEach(i=> list.appendChild(i));
+      });
+      sortSel.dispatchEvent(new Event('change'));
+
+      // Filter
+      const filterSel = document.getElementById('filterBy');
+      filterSel.addEventListener('change', () => {
+        const today = new Date().setHours(0,0,0,0);
+        document.querySelectorAll('#messagesList .list-group-item')
+          .forEach(li => {
+            const ts = new Date(li.dataset.timestamp).getTime();
+            li.style.display = (filterSel.value==='today' && ts < today) ? 'none' : '';
+          });
+      });
+      filterSel.dispatchEvent(new Event('change'));
+    });
   </script>
 {% endblock %}
