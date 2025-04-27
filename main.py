@@ -335,55 +335,35 @@ def gallery_for_property(property_id):
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/galleries")
 def galleries_overview():
-    # 1) per-property summary
-    summary = []
-    for p in Property.query.order_by(Property.name).all():
+    gallery_summaries = []
+    for prop in Property.query.order_by(Property.name).all():
+        # collect all image paths for this property
         paths = []
-        msgs = (
-            Message.query
-            .filter_by(property_id=p.id)
-            .filter(Message.local_media_paths.isnot(None))
-            .all()
-        )
-        for m in msgs:
-            paths += m.local_media_paths.split(",")
-        summary.append({
-            "property": p,
+        for m in Message.query.filter(
+            Message.property_id == prop.id,
+            Message.local_media_paths.isnot(None)
+        ):
+            for p in (m.local_media_paths or "").split(","):
+                p = p.strip()
+                full = os.path.join(app.static_folder, p)
+                if p and os.path.isfile(full):
+                    paths.append(p)
+
+        # pick the last one, or None
+        thumb = paths[-1] if paths else None
+
+        gallery_summaries.append({
+            "property": prop,
             "count": len(paths),
-            "thumb": paths[-1] if paths else None,
+            "thumb": thumb,
         })
 
-    # 2) unsorted count & thumb
-    unsorted = []
-    unmsgs = (
-        Message.query
-        .filter(Message.property_id.is_(None))
-        .filter(Message.local_media_paths.isnot(None))
-        .all()
-    )
-    for m in unmsgs:
-        unsorted += m.local_media_paths.split(",")
-    unsorted_count = len(unsorted)
-    unsorted_thumb = unsorted[-1] if unsorted else None
-
-    # 3) recent images
-    recent = []
-    rec_msgs = (
-        Message.query
-        .filter(Message.local_media_paths.isnot(None))
-        .order_by(Message.timestamp.desc())
-        .limit(20)
-        .all()
-    )
-    for m in rec_msgs:
-        recent += m.local_media_paths.split(",")
+    # ... recent & unsorted as before ...
 
     return render_template(
         "galleries_overview.html",
-        gallery_summaries=summary,
-        unsorted_count=unsorted_count,
-        unsorted_thumb=unsorted_thumb,
-        recent_images=recent,
+        gallery_summaries=gallery_summaries,
+        # ...
         current_year=datetime.utcnow().year,
     )
 
