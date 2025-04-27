@@ -10,10 +10,8 @@
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
-      justify-content: start;
     }
     .gallery a {
-      display: block;
       width: 150px;
       height: 150px;
       overflow: hidden;
@@ -42,7 +40,12 @@
     <div class="gallery">
       {% for img in image_files %}
         <a href="{{ url_for('static', filename=img) }}" target="_blank">
-          <img src="{{ url_for('static', filename=img) }}" alt="">
+          <img
+            src="{{ url_for('static', filename=img) }}"
+            alt="Gallery image"
+            onerror="this.onerror=null;
+                     this.src='{{ url_for('static', filename='images/placeholder.png') }}';"
+          />
         </a>
       {% endfor %}
     </div>
