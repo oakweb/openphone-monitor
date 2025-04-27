@@ -1,7 +1,7 @@
 from flask import Blueprint, request, Response
 from extensions import db
-from models import Contact, Message        # Message model must include a unique 'sid' column
-from email_utils import send_email
+from models import Contact, Message
+from email_utils import send_email, wrap_email_html
 import os
 import traceback
 import base64
@@ -10,65 +10,52 @@ import requests
 from urllib.parse import urlparse
 from datetime import datetime
 
-# Initialize Blueprint
 webhook_bp = Blueprint("webhook", __name__)
 
 @webhook_bp.route("/webhook", methods=["POST"])
 def webhook():
     print("--- /webhook route accessed ---")
     try:
-        # 1️⃣ Parse JSON payload
         data = request.get_json(force=True) or {}
         event_type = data.get("type", "")
         obj = data.get("data", {}).get("object", {})
 
-        # 2️⃣ Determine unique SID for dedupe
         sid = obj.get("sid") or obj.get("id")
         if not sid:
-            print("❌ Missing message SID/ID for deduplication")
+            print("❌ Missing message SID/ID")
             return Response("Bad Request: Missing unique message ID.", status=400)
 
-        # 3️⃣ Determine direction, phone, text, media URLs
         direction = "incoming" if "received" in event_type else "outgoing"
-        phone     = obj.get("from") if direction == "incoming" else obj.get("to")
-        text      = obj.get("body", "")
-        media     = obj.get("media") or []
-        urls      = [m.get("url") for m in media if isinstance(m, dict) and m.get("url")]
+        phone = obj.get("from") if direction == "incoming" else obj.get("to")
+        text = obj.get("body", "")
+        media = obj.get("media") or []
+        urls = [m.get("url") for m in media if isinstance(m, dict) and m.get("url")]
 
-        print(f"🔹 SID: {sid}")
-        print(f"🔹 Direction: {direction}, Phone: {phone}")
-        print(f"🔹 Text: '{text}'")
-        print(f"🔹 Media URLs: {urls}")
+        print(f"🔹 SID: {sid}, Direction: {direction}, Phone: {phone}, Text: '{text}', Media URLs: {urls}")
 
         if not phone:
             print("❌ Missing phone number")
             return Response("Bad Request: Missing phone number.", status=400)
 
-        # 4️⃣ Normalize phone for DB lookup
-        digits = "".join(filter(str.isdigit, phone))
-        key    = digits[-10:] if len(digits) >= 10 else digits
-        print(f"🔎 Normalized phone key: {key}")
+        key = "".join(filter(str.isdigit, phone))[-10:]
 
-        # 5️⃣ Find or create Contact
         contact = Contact.query.get(key)
         if not contact:
             contact = Contact(phone_number=key, contact_name=phone)
             db.session.add(contact)
             try:
                 db.session.commit()
-                print(f"✅ Created Contact: {contact.contact_name} ({contact.phone_number})")
+                print(f"✅ Created Contact: {contact.contact_name}")
             except Exception as e:
                 db.session.rollback()
                 print(f"❌ Error saving contact: {e}")
                 traceback.print_exc()
                 return Response("Internal Server Error: Could not save contact.", 500)
         else:
-            print(f"✅ Found Contact: {contact.contact_name} ({contact.phone_number})")
+            print(f"✅ Found Contact: {contact.contact_name}")
 
-        # 6️⃣ Dedupe: look up existing Message by SID
         msg = Message.query.filter_by(sid=sid).first()
 
-        # 7️⃣ If not found, create a new Message (no id=… field!)
         if not msg:
             msg = Message(
                 sid=sid,
@@ -90,31 +77,28 @@ def webhook():
                 traceback.print_exc()
                 return Response("Internal Server Error: Could not save message.", 500)
         else:
-            print(f"🔁 Reusing existing Message id={msg.id}")
+            print(f"🔁 Existing Message id={msg.id}")
 
-        # 8️⃣ If incoming, download & save media files
+        saved_paths = []
+        upload_dir = os.path.join(os.getcwd(), "static", "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+
         if direction == "incoming" and urls:
-            saved_paths = []
-            upload_dir = os.path.join(os.getcwd(), "static", "uploads")
-            os.makedirs(upload_dir, exist_ok=True)
-
             for idx, url in enumerate(urls):
                 try:
                     resp = requests.get(url, stream=True, timeout=30)
                     resp.raise_for_status()
                     ctype = resp.headers.get("Content-Type", "").split(";")[0].strip()
-                    ext   = mimetypes.guess_extension(ctype) or ""
-                    if ext == ".jpe":
-                        ext = ".jpg"
-                    if ext.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
-                        ext = ".jpg" if ctype.startswith("image/") else ".dat"
-                    base = os.path.splitext(os.path.basename(urlparse(url).path))[0] or f"file{idx+1}"
-                    safe = "".join(c for c in base if c.isalnum() or c in {"_","-"})
-                    fname = f"msg{msg.id}_{idx+1}_{safe}{ext}"
-                    full  = os.path.join(upload_dir, fname)
+                    ext = mimetypes.guess_extension(ctype) or ".dat"
+                    ext = ".jpg" if ext.lower() in [".jpe", ".jpeg"] else ext
+                    safe_base = "".join(c for c in os.path.basename(urlparse(url).path) if c.isalnum() or c in {"_", "-"}).strip() or f"file{idx+1}"
+                    fname = f"msg{msg.id}_{idx+1}_{safe_base}{ext}"
+                    full = os.path.join(upload_dir, fname)
+
                     with open(full, "wb") as f:
                         for chunk in resp.iter_content(1024):
                             f.write(chunk)
+
                     rel = f"uploads/{fname}"
                     saved_paths.append(rel)
                     print(f"💾 Saved media: {rel}")
@@ -122,7 +106,6 @@ def webhook():
                     print(f"⚠️ Error saving media {url}: {ex}")
                     traceback.print_exc()
 
-            # Update the DB with local paths
             if saved_paths:
                 msg.local_media_paths = ",".join(saved_paths)
                 try:
@@ -132,34 +115,41 @@ def webhook():
                     db.session.rollback()
                     print(f"❌ Error updating media paths: {e}")
 
-                # 9️⃣ Send email notification if configured
-                to_addr = os.getenv("SENDGRID_TO_EMAIL")
-                if to_addr and saved_paths:
-                    print("📧 Sending notification email…")
-                    attachments = []
-                    for rel in saved_paths:
-                        full = os.path.join(os.getcwd(), "static", rel)
-                        with open(full, "rb") as f:
-                            content_b64 = base64.b64encode(f.read()).decode()
-                        attachments.append({
-                            "content": content_b64,
-                            "type": mimetypes.guess_type(full)[0] or "application/octet-stream",
-                            "filename": os.path.basename(full),
-                            "disposition": "attachment",
-                        })
-                    try:
-                        send_email(
-                            to_address=to_addr,
-                            subject=f"New image message from {contact.contact_name}",
-                            plain_content=text,
-                            html_content=f"<p>{text}</p>",
-                            attachments=attachments,
-                        )
-                        print("✅ Email sent.")
-                    except Exception as e:
-                        print(f"❌ Email send failed: {e}")
-                else:
-                    print("⚠️ No SENDGRID_TO_EMAIL set or no media; skipping email.")
+        # Email notification for every incoming message (media or text)
+        to_addr = os.getenv("SENDGRID_TO_EMAIL")
+        if to_addr:
+            attachments = []
+            for rel in saved_paths:
+                full_path = os.path.join(os.getcwd(), "static", rel)
+                with open(full_path, "rb") as f:
+                    content_b64 = base64.b64encode(f.read()).decode()
+                attachments.append({
+                    "content": content_b64,
+                    "type": mimetypes.guess_type(full_path)[0] or "application/octet-stream",
+                    "filename": os.path.basename(full_path),
+                    "disposition": "attachment",
+                })
+
+            email_html_content = wrap_email_html(f"""
+                <h3>New Message from {contact.contact_name}</h3>
+                <p><strong>From:</strong> {phone}</p>
+                <p><strong>Message:</strong> {text or '(No text content)'}</p>
+                {'<p>Attachments included.</p>' if attachments else ''}
+            """)
+
+            try:
+                send_email(
+                    to_address=to_addr,
+                    subject=f"New message from {contact.contact_name}",
+                    plain_content=text or "You have received a message with attachments.",
+                    html_content=email_html_content,
+                    attachments=attachments if attachments else None,
+                )
+                print("✅ Email sent.")
+            except Exception as e:
+                print(f"❌ Email send failed: {e}")
+        else:
+            print("⚠️ No SENDGRID_TO_EMAIL set; skipping email.")
 
         print("✅ Webhook processed successfully.")
         return Response("Webhook OK", status=200)
