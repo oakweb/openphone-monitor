@@ -12,6 +12,7 @@ from flask import (
     redirect,
 )
 from dotenv import load_dotenv
+load_dotenv()
 from sqlalchemy import text, func
 import openai
 import traceback
@@ -23,7 +24,7 @@ from webhook_route import webhook_bp
 # ──────────────────────────────────────────────────────────────────────────────
 #   App configuration
 # ──────────────────────────────────────────────────────────────────────────────
-load_dotenv()
+
 
 app = Flask(__name__)
 
