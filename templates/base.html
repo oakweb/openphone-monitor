@@ -1,177 +1,96 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Sin City Rentals | OpenPhone System{% endblock %}</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
-    <style>
-        /* Common Base Styles - Moved from other templates */
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 0;
-            color: #fff;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            background-color: #121416; /* Fallback background */
-        }
-        .bg-wrapper {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
-            background: linear-gradient(rgba(18, 20, 22, 0.8), rgba(18, 20, 22, 0.8)), url("{{ url_for('static', filename='server-visualization.jpg') }}");
-            background-size: cover; background-position: center; background-repeat: no-repeat;
-        }
-        .header-navbar { /* Using a specific class for the navbar header */
-            background-color: rgba(18, 20, 22, 0.9); /* Slightly more opaque */
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            position: sticky;
-            top: 0;
-            z-index: 1030; /* Ensure navbar is on top */
-            border-bottom: 1px solid rgba(108, 185, 211, 0.2);
-            padding: 0.5rem 0; /* Adjusted padding */
-        }
-        .navbar-brand .logo-text { /* Style for brand text */
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: #6cb9d3 !important; /* Use important if needed */
-            margin: 0;
-            padding-left: 10px;
-        }
-         .navbar-dark .navbar-nav .nav-link { /* Styling nav links */
-             color: rgba(255, 255, 255, 0.75);
-             font-weight: 500;
-             padding: 0.5rem 1rem;
-             transition: color 0.2s ease-in-out;
-         }
-         .navbar-dark .navbar-nav .nav-link:hover,
-         .navbar-dark .navbar-nav .nav-link.active { /* Style for active/hover link */
-             color: #fff;
-         }
-        .main-content {
-            flex: 1;
-            /* Removed display flex from base, add to child if needed */
-            padding: 30px 20px; /* Adjusted padding */
-            max-width: 1200px; /* Max width for content */
-            width: 100%;
-            margin: 0 auto; /* Center content */
-        }
-        .footer {
-            background-color: rgba(18, 20, 22, 0.9);
-            color: #fff;
-            padding: 15px 0; /* Adjusted padding */
-            text-align: center;
-            border-top: 1px solid rgba(108, 185, 211, 0.2);
-            margin-top: auto; /* Push footer down */
-        }
-        .copyright {
-            font-size: 0.9rem;
-            color: #6c757d;
-            margin-bottom: 0;
-        }
-        /* Add common card styling from contacts.html */
-        .card {
-             border-radius: 10px;
-             box-shadow: 0 5px 25px rgba(0,0,0,0.5);
-             border: 1px solid rgba(108, 185, 211, 0.2);
-             background-color: rgba(22, 26, 30, 0.85);
-             backdrop-filter: blur(10px);
-             padding: 10px;
-             margin-bottom: 20px;
-         }
-         .card-body {
-             padding: 20px;
-         }
-         /* Common button styles if needed */
-         .btn { transition: all 0.3s ease; }
-         .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Sin City Rentals{% endblock %}</title>
 
-    </style>
-    {% block head_extra %}{% endblock %}
+  <!-- Bootstrap CSS (or your own) -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-…"
+    crossorigin="anonymous"
+  >
+
+  <!-- FontAwesome, etc. -->
+  <link
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    rel="stylesheet"
+    integrity="sha384-…"
+    crossorigin="anonymous"
+  >
+
+  <style>
+    body {
+      background: url('{{ url_for("static", filename="server-visualization.jpg") }}') no-repeat center center fixed;
+      background-size: cover;
+      color: #e9ecef;
+    }
+
     /* Constrain any message‐embedded img to 200×200px max */
-.message-media img {
-  max-width: 200px !important;
-  max-height: 200px !important;
-  width: auto !important;
-  height: auto !important;
-  display: block;       /* avoid weird inline spacing */
-  margin-bottom: .5rem; /* match your other spacing */
-}
+    .message-media img {
+      max-width: 200px !important;
+      max-height: 200px !important;
+      width: auto !important;
+      height: auto !important;
+      display: block;
+      margin-bottom: .5rem;
+    }
 
+    /* Global tweaks for dark theme */
+    .card {
+      background-color: rgba(30, 34, 38, 0.85);
+      border-color: rgba(108, 185, 211, 0.3);
+    }
+    .navbar, .footer {
+      background-color: rgba(0,0,0,0.7);
+    }
+  </style>
+
+  {% block head_extra %}{% endblock %}
 </head>
 <body>
-    <div class="bg-wrapper"></div>
 
-    <header class="header-navbar">
-        <nav class="navbar navbar-expand-lg navbar-dark" style="max-width: 1200px; margin: 0 auto; padding: 0 15px;">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="{{ url_for('index') }}">
-                     <span class="logo-text">Sin City Rentals</span>
-                     </a>
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('index') }}">Sin City Rentals</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+              data-bs-target="#navbarNav" aria-controls="navbarNav"
+              aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link {% if request.endpoint=='index' %}active{% endif %}" href="{{ url_for('index') }}"><i class="fas fa-home"></i> Home</a></li>
+          <li class="nav-item"><a class="nav-link {% if request.endpoint=='galleries_overview' %}active{% endif %}" href="{{ url_for('galleries_overview') }}"><i class="fas fa-images"></i> All Galleries</a></li>
+          <li class="nav-item"><a class="nav-link {% if request.endpoint=='messages_view' %}active{% endif %}" href="{{ url_for('messages_view') }}"><i class="fas fa-envelope"></i> Messages</a></li>
+          <li class="nav-item"><a class="nav-link {% if request.endpoint=='contacts_view' %}active{% endif %}" href="{{ url_for('contacts_view') }}"><i class="fas fa-address-book"></i> Contacts</a></li>
+          <li class="nav-item"><a class="nav-link {% if request.endpoint=='ask_view' %}active{% endif %}" href="{{ url_for('ask_view') }}"><i class="fas fa-robot"></i> Ask AI</a></li>
+          <li class="nav-item"><a class="nav-link {% if request.endpoint=='gallery_view' %}active{% endif %}" href="{{ url_for('gallery_view') }}"><i class="fas fa-photo-video"></i> Gallery</a></li>
+          <li class="nav-item"><a class="nav-link {% if request.endpoint=='unsorted_gallery' %}active{% endif %}" href="{{ url_for('unsorted_gallery') }}"><i class="fas fa-random"></i> Unsorted</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
 
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
+  <main class="container my-4">
+    {% block content %}{% endblock %}
+  </main>
 
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" aria-current="page" href="{{ url_for('index') }}">
-                               <i class="fas fa-home"></i> Home
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'unsorted_gallery' %}active{% endif %}"
-                               href="{{ url_for('unsorted_gallery') }}">
-                              Unsorted
-                            </a>
-                          </li>
-                          
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint=='galleries_overview' %}active{% endif %}"
-                               href="{{ url_for('galleries_overview') }}">
-                              All Galleries
-                            </a>
-                          </li>                          
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'messages_view' %}active{% endif %}" href="{{ url_for('messages_view') }}">
-                               <i class="fas fa-envelope"></i> Messages
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'contacts_view' %}active{% endif %}" href="{{ url_for('contacts_view') }}">
-                               <i class="fas fa-address-book"></i> Contacts
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'ask_view' %}active{% endif %}" href="{{ url_for('ask_view') }}">
-                               <i class="fas fa-question-circle"></i> Ask AI
-                            </a>
-                         <li class="nav-item">
-                              <a class="nav-link {% if request.endpoint == 'gallery_view' %}active{% endif %}" href="{{ url_for('gallery_view') }}">
-                                    <i class="fas fa-images"></i> Gallery
-                                 </a>
-                             </li>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </nav>
-    </header>
+  <footer class="footer py-3 text-center text-muted">
+    <div class="container">
+      &copy; {{ current_year }} Sin City Rentals
+    </div>
+  </footer>
 
-    <main class="main-content">
-        {% block content %}
-        <p>This is the base template.</p>
-        {% endblock %}
-    </main>
+  <!-- Bootstrap JS bundle (Popper + Bootstrap) -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-…"
+    crossorigin="anonymous"
+  ></script>
 
-    <footer class="footer">
-        <p class="copyright">© {{ current_year or '2025' }} Sin City Rentals. All rights reserved.</p>
-    </footer>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
-    {% block scripts %}{% endblock %}
+  {% block scripts %}{% endblock %}
 </body>
 </html>
