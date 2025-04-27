@@ -27,11 +27,11 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# --- make sure our "instance" folder and .db file live next to this main.py ---
-BASEDIR   = Path(__file__).resolve().parent
-INSTANCE  = BASEDIR / "instance"
+# ensure our "instance" folder and sqlite file live next to main.py
+BASEDIR  = Path(__file__).resolve().parent
+INSTANCE = BASEDIR / "instance"
 INSTANCE.mkdir(exist_ok=True)
-DB_FILE   = INSTANCE / "messages.db"
+DB_FILE  = INSTANCE / "messages.db"
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
     "DATABASE_URL",
@@ -46,7 +46,7 @@ app.secret_key = os.getenv("FLASK_SECRET", "default_secret")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
-# Initialize extensions and blueprint
+# initialize extensions & webhook blueprint
 db.init_app(app)
 app.register_blueprint(webhook_bp)
 
@@ -70,7 +70,7 @@ try:
         ))
         print("✅ Ensured messages.sid column exists.")
 
-        # 3) Reset the `id` sequence to avoid key collisions (PostgreSQL only)
+        # 3) Reset the `id` sequence (PostgreSQL only; no-op on SQLite)
         db.session.execute(text(
             "SELECT setval(pg_get_serial_sequence('messages','id'), "
             "COALESCE((SELECT MAX(id) FROM messages), 1) + 1, false)"
@@ -78,8 +78,6 @@ try:
         print("🔁 messages.id sequence reset.")
 
         db.session.commit()
-
-        # 4) Debug: count properties
         print(f"👉 Properties in DB: {Property.query.count()}")
 
 except Exception as e:
@@ -97,7 +95,7 @@ def index():
         db.session.execute(text("SELECT 1"))
         now = datetime.utcnow()
         start_today = datetime.combine(now.date(), datetime.min.time())
-        start_week = start_today - timedelta(days=now.weekday())
+        start_week  = start_today - timedelta(days=now.weekday())
 
         count_today = (
             db.session.query(func.count(Message.id))
@@ -111,12 +109,12 @@ def index():
         )
 
         summary_today = f"{count_today} message(s) today."
-        summary_week = f"{count_week} message(s) this week."
-        db_status = "Connected"
+        summary_week  = f"{count_week} message(s) this week."
+        db_status     = "Connected"
     except Exception as ex:
         db.session.rollback()
-        db_status = f"Error: {ex}"
-        summary_today = summary_week = "Unavailable"
+        db_status      = f"Error: {ex}"
+        summary_today  = summary_week = "Unavailable"
 
     return render_template(
         "index.html",
@@ -128,7 +126,7 @@ def index():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Messages
+#   Messages & assignment
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/messages")
 def messages_view():
@@ -142,22 +140,22 @@ def messages_view():
             .all()
         )
 
-        # JSON endpoint
+        # JSON endpoint support
         if request.args.get("format") == "json":
             now = datetime.utcnow()
             start_today = datetime.combine(now.date(), datetime.min.time())
-            start_week = start_today - timedelta(days=now.weekday())
-            data = []
-            for m in msgs:
-                data.append({
-                    "id": m.id,
-                    "timestamp": m.timestamp.isoformat() + "Z",
-                    "phone_number": m.phone_number,
-                    "contact_name": m.contact_name,
-                    "direction": m.direction,
-                    "message": m.message,
-                    "media_urls": m.media_urls,
-                })
+            start_week  = start_today - timedelta(days=now.weekday())
+
+            data = [{
+                "id": m.id,
+                "timestamp": m.timestamp.isoformat() + "Z",
+                "phone_number": m.phone_number,
+                "contact_name": m.contact_name,
+                "direction": m.direction,
+                "message": m.message,
+                "media_urls": m.media_urls,
+            } for m in msgs]
+
             stats = {
                 "messages_today": (
                     db.session.query(func.count(Message.id))
@@ -174,8 +172,8 @@ def messages_view():
             return jsonify({"messages": data, "stats": stats})
 
         phones = db.session.query(Contact.phone_number).all()
-        known = {p for (p,) in phones}
-        props = Property.query.order_by(Property.name).all()
+        known  = {p for (p,) in phones}
+        props  = Property.query.order_by(Property.name).all()
 
         return render_template(
             "messages.html",
@@ -226,7 +224,7 @@ def contacts_view():
     except Exception as ex:
         db.session.rollback()
         traceback.print_exc()
-        error = str(ex)
+        error  = str(ex)
         known, recent = [], []
 
     return render_template(
@@ -282,7 +280,9 @@ def gallery_static():
     folder = os.path.join(app.static_folder, "uploads")
     try:
         for fn in os.listdir(folder):
-            if os.path.splitext(fn)[1].lower() in {".jpg", ".png", ".gif", ".jpeg", ".webp"}:
+            if os.path.splitext(fn)[1].lower() in {
+                ".jpg", ".png", ".gif", ".jpeg", ".webp"
+            }:
                 images.append(f"uploads/{fn}")
     except Exception as ex:
         error = "Error loading static gallery."
@@ -295,9 +295,11 @@ def gallery_static():
         current_year=datetime.utcnow().year,
     )
 
-# … your other imports …
 
-@app.route("/unsorted", methods=["GET"])
+# ──────────────────────────────────────────────────────────────────────────────
+#   Unsorted images (assign from here)
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/unsorted")
 def unsorted_gallery():
     # 1️⃣ grab every message with media but no property
     msgs = (
@@ -308,15 +310,15 @@ def unsorted_gallery():
         .all()
     )
 
-    # 2️⃣ flatten into a list of { message, path }
+    # 2️⃣ flatten to list of {msg, path}
     unsorted = []
     for m in msgs:
         for p in (m.local_media_paths or "").split(","):
             p = p.strip()
-            if p:
+            if p and os.path.isfile(os.path.join(app.static_folder, p)):
                 unsorted.append({"msg": m, "path": p})
 
-    # 3️⃣ all properties for the dropdown
+    # 3️⃣ properties list for dropdown
     props = Property.query.order_by(Property.name).all()
 
     return render_template(
@@ -325,6 +327,7 @@ def unsorted_gallery():
         properties=props,
         current_year=datetime.utcnow().year,
     )
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #   Per-property gallery
@@ -338,16 +341,16 @@ def gallery_for_property(property_id):
         .filter(Message.local_media_paths.isnot(None))
         .all()
     )
-    images = [
-        path.strip()
+    image_files = [
+        p.strip()
         for m in msgs
-        for path in (m.local_media_paths or "").split(",")
-        if path.strip()
-           and os.path.isfile(os.path.join(app.static_folder, path.strip()))
+        for p in (m.local_media_paths or "").split(",")
+        if p.strip()
+           and os.path.isfile(os.path.join(app.static_folder, p.strip()))
     ]
     return render_template(
         "gallery.html",
-        image_files=images,
+        image_files=image_files,
         property=prop,
         current_year=datetime.utcnow().year,
     )
