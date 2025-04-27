@@ -1,5 +1,6 @@
 import os
 import json
+from pathlib import Path
 from datetime import datetime, timedelta
 
 from flask import (
@@ -25,8 +26,16 @@ from webhook_route import webhook_bp
 load_dotenv()
 
 app = Flask(__name__)
+
+# --- make sure our "instance" folder and .db file live next to this main.py ---
+BASEDIR   = Path(__file__).resolve().parent
+INSTANCE  = BASEDIR / "instance"
+INSTANCE.mkdir(exist_ok=True)
+DB_FILE   = INSTANCE / "messages.db"
+
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-    "DATABASE_URL", "sqlite:///instance/messages.db"
+    "DATABASE_URL",
+    f"sqlite:///{DB_FILE}"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
@@ -37,20 +46,12 @@ app.secret_key = os.getenv("FLASK_SECRET", "default_secret")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
-# Ensure SQLite instance folder exists if using sqlite
-if (
-    app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:")
-    and "instance" in app.config["SQLALCHEMY_DATABASE_URI"]
-):
-    instance_path = os.path.join(app.root_path, "instance")
-    os.makedirs(instance_path, exist_ok=True)
-    print("✅ Instance folder verified/created.")
-
 # Initialize extensions and blueprint
 db.init_app(app)
 app.register_blueprint(webhook_bp)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #   Startup: create tables, ensure `sid`, reset sequence
@@ -69,7 +70,7 @@ try:
         ))
         print("✅ Ensured messages.sid column exists.")
 
-        # 3) Reset the `id` sequence to avoid key collisions
+        # 3) Reset the `id` sequence to avoid key collisions (PostgreSQL only)
         db.session.execute(text(
             "SELECT setval(pg_get_serial_sequence('messages','id'), "
             "COALESCE((SELECT MAX(id) FROM messages), 1) + 1, false)"
@@ -216,15 +217,12 @@ def contacts_view():
     error = None
     recent = []
     if request.method == "POST":
-        action = request.form.get("action")
-        phone  = request.form.get("phone", "").strip()
-        name   = request.form.get("name", "").strip()
-        # ... your existing add/delete logic ...
+        # …your add/delete logic…
         return redirect(url_for("contacts_view"))
 
     try:
         known = Contact.query.order_by(Contact.contact_name).all()
-        # ... build recent calls ...
+        # …build recent…
     except Exception as ex:
         db.session.rollback()
         traceback.print_exc()
@@ -301,20 +299,15 @@ def gallery_static():
 # ──────────────────────────────────────────────────────────────────────────────
 #   Per-property gallery
 # ──────────────────────────────────────────────────────────────────────────────
-
 @app.route("/gallery/<int:property_id>")
 def gallery_for_property(property_id):
     prop = Property.query.get_or_404(property_id)
-
-    # 1️⃣ grab only messages that have local_media_paths
     msgs = (
         Message.query
         .filter_by(property_id=property_id)
         .filter(Message.local_media_paths.isnot(None))
         .all()
     )
-
-    # 2️⃣ flatten, strip, and only keep files that actually exist on disk
     images = [
         path.strip()
         for m in msgs
@@ -322,13 +315,13 @@ def gallery_for_property(property_id):
         if path.strip()
            and os.path.isfile(os.path.join(app.static_folder, path.strip()))
     ]
-
     return render_template(
         "gallery.html",
         image_files=images,
         property=prop,
         current_year=datetime.utcnow().year,
     )
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #   “All Galleries” overview
@@ -337,7 +330,6 @@ def gallery_for_property(property_id):
 def galleries_overview():
     gallery_summaries = []
     for prop in Property.query.order_by(Property.name).all():
-        # collect all image paths for this property
         paths = []
         for m in Message.query.filter(
             Message.property_id == prop.id,
@@ -349,26 +341,21 @@ def galleries_overview():
                 if p and os.path.isfile(full):
                     paths.append(p)
 
-        # pick the last one, or None
-        thumb = paths[-1] if paths else None
-
         gallery_summaries.append({
             "property": prop,
             "count": len(paths),
-            "thumb": thumb,
+            "thumb": paths[-1] if paths else None,
         })
-
-    # ... recent & unsorted as before ...
 
     return render_template(
         "galleries_overview.html",
         gallery_summaries=gallery_summaries,
-        # ...
         current_year=datetime.utcnow().year,
     )
 
+
 # ──────────────────────────────────────────────────────────────────────────────
-#  Static gallery (all uploaded images)
+#   Combined uploads gallery
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/gallery", endpoint="gallery_view")
 def gallery_view():
@@ -379,14 +366,12 @@ def gallery_view():
             ext = os.path.splitext(fn)[1].lower()
             if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
                 image_files.append(f"uploads/{fn}")
-
     return render_template(
         "gallery.html",
         image_files=image_files,
-        property=None,               # no property filter
+        property=None,
         current_year=datetime.utcnow().year,
     )
-
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -406,8 +391,3 @@ with app.app_context():
         methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
         print(f"{rule.endpoint:25} {methods:15} {rule.rule}")
     print("--- END URL MAP ---\n")
-
-
-# Uncomment for local debugging:
-# if __name__ == "__main__":
-#     app.run(debug=True, host="0.0.0.0", port=8080)
