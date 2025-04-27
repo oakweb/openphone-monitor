@@ -1,31 +1,38 @@
+{# templates/galleries_overview.html #}
 {% extends "base.html" %}
 
 {% block title %}All Galleries{% endblock %}
 
 {% block head_extra %}
   <style>
-    /* ── Thumbnail grid ───────────────────────────────────────────── */
+    /* lay out all gallery tiles in a row */
     .gallery-summaries {
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
     }
+
+    /* each property‐tile is exactly 150×150 */
     .gallery-summary {
       position: relative;
       flex: 0 0 auto;
       width: 150px;
       height: 150px;
       overflow: hidden;
-      border: 1px solid #ccc;
+      border: 1px solid #3a8bab;
       border-radius: 4px;
       background: #1e2226;
     }
+
+    /* thumbnail covers the tile */
     .gallery-summary img {
+      display: block;
       width: 100%;
       height: 100%;
       object-fit: cover;
-      display: block;
     }
+
+    /* placeholder when no thumbnail */
     .gallery-summary .placeholder {
       width: 100%;
       height: 100%;
@@ -36,17 +43,19 @@
       font-size: 0.9rem;
       background: #2c3035;
     }
+
+    /* caption bar at the bottom */
     .gallery-summary .caption {
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
-      background: rgba(0,0,0,0.6);
+      background: rgba(0, 0, 0, 0.6);
       color: #fff;
       font-size: 0.75rem;
       padding: 0.25rem;
-      box-sizing: border-box;
       text-align: center;
+      box-sizing: border-box;
     }
   </style>
 {% endblock %}
@@ -58,18 +67,14 @@
     {% for g in gallery_summaries %}
       <div class="gallery-summary">
         <a href="{{ url_for('gallery_for_property', property_id=g.property.id) }}">
-          {# only render the <img> if the file actually exists #}
-          {% if g.thumb and (g.thumb|length) and
-                ( (base_path := config['STATIC_FOLDER']) 
-                  and (base_path ~ '') 
-                  and ( (base_path ~ '') is not none ) )
-                and ( (path := (base_path ~ '/' ~ g.thumb)) 
-                      and (os.path.isfile(path)) ) %}
-            <img src="{{ url_for('static', filename=g.thumb) }}" alt="">
+          {% if g.thumb %}
+            <img src="{{ url_for('static', filename=g.thumb) }}" alt="Thumbnail for {{ g.property.name }}">
           {% else %}
             <div class="placeholder">No Image</div>
           {% endif %}
-          <div class="caption">{{ g.property.name }} ({{ g.count }})</div>
+          <div class="caption">
+            {{ g.property.name }} ({{ g.count }})
+          </div>
         </a>
       </div>
     {% endfor %}
