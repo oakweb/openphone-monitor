@@ -144,4 +144,34 @@ def webhook():
             pass
         return Response("Internal Server Error", status=500)
 
+# — after msg.local_media_paths = ",".join(saved_paths) and commit —
+
+to_addr = os.getenv("SENDGRID_TO_EMAIL")
+if to_addr and saved_paths:
+    print("📧 Sending notification email…")
+    attachments = []
+    for rel in saved_paths:
+        full = os.path.join(os.getcwd(), "static", rel)
+        with open(full, "rb") as f:
+            content_b64 = base64.b64encode(f.read()).decode()
+        attachments.append({
+            "content": content_b64,
+            "type": mimetypes.guess_type(full)[0] or "application/octet-stream",
+            "filename": os.path.basename(full),
+            "disposition": "attachment",
+        })
+    try:
+        send_email(
+            to_address=to_addr,
+            subject=f"New image message from {contact.contact_name}",
+            plain_content=text,
+            html_content=f"<p>{text}</p>",
+            attachments=attachments,
+        )
+        print("✅ Email sent.")
+    except Exception as e:
+        print(f"❌ Email send failed: {e}")
+else:
+    print("⚠️ No SENDGRID_TO_EMAIL set or no media; skipping email.")
+
 # --- End of webhook_route.py ---
