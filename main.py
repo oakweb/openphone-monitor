@@ -301,24 +301,34 @@ def gallery_static():
 # ──────────────────────────────────────────────────────────────────────────────
 #   Per-property gallery
 # ──────────────────────────────────────────────────────────────────────────────
+
 @app.route("/gallery/<int:property_id>")
 def gallery_for_property(property_id):
     prop = Property.query.get_or_404(property_id)
-    images = []
+
+    # 1) grab only messages with media paths
     msgs = (
         Message.query
         .filter_by(property_id=property_id)
         .filter(Message.local_media_paths.isnot(None))
         .all()
     )
-    for m in msgs:
-        images += m.local_media_paths.split(",")
+
+    # 2) flatten out & drop any empty strings
+    images = [
+        path
+        for m in msgs
+        for path in (m.local_media_paths or "").split(",")
+        if path.strip()
+    ]
+
     return render_template(
         "gallery.html",
         image_files=images,
         property=prop,
         current_year=datetime.utcnow().year,
     )
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
