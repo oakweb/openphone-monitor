@@ -90,6 +90,16 @@
 
     </style>
     {% block head_extra %}{% endblock %}
+    /* Constrain any message‐embedded img to 200×200px max */
+.message-media img {
+  max-width: 200px !important;
+  max-height: 200px !important;
+  width: auto !important;
+  height: auto !important;
+  display: block;       /* avoid weird inline spacing */
+  margin-bottom: .5rem; /* match your other spacing */
+}
+
 </head>
 <body>
     <div class="bg-wrapper"></div>
@@ -112,6 +122,13 @@
                                <i class="fas fa-home"></i> Home
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'unsorted_gallery' %}active{% endif %}"
+                               href="{{ url_for('unsorted_gallery') }}">
+                              Unsorted
+                            </a>
+                          </li>
+                          
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint=='galleries_overview' %}active{% endif %}"
                                href="{{ url_for('galleries_overview') }}">

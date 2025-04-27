@@ -295,6 +295,36 @@ def gallery_static():
         current_year=datetime.utcnow().year,
     )
 
+# … your other imports …
+
+@app.route("/unsorted", methods=["GET"])
+def unsorted_gallery():
+    # 1️⃣ grab every message with media but no property
+    msgs = (
+        Message.query
+        .filter(Message.property_id.is_(None))
+        .filter(Message.local_media_paths.isnot(None))
+        .order_by(Message.timestamp.desc())
+        .all()
+    )
+
+    # 2️⃣ flatten into a list of { message, path }
+    unsorted = []
+    for m in msgs:
+        for p in (m.local_media_paths or "").split(","):
+            p = p.strip()
+            if p:
+                unsorted.append({"msg": m, "path": p})
+
+    # 3️⃣ all properties for the dropdown
+    props = Property.query.order_by(Property.name).all()
+
+    return render_template(
+        "unsorted.html",
+        unsorted=unsorted,
+        properties=props,
+        current_year=datetime.utcnow().year,
+    )
 
 # ──────────────────────────────────────────────────────────────────────────────
 #   Per-property gallery
