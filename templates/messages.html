@@ -6,6 +6,16 @@
   <style>
     /* — your existing styles — */
     /* (omitted for brevity) */
+    /* Constrain inline message images to a small thumbnail */
+.message-media img {
+  max-width: 200px !important;
+  max-height: 200px !important;
+  width: auto !important;
+  height: auto !important;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
   </style>
 {% endblock %}
 
