@@ -108,6 +108,63 @@ except Exception as init_e:
 #  Index Route
 # ═════════════════════════════════════════════════════════════════════════════
 
+@app.route("/galleries")
+def galleries_overview():
+    # 1) Gather per-property summaries
+    gallery_summaries = []
+    for prop in Property.query.order_by(Property.name).all():
+        # Fetch all image paths for this property
+        msgs = (
+            Message.query
+            .filter(Message.property_id == prop.id)
+            .filter(Message.local_media_paths.isnot(None))
+            .all()
+        )
+        all_paths = []
+        for m in msgs:
+            all_paths += m.local_media_paths.split(",")
+        count = len(all_paths)
+        thumb = all_paths[-1] if all_paths else None
+
+        gallery_summaries.append({
+            "property": prop,
+            "count": count,
+            "thumb": thumb,
+        })
+
+    # 2) Unsorted images (no property)
+    unsorted_paths = []
+    for m in Message.query.filter(
+        Message.property_id.is_(None),
+        Message.local_media_paths.isnot(None)
+    ):
+        unsorted_paths += m.local_media_paths.split(",")
+    unsorted_count = len(unsorted_paths)
+    unsorted_thumb = unsorted_paths[-1] if unsorted_paths else None
+
+    # 3) Recent images (across all messages), limit to 20
+    recent_images = []
+    recent_msgs = (
+        Message.query
+        .filter(Message.local_media_paths.isnot(None))
+        .order_by(Message.timestamp.desc())
+        .limit(20)
+        .all()
+    )
+    for m in recent_msgs:
+        recent_images += m.local_media_paths.split(",")
+    recent_images = recent_images[:20]
+
+    return render_template(
+        "galleries_overview.html",
+        gallery_summaries=gallery_summaries,
+        unsorted_count=unsorted_count,
+        unsorted_thumb=unsorted_thumb,
+        recent_images=recent_images,
+        current_year=datetime.utcnow().year,
+    )
+
+
 @app.route("/gallery", endpoint="gallery_view")
 def gallery_view():
     upload_folder = os.path.join(app.static_folder, "uploads")
@@ -364,6 +421,57 @@ def gallery_for_property(property_id):
 @app.route("/ping")
 def ping_route():
     return "Pong!", 200
+
+@app.route("/galleries")
+def galleries_overview():
+    # 1) Build per-property summaries
+    gallery_summaries = []
+    for prop in Property.query.order_by(Property.name).all():
+        paths = []
+        msgs = (
+            Message.query
+            .filter(Message.property_id == prop.id)
+            .filter(Message.local_media_paths.isnot(None))
+            .all()
+        )
+        for m in msgs:
+            paths += m.local_media_paths.split(",")
+
+        gallery_summaries.append({
+            "property": prop,
+            "count": len(paths),
+            "thumb": paths[-1] if paths else None,
+        })
+
+    # 2) Unsorted images
+    unsorted_paths = []
+    for m in Message.query.filter(
+        Message.property_id.is_(None),
+        Message.local_media_paths.isnot(None)
+    ).all():
+        unsorted_paths += m.local_media_paths.split(",")
+
+    # 3) Recent images (20 most recent)
+    recent_paths = []
+    recent_msgs = (
+        Message.query
+        .filter(Message.local_media_paths.isnot(None))
+        .order_by(Message.timestamp.desc())
+        .limit(20)
+        .all()
+    )
+    for m in recent_msgs:
+        recent_paths += m.local_media_paths.split(",")
+
+    return render_template(
+        "galleries_overview.html",
+        gallery_summaries=gallery_summaries,
+        unsorted_count=len(unsorted_paths),
+        unsorted_thumb=(unsorted_paths[-1] if unsorted_paths else None),
+        recent_images=recent_paths[:20],
+        current_year=datetime.utcnow().year,
+    )
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  Debug URL Map on Startup

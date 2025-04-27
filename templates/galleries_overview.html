@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}All Galleries{% endblock %}
+
+{% block content %}
+  <h1>Property Galleries</h1>
+
+  <!-- 1) Recent Images Scroller -->
+  <div class="recent-scroller" style="overflow-x:auto; white-space:nowrap; padding:1em 0;">
+    {% for img in recent_images %}
+      <img src="{{ url_for('static', filename=img) }}"
+           class="recent-thumb"
+           style="height:80px; margin-right:0.5em; display:inline-block;"
+           alt="Recent">
+    {% endfor %}
+  </div>
+
+  <!-- 2) Grid of Gallery Cards -->
+  <div class="gallery-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1em;">
+    {% for g in gallery_summaries %}
+      <a href="{{ url_for('gallery_for_property', property_id=g.property.id) }}"
+         class="gallery-card"
+         style="text-decoration:none; color:inherit; border:1px solid #ccc; padding:1em; border-radius:8px;">
+        <img src="{{ url_for('static', filename=(g.thumb or 'images/placeholder.png')) }}"
+             style="width:100%; height:150px; object-fit:cover; border-radius:4px 4px 0 0;"
+             alt="Thumbnail">
+        <div style="padding:0.5em 0;">
+          <h3 style="margin:0 0 0.25em;">{{ g.property.name }}</h3>
+          <small>{{ g.count }} image{{ 's' if g.count!=1 }}</small>
+        </div>
+      </a>
+    {% endfor %}
+
+    <!-- 3) Unsorted Gallery Card -->
+    <a href="{{ url_for('gallery_view') }}"
+       class="gallery-card"
+       style="text-decoration:none; color:inherit; border:1px solid #ccc; padding:1em; border-radius:8px;">
+      <img src="{{ url_for('static', filename=(unsorted_thumb or 'images/placeholder.png')) }}"
+           style="width:100%; height:150px; object-fit:cover; border-radius:4px 4px 0 0;"
+           alt="Unsorted thumbnail">
+      <div style="padding:0.5em 0;">
+        <h3 style="margin:0 0 0.25em;">Unsorted</h3>
+        <small>{{ unsorted_count }} image{{ 's' if unsorted_count!=1 }}</small>
+      </div>
+    </a>
+  </div>
+{% endblock %}
