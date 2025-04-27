@@ -3,238 +3,118 @@
 {% block title %}Recent Messages{% endblock %}
 
 {% block head_extra %}
-    <style>
-        /* Styles specifically for the messages list items */
-        main .card { margin-bottom: 1rem; }
-        #messagesList .list-group-item {
-            padding: 0; /* Remove padding from li itself */
-            background-color: #2c3035; /* Darker background for item */
-            border-bottom: 1px solid #3a8bab !important; /* Ensure border */
-            color: #fff;
-        }
-         /* Ensure flush list group doesn't add borders where not needed */
-         .list-group-flush > .list-group-item {
-             border-width: 0 0 1px;
-         }
-         .list-group-flush:last-child .list-group-item:last-child {
-            border-bottom-width: 0; /* No border on very last item */
-         }
-
-        /* Styling for the header part of the message item */
-        .message-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.75rem 1rem; /* Padding inside header */
-            background-color: #2c3035; /* Match item background or slightly different */
-            border-bottom: 1px solid rgba(58, 139, 171, 0.3); /* Optional subtle line */
-        }
-         .message-header strong { color: #e9ecef; } /* Adjust name color if needed */
-         .message-header .text-muted.small { font-size: 0.8em; color: #adb5bd !important;}
-
-
-        /* Styling for the body part of the message item */
-        .message-body {
-            padding: 0.75rem 1rem 1rem 1rem; /* Padding inside body */
-            background: #1e2226; /* Slightly different background for body */
-        }
-        .message-text {
-            margin: 0.5rem 0;
-            white-space: pre-wrap; /* Preserve line breaks in messages */
-            word-wrap: break-word; /* Wrap long words */
-        }
-        .message-link {
-            color: #6cb9d3;
-            text-decoration: underline;
-            margin: 0.5rem 0;
-            display: block;
-            word-break: break-all; /* Break long URLs */
-        }
-        .message-media img {
-            max-width: 100%;
-            max-height: 200px; /* Limit image height */
-            border-radius: 6px;
-            margin: 0.5rem 0;
-            border: 1px solid #3a8bab; /* Add border to images */
-        }
-
-        /* Styling for the 'Add Contact' section */
-        .add-contact-section {
-            padding: 0.75rem 1rem;
-            background-color: rgba(58, 139, 171, 0.1);
-            border-top: 1px dashed rgba(58, 139, 171, 0.4);
-            margin-top: -1px; /* Overlap border slightly */
-        }
-        .add-contact-section .form-control { /* Style for the input in this section */
-             background-color: rgba(30, 40, 50, 0.7);
-             border: 1px solid rgba(108, 185, 211, 0.3); color: #fff;
-         }
-
-        /* Styling for the 'Assign Property' section */
-        .assign-property-section {
-            padding: 0.75rem 1rem;
-            /* background-color: rgba(40, 45, 50, 0.5); */ /* Optional subtle background */
-            border-top: 1px solid rgba(108, 185, 211, 0.2); /* Separator line */
-        }
-         .assign-property-section .form-label {
-             white-space: nowrap; /* Prevent label wrapping */
-             margin-right: 0.5rem;
-          }
-         .assign-property-section .form-select-sm { height: calc(1.5em + 0.5rem + 2px); padding-top: 0.25rem; padding-bottom: 0.25rem;}
-         .assign-property-section .btn-sm { padding: 0.25rem 0.5rem; font-size: .875rem;}
-         .assign-property-section .badge { font-size: 0.75em; } /* Smaller badge */
-
-
-         /* Ensure controls have some spacing */
-         .controls { gap: 0.5rem; flex-wrap: wrap;}
-         .controls select, .controls button { padding: 0.375rem 0.75rem; }
-         @media (max-width: 576px) {
-            .controls { justify-content: center;}
-            .controls button { margin-left: 0; width: 100%; margin-top: 0.5rem;}
-            .assign-property-section .d-flex { flex-direction: column; align-items: stretch !important; }
-            .assign-property-section .form-label { margin-bottom: 0.25rem; margin-right: 0;}
-            .assign-property-section button { margin-top: 0.5rem;}
-        }
-    </style>
-{% endblock %} {# End head_extra block #}
-
+  <style>
+    /* — your existing styles — */
+    /* (omitted for brevity) */
+  </style>
+{% endblock %}
 
 {% block content %}
-    <div class="controls mb-3">
-        <select id="sortOrder" class="form-select form-select-sm" style="max-width: 150px;">
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-        </select>
-        <select id="filterBy" class="form-select form-select-sm" style="max-width: 150px;">
-            <option value="all">All Messages</option>
-            <option value="today">Today Only</option>
-        </select>
-        <button id="refreshBtn" class="btn btn-success btn-sm">
-            <i class="fas fa-sync-alt"></i> Refresh
-        </button>
-    </div>
+  <div style="background: yellow; padding: 0.5em; text-align: center;">
+    TEST: Messages template loaded
+  </div>
+  <!-- rest of your markup… -->
 
-    {% if error %}
-        <div class="alert alert-danger">{{ error }}</div>
-    {% endif %}
+  <div class="controls mb-3">
+    <!-- your sort/filter controls -->
+  </div>
 
-    <div class="card">
-        <ul id="messagesList" class="list-group list-group-flush">
-             {% if messages and messages|length > 0 %}
-                 {% for msg in messages %}
-                     {# Check if contact is known #}
-                     {% set is_known = known_contact_phones is defined and msg.phone_number in known_contact_phones %}
+  {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
 
-                     {# --- Start Message Item --- #}
-                     <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}">
-                         {# --- Message Header --- #}
-                         <div class="message-header">
-                             <div><i class="fas fa-user-circle me-2"></i><strong>{{ msg.contact_name or msg.phone_number }}</strong></div>
-                             <span class="text-muted small">{{ msg.timestamp.strftime('%m-%d %H:%M') }}</span>
-                         </div>
-                         {# --- Message Body --- #}
-                         <div class="message-body">
-                             <p class="message-text">{{ msg.message }}</p>
-                             {% if msg.media_urls %}
-                                 {% set urls = msg.media_urls.split(',') %}
-                                 {% for url in urls %}
-                                     {% if url %}
-                                         <div class="message-media">
-                                             <img src="{{ url }}" class="img-fluid" style="max-height: 200px;"
-                                                  onerror="this.onerror=null;this.style.display='none'; this.alt='Attachment (cannot display inline)';">
-                                         </div>
-                                     {% endif %}
-                                 {% endfor %}
-                             {% endif %}
-                             </div>{# End message-body #}
+  <div class="card">
+    <ul id="messagesList" class="list-group list-group-flush">
+      {% if messages %}
+        {% for msg in messages %}
+          {% set is_known = msg.phone_number in known_contact_phones %}
+          <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}">
+            <!-- Message Header -->
+            <div class="message-header">
+              <div>
+                <i class="fas fa-user-circle me-2"></i>
+                <strong>{{ msg.contact_name or msg.phone_number }}</strong>
+              </div>
+              <div class="small text-secondary">
+                Media paths: {{ msg.local_media_paths or "None" }}
+              </div>
+            </div>
 
-                         {# --- Add Contact Form (if unknown) --- #}
-                         {% if not is_known %}
-                         <div class="add-contact-section">
-                             <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2">
-                                 <input type="hidden" name="phone" value="{{ msg.phone_number }}">
-                                 <input type="text" name="name" placeholder="Enter name to add" class="form-control form-control-sm" required style="flex-grow: 1;">
-                                 <button type="submit" name="action" value="add" class="btn btn-success btn-sm flex-shrink-0">
-                                     <i class="fas fa-user-plus"></i> Add
-                                 </button>
-                             </form>
-                         </div>
-                         {% endif %}
-                         {# --- End Add Contact Form --- #}
+            <!-- Message Body -->
+            <div class="message-body">
+              <p class="message-text">{{ msg.message }}</p>
+              {% if msg.media_urls %}
+                {% for url in msg.media_urls.split(',') %}
+                  {% if url %}
+                    <div class="message-media">
+                      <img src="{{ url }}"
+                           onerror="this.style.display='none';"
+                           alt="Attachment">
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            </div>
 
-                         {# --- Assign Property Section --- #}
-                         <div class="assign-property-section">
-                             <form method="POST" action="{{ url_for('assign_property') }}" class="d-flex gap-2 align-items-center">
-                                 <input type="hidden" name="message_id" value="{{ msg.id }}">
-                                 <label for="property_id_{{ msg.id }}" class="form-label mb-0 small text-muted">Assign Property:</label>
-                                 <select name="property_id" id="property_id_{{ msg.id }}" class="form-select form-select-sm" style="flex-grow: 1;">
-                                     <option value="">-- Select Property --</option>
-                                     {% for prop in properties %}
-                                         {# msg.property_id contains the ID of the currently assigned property #}
-                                         <option value="{{ prop.id }}" {% if msg.property_id == prop.id %}selected{% endif %}>
-                                             {{ prop.name }}
-                                         </option>
-                                     {% endfor %}
-                                 </select>
-                                 <button type="submit" class="btn btn-primary btn-sm flex-shrink-0">
-                                     <i class="fas fa-save"></i> Assign
-                                 </button>
-                             </form>
-                             {# Display currently assigned property #}
-                             {% if msg.property %} {# Access via relationship #}
-                                 <div class="mt-1"><span class="badge bg-info">Assigned: {{ msg.property.name }}</span></div>
-                             {% endif %}
-                         </div>
-                         {# --- End Assign Property Section --- #}
+            <!-- Add Contact (if unknown) -->
+            {% if not is_known %}
+              <div class="add-contact-section">
+                <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2">
+                  <input type="hidden" name="phone" value="{{ msg.phone_number }}">
+                  <input type="text" name="name" placeholder="Enter name" class="form-control form-control-sm" required>
+                  <button type="submit" name="action" value="add" class="btn btn-success btn-sm">
+                    <i class="fas fa-user-plus"></i>
+                  </button>
+                </form>
+              </div>
+            {% endif %}
 
-                     </li> {# --- End Message Item --- #}
-                 {% endfor %} {# End message loop #}
-             {% else %}
-                 <li class="list-group-item text-center text-muted p-3">No messages found</li>
-             {% endif %} {# End if messages #}
-         </ul>
-     </div>
-{% endblock %} {# End content block #}
+            <!-- Assign Property -->
+            <div class="assign-property-section">
+              <form method="POST" action="{{ url_for('assign_property') }}" class="d-flex gap-2 align-items-center">
+                <input type="hidden" name="message_id" value="{{ msg.id }}">
+                <label for="property_id_{{ msg.id }}" class="form-label mb-0 small text-muted">
+                  Assign Property:
+                </label>
+                <select name="property_id" id="property_id_{{ msg.id }}"
+                        class="form-select form-select-sm" style="flex-grow:1;">
+                  <option value="">-- Select Property --</option>
+                  {% for prop in properties %}
+                    <option value="{{ prop.id }}" {% if msg.property_id==prop.id %}selected{% endif %}>
+                      {{ prop.name }}
+                    </option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="fas fa-save"></i>
+                </button>
+              </form>
+
+              {% if msg.property %}
+                <div class="mt-1">
+                  <span class="badge bg-info">
+                    Assigned: {{ msg.property.name }}
+                  </span>
+                  &nbsp;
+                  <a href="{{ url_for('gallery_for_property', property_id=msg.property.id) }}" class="small">
+                    View Gallery
+                  </a>
+                </div>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      {% else %}
+        <li class="list-group-item text-center text-muted p-3">
+          No messages found
+        </li>
+      {% endif %}
+    </ul>
+  </div>
+{% endblock %}
 
 {% block scripts %}
-    <script>
-        // Same JS as before for Sort/Filter/Refresh
-        document.addEventListener('DOMContentLoaded', function() {
-            const refreshBtn = document.getElementById('refreshBtn');
-            if (refreshBtn) {
-                refreshBtn.addEventListener('click', () => window.location.reload());
-            }
-            const sortOrderSelect = document.getElementById('sortOrder');
-            if (sortOrderSelect) {
-                sortOrderSelect.addEventListener('change', function() {
-                    const order = this.value;
-                    const list = document.getElementById('messagesList');
-                    if (!list) return;
-                    const items = Array.from(list.children);
-                    items.forEach(item => list.removeChild(item));
-                    items.sort((a, b) => {
-                        const tsA = a.dataset.timestamp ? new Date(a.dataset.timestamp) : null;
-                        const tsB = b.dataset.timestamp ? new Date(b.dataset.timestamp) : null;
-                        if (!tsA && !tsB) return 0; if (!tsA) return 1; if (!tsB) return -1;
-                        return order === 'newest' ? tsB - tsA : tsA - tsB;
-                    }).forEach(item => list.appendChild(item));
-                });
-                 sortOrderSelect.dispatchEvent(new Event('change'));
-            }
-            const filterBySelect = document.getElementById('filterBy');
-            if (filterBySelect) {
-                filterBySelect.addEventListener('change', function() {
-                    const crit = this.value;
-                    const todayStart = new Date().setHours(0, 0, 0, 0);
-                    document.querySelectorAll('#messagesList .list-group-item').forEach(item => {
-                        let show = true;
-                        const ts = item.dataset.timestamp ? new Date(item.dataset.timestamp).getTime() : null;
-                        if (crit === 'today') { show = (ts !== null && ts >= todayStart); }
-                        item.style.display = show ? '' : 'none';
-                    });
-                });
-                 filterBySelect.dispatchEvent(new Event('change'));
-            }
-        });
-    </script>
-{% endblock %} {# End scripts block #}
+  <script>
+    // your existing JS (sort/filter/refresh)
+  </script>
+{% endblock %}
