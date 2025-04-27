@@ -34,7 +34,6 @@ class Property(db.Model):
     __tablename__ = "properties"
     id = db.Column(db.Integer, primary_key=True)
     # Unique SID for deduplication of incoming webhooks
-    sid = db.Column(db.String, unique=True, nullable=False, index=True)
 
     # Name of the property (e.g., address) - must be unique
     name = db.Column(db.String(200), nullable=False, unique=True)
