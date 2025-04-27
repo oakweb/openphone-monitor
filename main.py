@@ -1,11 +1,14 @@
 import os
-import re
 import json
 from datetime import datetime, timedelta
 
 from flask import (
-    Flask, render_template, request, jsonify,
-    url_for, redirect
+    Flask,
+    render_template,
+    request,
+    jsonify,
+    url_for,
+    redirect,
 )
 from dotenv import load_dotenv
 from sqlalchemy import text, func
@@ -16,14 +19,11 @@ from extensions import db
 from models import Contact, Message, Property
 from webhook_route import webhook_bp
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Application Setup & Configuration
-# ═════════════════════════════════════════════════════════════════════════════
-
-# Load environment variables from .env
+# ──────────────────────────────────────────────────────────────────────────────
+#   App configuration
+# ──────────────────────────────────────────────────────────────────────────────
 load_dotenv()
 
-# Initialize Flask app and configure
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
     "DATABASE_URL", "sqlite:///instance/messages.db"
@@ -37,7 +37,7 @@ app.secret_key = os.getenv("FLASK_SECRET", "default_secret")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
-# Ensure SQLite instance folder exists if used
+# Ensure SQLite instance folder exists if using sqlite
 if (
     app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:")
     and "instance" in app.config["SQLALCHEMY_DATABASE_URI"]
@@ -46,95 +46,54 @@ if (
     os.makedirs(instance_path, exist_ok=True)
     print("✅ Instance folder verified/created.")
 
-# Initialize extensions and blueprints
+# Initialize extensions and blueprint
 db.init_app(app)
 app.register_blueprint(webhook_bp)
 
-# Configure OpenAI API key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Debug startup info
-print("!!!!!!!!!!!!!!!!! MAIN.PY RELOADED AT LATEST TIMESTAMP !!!!!!!!!!!!!!!!")
-print("👉 DATABASE_URL:", os.environ.get("DATABASE_URL"))
-print("Attempting to create database tables...")
+# ──────────────────────────────────────────────────────────────────────────────
+#   Startup: create tables, ensure `sid`, reset sequence
+# ──────────────────────────────────────────────────────────────────────────────
+print("🔄 MAIN.PY RELOADED — DATABASE_URL:", app.config["SQLALCHEMY_DATABASE_URI"])
 try:
     with app.app_context():
+        # 1) Create all tables if missing
         db.create_all()
-    print("✅ Database tables created/verified.")
-    with app.app_context():
-        print(f"👉 Properties in DB after create_all: {Property.query.count()}")
-except Exception as init_e:
-    print(f"❌ Error creating tables: {init_e}")
+        print("✅ Tables created/verified.")
 
-from sqlalchemy import text
-
-# --- Create tables on startup, then ensure the sid column exists and reset the sequence ---
-print("Attempting to create database tables...")
-try:
-    with app.app_context():
-        # 1) Create any missing tables (does nothing if tables already exist)
-        db.create_all()
-        print("✅ Database tables created/verified.")
-
-        # 2) Ensure the new 'sid' column exists in the messages table
+        # 2) Ensure the `sid` column exists on messages
         db.session.execute(text(
             "ALTER TABLE messages "
             "ADD COLUMN IF NOT EXISTS sid VARCHAR"
         ))
         print("✅ Ensured messages.sid column exists.")
 
-        # 3) (Optional) Reset the messages.id sequence so new inserts don't collide
+        # 3) Reset the `id` sequence to avoid key collisions
         db.session.execute(text(
             "SELECT setval(pg_get_serial_sequence('messages','id'), "
             "COALESCE((SELECT MAX(id) FROM messages), 1) + 1, false)"
         ))
-        print("🔄 messages.id sequence reset.")
+        print("🔁 messages.id sequence reset.")
 
         db.session.commit()
 
-        # 4) Debug: verify there are still the same number of properties
-        count2 = Property.query.count()
-        print(f"👉 Properties in DB after create_all: {count2}")
+        # 4) Debug: count properties
+        print(f"👉 Properties in DB: {Property.query.count()}")
 
-except Exception as init_e:
-    print(f"❌ Error creating/verifying tables or columns: {init_e}")
-
-
-except Exception as init_e:
-    print(f"❌ Error creating tables: {init_e}")
+except Exception as e:
+    print("❌ Startup error:", e)
+    traceback.print_exc()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Index Route
-# ═════════════════════════════════════════════════════════════════════════════
-
-@app.route("/gallery", endpoint="gallery_view")
-def gallery_view():
-    upload_folder = os.path.join(app.static_folder, "uploads")
-    image_files = []
-    if os.path.isdir(upload_folder):
-        for fn in os.listdir(upload_folder):
-            ext = os.path.splitext(fn)[1].lower()
-            if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
-                image_files.append(f"uploads/{fn}")
-    return render_template(
-        "gallery.html",
-        image_files=image_files,
-        property=None,
-        current_year=datetime.utcnow().year,
-    )
-
-
+# ──────────────────────────────────────────────────────────────────────────────
+#   Index
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    db_status = "Unknown"
-    summary_today = summary_week = "Unavailable"
     current_year = datetime.utcnow().year
-
     try:
         db.session.execute(text("SELECT 1"))
-        db_status = "Connected"
-
         now = datetime.utcnow()
         start_today = datetime.combine(now.date(), datetime.min.time())
         start_week = start_today - timedelta(days=now.weekday())
@@ -152,9 +111,11 @@ def index():
 
         summary_today = f"{count_today} message(s) today."
         summary_week = f"{count_week} message(s) this week."
-    except Exception as e:
+        db_status = "Connected"
+    except Exception as ex:
         db.session.rollback()
-        db_status = f"Error: {e}"
+        db_status = f"Error: {ex}"
+        summary_today = summary_week = "Unavailable"
 
     return render_template(
         "index.html",
@@ -164,16 +125,15 @@ def index():
         current_year=current_year,
     )
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Messages and Assignment Routes
-# ═════════════════════════════════════════════════════════════════════════════
 
+# ──────────────────────────────────────────────────────────────────────────────
+#   Messages
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/messages")
 def messages_view():
     current_year = datetime.utcnow().year
-
     try:
-        messages_query = (
+        msgs = (
             Message.query
             .options(db.joinedload(Message.property))
             .order_by(Message.timestamp.desc())
@@ -181,13 +141,14 @@ def messages_view():
             .all()
         )
 
-        # JSON API support
+        # JSON endpoint
         if request.args.get("format") == "json":
-            msgs, now = [], datetime.utcnow()
+            now = datetime.utcnow()
             start_today = datetime.combine(now.date(), datetime.min.time())
             start_week = start_today - timedelta(days=now.weekday())
-            for m in messages_query:
-                msgs.append({
+            data = []
+            for m in msgs:
+                data.append({
                     "id": m.id,
                     "timestamp": m.timestamp.isoformat() + "Z",
                     "phone_number": m.phone_number,
@@ -195,7 +156,6 @@ def messages_view():
                     "direction": m.direction,
                     "message": m.message,
                     "media_urls": m.media_urls,
-                    "is_read": True,
                 })
             stats = {
                 "messages_today": (
@@ -208,89 +168,92 @@ def messages_view():
                     .filter(Message.timestamp >= start_week)
                     .scalar()
                 ),
-                "unread_messages": 0,
-                "response_rate": 93,
-                "summary_today": f"{start_today.date()} stats",
+                "summary_today": f"{count_today} message(s) today.",
             }
-            return jsonify({"messages": msgs, "stats": stats})
+            return jsonify({"messages": data, "stats": stats})
 
-        # HTML page logic
         phones = db.session.query(Contact.phone_number).all()
-        known_contact_phones = {p for (p,) in phones}
-        properties = Property.query.order_by(Property.name).all()
+        known = {p for (p,) in phones}
+        props = Property.query.order_by(Property.name).all()
 
-    except Exception as e:
+        return render_template(
+            "messages.html",
+            messages=msgs,
+            known_contact_phones=known,
+            properties=props,
+            current_year=current_year,
+        )
+
+    except Exception as ex:
         db.session.rollback()
         traceback.print_exc()
         return render_template(
             "messages.html",
             messages=[],
-            error=str(e),
+            error=str(ex),
             current_year=current_year,
         )
 
-    return render_template(
-        "messages.html",
-        messages=messages_query,
-        known_contact_phones=known_contact_phones,
-        properties=properties,
-        current_year=current_year,
-    )
 
 @app.route("/assign_property", methods=["POST"])
 def assign_property():
-    msg_id = request.form.get("message_id")
-    prop_id = request.form.get("property_id", "")
-    if msg_id:
-        m = Message.query.get(msg_id)
+    mid = request.form.get("message_id")
+    pid = request.form.get("property_id", "")
+    if mid:
+        m = Message.query.get(mid)
         if m:
-            m.property_id = int(prop_id) if prop_id else None
+            m.property_id = int(pid) if pid else None
             db.session.commit()
-    return redirect(url_for("messages_view") + f"#msg-{msg_id}")
+    return redirect(url_for("messages_view") + f"#msg-{mid}")
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Contacts Route
-# ═════════════════════════════════════════════════════════════════════════════
 
+# ──────────────────────────────────────────────────────────────────────────────
+#   Contacts
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
-    error = None
     current_year = datetime.utcnow().year
-    known_contacts, recent_calls = [], []
-
+    error = None
+    recent = []
     if request.method == "POST":
-        # add/delete logic here
+        action = request.form.get("action")
+        phone  = request.form.get("phone", "").strip()
+        name   = request.form.get("name", "").strip()
+        # ... your existing add/delete logic ...
         return redirect(url_for("contacts_view"))
 
     try:
-        known_contacts = Contact.query.order_by(Contact.contact_name).all()
-        # build recent_calls...
-    except Exception as e:
+        known = Contact.query.order_by(Contact.contact_name).all()
+        # ... build recent calls ...
+    except Exception as ex:
+        db.session.rollback()
         traceback.print_exc()
+        error = str(ex)
+        known, recent = [], []
 
     return render_template(
         "contacts.html",
-        known_contacts=known_contacts,
-        recent_calls=recent_calls,
+        known_contacts=known,
+        recent_calls=recent,
         error=error,
         current_year=current_year,
     )
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Ask (OpenAI) Route
-# ═════════════════════════════════════════════════════════════════════════════
 
+# ──────────────────────────────────────────────────────────────────────────────
+#   Ask (OpenAI)
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/ask", methods=["GET", "POST"])
 def ask_view():
-    response, error, query = None, None, ""
     current_year = datetime.utcnow().year
+    response = error = query = None
 
     if request.method == "POST":
         query = request.form.get("query", "").strip()
         if not query:
             error = "Please enter a question."
         elif not openai.api_key:
-            error = "❌ OpenAI API key not configured."
+            error = "OpenAI key not configured."
         else:
             try:
                 completion = openai.ChatCompletion.create(
@@ -298,8 +261,8 @@ def ask_view():
                     messages=[{"role": "user", "content": query}],
                 )
                 response = completion.choices[0].message["content"]
-            except Exception as e:
-                error = f"❌ OpenAI API Error: {e}"
+            except Exception as ex:
+                error = f"OpenAI error: {ex}"
                 traceback.print_exc()
 
     return render_template(
@@ -310,123 +273,131 @@ def ask_view():
         current_year=current_year,
     )
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Gallery Routes
-# ═════════════════════════════════════════════════════════════════════════════
 
+# ──────────────────────────────────────────────────────────────────────────────
+#   Static gallery (all uploads)
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/gallery_static")
 def gallery_static():
     error = None
-    image_files = []
-    upload_folder = os.path.join(app.static_folder, "uploads")
-
+    images = []
+    folder = os.path.join(app.static_folder, "uploads")
     try:
-        for fn in os.listdir(upload_folder):
-            ext = os.path.splitext(fn)[1].lower()
-            if ext in {".jpg", ".png", ".gif", ".jpeg", ".webp"}:
-                image_files.append(f"uploads/{fn}")
-    except Exception as e:
-        error = "Error loading static gallery"
+        for fn in os.listdir(folder):
+            if os.path.splitext(fn)[1].lower() in {".jpg", ".png", ".gif", ".jpeg", ".webp"}:
+                images.append(f"uploads/{fn}")
+    except Exception as ex:
+        error = "Error loading static gallery."
         traceback.print_exc()
 
     return render_template(
         "gallery.html",
-        image_files=image_files,
+        image_files=images,
         error=error,
         current_year=datetime.utcnow().year,
     )
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+#   Per-property gallery
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/gallery/<int:property_id>")
 def gallery_for_property(property_id):
     prop = Property.query.get_or_404(property_id)
+    images = []
     msgs = (
         Message.query
-        .filter(Message.property_id == property_id)
+        .filter_by(property_id=property_id)
         .filter(Message.local_media_paths.isnot(None))
         .all()
     )
-    image_files = []
     for m in msgs:
-        for p in m.local_media_paths.split(","):  # comma-separated paths
-            image_files.append(p)
-
+        images += m.local_media_paths.split(",")
     return render_template(
         "gallery.html",
-        image_files=image_files,
+        image_files=images,
         property=prop,
         current_year=datetime.utcnow().year,
     )
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Ping Health Check
-# ═════════════════════════════════════════════════════════════════════════════
 
-@app.route("/ping")
-def ping_route():
-    return "Pong!", 200
-
+# ──────────────────────────────────────────────────────────────────────────────
+#   “All Galleries” overview
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/galleries")
 def galleries_overview():
-    # 1) Build per-property summaries
-    gallery_summaries = []
-    for prop in Property.query.order_by(Property.name).all():
+    # 1) per-property summary
+    summary = []
+    for p in Property.query.order_by(Property.name).all():
         paths = []
         msgs = (
             Message.query
-            .filter(Message.property_id == prop.id)
+            .filter_by(property_id=p.id)
             .filter(Message.local_media_paths.isnot(None))
             .all()
         )
         for m in msgs:
             paths += m.local_media_paths.split(",")
-
-        gallery_summaries.append({
-            "property": prop,
+        summary.append({
+            "property": p,
             "count": len(paths),
             "thumb": paths[-1] if paths else None,
         })
 
-    # 2) Unsorted images
-    unsorted_paths = []
-    for m in Message.query.filter(
-        Message.property_id.is_(None),
-        Message.local_media_paths.isnot(None)
-    ).all():
-        unsorted_paths += m.local_media_paths.split(",")
+    # 2) unsorted count & thumb
+    unsorted = []
+    unmsgs = (
+        Message.query
+        .filter(Message.property_id.is_(None))
+        .filter(Message.local_media_paths.isnot(None))
+        .all()
+    )
+    for m in unmsgs:
+        unsorted += m.local_media_paths.split(",")
+    unsorted_count = len(unsorted)
+    unsorted_thumb = unsorted[-1] if unsorted else None
 
-    # 3) Recent images (20 most recent)
-    recent_paths = []
-    recent_msgs = (
+    # 3) recent images
+    recent = []
+    rec_msgs = (
         Message.query
         .filter(Message.local_media_paths.isnot(None))
         .order_by(Message.timestamp.desc())
         .limit(20)
         .all()
     )
-    for m in recent_msgs:
-        recent_paths += m.local_media_paths.split(",")
+    for m in rec_msgs:
+        recent += m.local_media_paths.split(",")
 
     return render_template(
         "galleries_overview.html",
-        gallery_summaries=gallery_summaries,
-        unsorted_count=len(unsorted_paths),
-        unsorted_thumb=(unsorted_paths[-1] if unsorted_paths else None),
-        recent_images=recent_paths[:20],
+        gallery_summaries=summary,
+        unsorted_count=unsorted_count,
+        unsorted_thumb=unsorted_thumb,
+        recent_images=recent,
         current_year=datetime.utcnow().year,
     )
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  Debug URL Map on Startup
-# ═════════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
+#   Health check
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/ping")
+def ping_route():
+    return "Pong!", 200
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+#   Debug URL map
+# ──────────────────────────────────────────────────────────────────────────────
 with app.app_context():
-    print("\n--- Registered URL Endpoints ---")
+    print("\n--- URL MAP ---")
     for rule in sorted(app.url_map.iter_rules(), key=lambda r: r.endpoint):
-        methods = ",".join(
-            sorted(m for m in rule.methods if m not in ("HEAD", "OPTIONS"))
-        )
-        print(f"Endpoint: {rule.endpoint:<30} Methods: {methods:<20} Rule: {rule}")
-    print("--- End Registered URL Endpoints ---\n")
+        methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
+        print(f"{rule.endpoint:25} {methods:15} {rule.rule}")
+    print("--- END URL MAP ---\n")
 
-# --- End of main.py ---
+
+# Uncomment for local debugging:
+# if __name__ == "__main__":
+#     app.run(debug=True, host="0.0.0.0", port=8080)
