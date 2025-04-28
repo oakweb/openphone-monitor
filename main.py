@@ -925,9 +925,20 @@ def galleries_overview():
 def gallery_view():
     all_image_items_list = [] # List of dicts {path, message_id, index, property_name, timestamp}
     error_message = None
-    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
+    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Get upload dir path
 
     try:
+        # *** DEBUG: List directory contents at the start of the request ***
+        print(f"--- [Gallery View /gallery] ---")
+        try:
+            print(f"DEBUG: Checking upload directory: {upload_dir}")
+            current_files = os.listdir(upload_dir)
+            print(f"DEBUG: Files currently in upload dir ({len(current_files)}): {current_files}")
+        except Exception as list_err:
+            print(f"DEBUG: Error listing upload directory: {list_err}")
+        # *** END DEBUG ***
+
+
         # 1️⃣ Get all messages that have non-empty media paths, eager load property info
         all_msgs_with_media = (
             Message.query
@@ -939,6 +950,7 @@ def gallery_view():
             # .paginate(page=request.args.get('page', 1, type=int), per_page=50)
             .all() # Remove .all() if using pagination
         )
+        print(f"DEBUG: Found {len(all_msgs_with_media)} messages with media paths in DB.")
 
         # 2️⃣ Extract all valid paths from these messages
         for msg in all_msgs_with_media: # Adjust loop if using pagination (iterate over items)
@@ -948,7 +960,13 @@ def gallery_view():
                  # Construct the full absolute path using the app's static folder and the relative path from DB
                  full_check_path = os.path.join(current_app.static_folder, relative_path)
 
-                 if os.path.isfile(full_check_path):
+                 # *** DEBUG: Print check path and result ***
+                 print(f"   DEBUG: Checking for msg {msg.id}, path '{relative_path}' at '{full_check_path}'...")
+                 file_exists = os.path.isfile(full_check_path)
+                 print(f"   DEBUG: os.path.isfile result: {file_exists}")
+                 # *** END DEBUG ***
+
+                 if file_exists:
                      # Add dict with details to the list
                      all_image_items_list.append({
                          "path": relative_path, # Relative path for URL generation in template
@@ -959,7 +977,8 @@ def gallery_view():
                      })
                  else:
                      # Log warning for missing files using the checked path
-                     print(f"Warning (Combined Gallery): File path '{relative_path}' in message {msg.id} not found at checked path '{full_check_path}'.")
+                     # This log should match the previous warnings if the check is still failing
+                     print(f"   Warning (Combined Gallery): File path '{relative_path}' in message {msg.id} not found at checked path '{full_check_path}'.")
 
 
     except Exception as ex:
@@ -968,6 +987,8 @@ def gallery_view():
          error_message = f"Error loading combined media gallery: {ex}"
          flash(error_message, "danger")
 
+    print(f"DEBUG: Added {len(all_image_items_list)} items to be rendered.")
+    print(f"--- [End Gallery View /gallery] ---")
     # Render the generic gallery template
     return render_template(
         "gallery.html", # Use the existing generic gallery template
