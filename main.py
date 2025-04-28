@@ -56,13 +56,15 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
 # Define the static folder explicitly (usually 'static' by default)
-app.static_folder = 'static'
+# Ensure it's an absolute path within the container context if needed
+app.static_folder = os.path.join(app.root_path, 'static') # More robust way to define static folder
 # Ensure the upload directory exists within the static folder
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
 # Create the directory on app startup if it doesn't exist
 # This helps ensure the target exists before the first request
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+print(f"ℹ️ Configured UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}") # Log the final path
 
 
 # initialize extensions & webhook blueprint
@@ -234,22 +236,24 @@ def delete_media_for_message(message_id, file_index): # Renamed function for cla
 
     # Validate the provided file index
     if 0 <= file_index < len(media_paths):
-        relative_path_to_delete = media_paths[file_index]
-        # Construct the full path to the file within the static folder
-        # Use current_app context for robustness
-        upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
-        full_file_path = os.path.join(upload_dir, os.path.basename(relative_path_to_delete)) # Use basename for safety
+        relative_path_to_delete = media_paths[file_index] # e.g., "uploads/filename.jpg"
+        # Construct the full absolute path to the file on the server's filesystem
+        # Use current_app.static_folder which should be the absolute path to /app/static
+        full_file_path = os.path.join(current_app.static_folder, relative_path_to_delete)
 
-        # Basic security check: ensure the path is within the intended upload folder
-        if not os.path.abspath(full_file_path).startswith(os.path.abspath(upload_dir)):
-             flash("Invalid file path specified (attempt to access outside upload folder).", "danger")
+        # Basic security check: ensure the path is within the static folder
+        # Use os.path.normpath to handle potential path separators consistently
+        if not os.path.normpath(full_file_path).startswith(os.path.normpath(current_app.static_folder)):
+             flash("Invalid file path specified (attempt to access outside static folder).", "danger")
              return redirect(redirect_url)
 
-        # Check if the file exists on the filesystem
+        # Check if the file exists on the filesystem using the constructed absolute path
+        print(f"ℹ️ [delete-media] Checking for file existence at: {full_file_path}")
         if os.path.exists(full_file_path):
             try:
                 # Attempt to delete the file from the filesystem
                 os.remove(full_file_path)
+                print(f"✅ [delete-media] Successfully deleted file: {full_file_path}")
                 flash(f"Successfully deleted media file: {os.path.basename(relative_path_to_delete)}.", "success")
 
                 # If file deletion is successful, remove the path from the list
@@ -258,22 +262,28 @@ def delete_media_for_message(message_id, file_index): # Renamed function for cla
                 # Set to None if the list becomes empty
                 message.local_media_paths = ','.join(media_paths) if media_paths else None
                 db.session.commit() # Commit the change to the database
+                print(f"✅ [delete-media] Updated database for message {message_id}")
 
             except OSError as e:
                 # Handle potential OS errors during file deletion (e.g., permissions)
+                print(f"❌ [delete-media] OS error deleting file {full_file_path}: {e}")
                 flash(f"Error deleting file from disk: {e}", "danger")
                 db.session.rollback() # Rollback DB changes if file deletion failed
             except Exception as e:
                  # Handle any other unexpected errors during deletion
+                 print(f"❌ [delete-media] Unexpected error deleting file {full_file_path}: {e}")
                  flash(f"An unexpected error occurred during deletion: {e}", "danger")
                  db.session.rollback()
         else:
             # If the file doesn't exist on disk, inform the user but still update the DB record
+            print(f"⚠️ [delete-media] File not found on disk at {full_file_path}, but removing from DB record.")
             flash(f"Media file not found on disk: {os.path.basename(relative_path_to_delete)}. Removing from database record.", "warning")
             # Remove the path from the list even if the file was already gone
             media_paths.pop(file_index)
             message.local_media_paths = ','.join(media_paths) if media_paths else None
             db.session.commit() # Commit the DB change
+            print(f"✅ [delete-media] Updated database for message {message_id} (file was already missing).")
+
 
     else:
         # If the provided index is out of bounds
@@ -697,7 +707,7 @@ def unsorted_gallery():
     unsorted_items_list = [] # List to hold dicts {message, path, index}
     properties_list = [] # List for the property assignment dropdown
     error_message = None
-    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
 
 
     try:
@@ -715,20 +725,21 @@ def unsorted_gallery():
         for msg in msgs_with_unsorted_media:
             # Split the comma-separated string, strip whitespace, and filter out empty strings
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-            for idx, relative_path in enumerate(paths):
-                 # Crucially, check if the file *actually exists* in the static folder
-                 # Use basename for constructing the check path for safety
-                 full_path = os.path.join(upload_dir, os.path.basename(relative_path))
-                 if os.path.isfile(full_path):
+            for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
+                 # *** REVISED CHECK ***
+                 # Construct the full absolute path using the app's static folder and the relative path from DB
+                 full_check_path = os.path.join(current_app.static_folder, relative_path)
+
+                 if os.path.isfile(full_check_path):
                      # If the file exists, add its info to the list for the template
                      unsorted_items_list.append({
                          "message": msg, # Pass the whole message object for context
-                         "path": relative_path, # Relative path for URL generation
+                         "path": relative_path, # Relative path for URL generation in template
                          "index": idx # Index needed for the delete URL
                      })
                  else:
-                     # Log a warning if a path exists in DB but not on disk
-                     print(f"Warning (Unsorted Gallery): File path '{relative_path}' listed in DB for message {msg.id} not found at '{full_path}'")
+                     # Log a warning if a path exists in DB but not on disk using the checked path
+                     print(f"Warning (Unsorted Gallery): File path '{relative_path}' listed in DB for message {msg.id} not found at checked path '{full_check_path}'")
 
         # 3️⃣ Fetch the list of properties for the assignment dropdown
         properties_list = Property.query.order_by(Property.name).all()
@@ -759,7 +770,7 @@ def gallery_for_property(property_id):
     prop = Property.query.get_or_404(property_id)
     image_items_list = [] # List to store dicts: {path, message_id, index}
     error_message = None
-    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
 
     try:
         # 1️⃣ Query messages associated with this specific property_id
@@ -777,20 +788,21 @@ def gallery_for_property(property_id):
         for msg in msgs_for_property:
             # Split paths, strip whitespace, remove empty strings
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-            for idx, relative_path in enumerate(paths):
-                 # Check if the file actually exists on disk
-                 # Use basename for constructing the check path for safety
-                 full_path = os.path.join(upload_dir, os.path.basename(relative_path))
-                 if os.path.isfile(full_path):
+            for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
+                 # *** REVISED CHECK ***
+                 # Construct the full absolute path using the app's static folder and the relative path from DB
+                 full_check_path = os.path.join(current_app.static_folder, relative_path)
+
+                 if os.path.isfile(full_check_path):
                      # Add dict to list if file exists
                      image_items_list.append({
-                         "path": relative_path, # Path for image source URL
+                         "path": relative_path, # Path for image source URL in template
                          "message_id": msg.id, # ID of the message this image belongs to
                          "index": idx # Index of this image within the message's media list
                      })
                  else:
-                      # Log warning if DB path doesn't match a file
-                      print(f"Warning (Property Gallery {property_id}): File path '{relative_path}' in message {msg.id} not found at '{full_path}'.")
+                      # Log warning if DB path doesn't match a file using the checked path
+                      print(f"Warning (Property Gallery {property_id}): File path '{relative_path}' in message {msg.id} not found at checked path '{full_check_path}'.")
 
     except Exception as ex:
          # Handle errors during DB query or file checking
@@ -798,7 +810,6 @@ def gallery_for_property(property_id):
          error_message = f"Error loading gallery for property '{prop.name}': {ex}"
          flash(error_message, "danger")
 
-    # *** TEMPLATE FIX: Use gallery.html instead of gallery_property.html ***
     # Render the generic gallery template, passing the filtered image items
     return render_template(
         "gallery.html", # Use the existing generic gallery template
@@ -817,7 +828,7 @@ def gallery_for_property(property_id):
 def galleries_overview():
     gallery_summaries_list = []
     error_message = None
-    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
 
     try:
         # Get all properties, ordered by name
@@ -848,9 +859,11 @@ def galleries_overview():
                     # Split paths, strip whitespace, remove empty strings
                     potential_thumbs = [p.strip() for p in latest_message_with_media.local_media_paths.split(',') if p.strip()]
                     # Iterate through paths and use the first one that corresponds to an existing file
-                    for thumb_path in potential_thumbs:
-                         # Use basename for constructing the check path for safety
-                         if os.path.isfile(os.path.join(upload_dir, os.path.basename(thumb_path))):
+                    for thumb_path in potential_thumbs: # thumb_path is like "uploads/filename.jpg"
+                         # *** REVISED CHECK ***
+                         # Construct the full absolute path using the app's static folder and the relative path from DB
+                         full_check_path = os.path.join(current_app.static_folder, thumb_path)
+                         if os.path.isfile(full_check_path):
                               thumbnail_relative_path = thumb_path
                               break # Stop after finding the first valid thumbnail
 
@@ -880,10 +893,12 @@ def galleries_overview():
          # Iterate and count existing files
          for msg in unsorted_msgs_query:
               paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-              for p in paths:
+              for p in paths: # p is like "uploads/filename.jpg"
+                  # *** REVISED CHECK ***
+                  # Construct the full absolute path using the app's static folder and the relative path from DB
+                  full_check_path = os.path.join(current_app.static_folder, p)
                   # Increment count only if the file exists on disk
-                  # Use basename for constructing the check path for safety
-                  if os.path.isfile(os.path.join(upload_dir, os.path.basename(p))):
+                  if os.path.isfile(full_check_path):
                       unsorted_image_count += 1
     except Exception as ex:
         # Log warning if counting unsorted images fails, but don't block the page
@@ -910,7 +925,7 @@ def galleries_overview():
 def gallery_view():
     all_image_items_list = [] # List of dicts {path, message_id, index, property_name, timestamp}
     error_message = None
-    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
 
     try:
         # 1️⃣ Get all messages that have non-empty media paths, eager load property info
@@ -928,22 +943,23 @@ def gallery_view():
         # 2️⃣ Extract all valid paths from these messages
         for msg in all_msgs_with_media: # Adjust loop if using pagination (iterate over items)
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-            for idx, relative_path in enumerate(paths):
-                 # Check if the file exists on disk
-                 # Use basename for constructing the check path for safety
-                 full_path = os.path.join(upload_dir, os.path.basename(relative_path))
-                 if os.path.isfile(full_path):
+            for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
+                 # *** REVISED CHECK ***
+                 # Construct the full absolute path using the app's static folder and the relative path from DB
+                 full_check_path = os.path.join(current_app.static_folder, relative_path)
+
+                 if os.path.isfile(full_check_path):
                      # Add dict with details to the list
                      all_image_items_list.append({
-                         "path": relative_path,
+                         "path": relative_path, # Relative path for URL generation in template
                          "message_id": msg.id,
                          "index": idx,
                          "property_name": msg.property.name if msg.property else "Unsorted", # Show property name or 'Unsorted'
                          "timestamp": msg.timestamp # Include timestamp for potential display/sorting in template
                      })
                  else:
-                     # Log warning for missing files
-                     print(f"Warning (Combined Gallery): File path '{relative_path}' in message {msg.id} not found at '{full_path}'.")
+                     # Log warning for missing files using the checked path
+                     print(f"Warning (Combined Gallery): File path '{relative_path}' in message {msg.id} not found at checked path '{full_check_path}'.")
 
 
     except Exception as ex:
@@ -952,7 +968,6 @@ def gallery_view():
          error_message = f"Error loading combined media gallery: {ex}"
          flash(error_message, "danger")
 
-    # *** TEMPLATE FIX: Use gallery.html instead of gallery_combined.html ***
     # Render the generic gallery template
     return render_template(
         "gallery.html", # Use the existing generic gallery template
@@ -998,7 +1013,7 @@ def list_uploads():
              return jsonify({"error": "Upload directory not found.", "path": upload_dir}), 404
 
         files = os.listdir(upload_dir)
-        print(f"✅ [list-uploads] Found {len(files)} items: {files}")
+        print(f"✅ [list-uploads] Found {len(files)} items (raw): {files}")
         # Optionally, add file sizes or modification times
         file_details = []
         for f in files:
@@ -1011,6 +1026,8 @@ def list_uploads():
                          "size_bytes": stat_result.st_size,
                          "modified_utc": datetime.utcfromtimestamp(stat_result.st_mtime).isoformat() + "Z"
                      })
+                # else: # Optionally log directories found
+                #      print(f"ℹ️ [list-uploads] Found directory, skipping: {f}")
             except Exception as stat_err:
                  print(f"⚠️ [list-uploads] Error stating file {f}: {stat_err}")
                  file_details.append({"name": f, "error": str(stat_err)})
