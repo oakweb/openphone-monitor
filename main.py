@@ -1076,19 +1076,28 @@ def list_uploads():
 def clear_contacts_debug():
     """Temporary route to clear all contacts from the database."""
     print("--- [clear-contacts-debug] Route accessed ---")
+    # *** Define a dummy phone number key that won't conflict ***
+    # Ensure this value is NOT a primary key in your contacts table if you add it there.
+    # Using '0000000000' might be okay if you never have that as a real contact key.
+    # Or use a more specific placeholder like 'UNKNOWN_CONTACT' if your column allows text.
+    # IMPORTANT: Ensure Message.phone_number column can store this value (VARCHAR).
+    dummy_phone_key = '0000000000' # Placeholder key
+
     try:
         # 1. Get all phone numbers currently in the contacts table
         contact_keys = [c.phone_number for c in Contact.query.all()]
         print(f"ℹ️ [clear-contacts-debug] Found {len(contact_keys)} contact keys to process.")
+        update_count = 0
 
         if contact_keys:
-            # 2. Update messages associated with these contacts to set phone_number to NULL
-            # Assuming Message.phone_number allows NULL. If not, this needs adjustment.
+            # 2. Update messages associated with these contacts to use the dummy key
             print(f"   Updating messages referencing keys: {contact_keys}...")
+            # Use synchronize_session='fetch' to handle potential concurrent updates if needed,
+            # though 'False' is often fine for simple bulk updates.
             update_count = Message.query.filter(Message.phone_number.in_(contact_keys)).update(
-                {Message.phone_number: None}, synchronize_session=False
+                {Message.phone_number: dummy_phone_key}, synchronize_session=False
             )
-            print(f"   Updated {update_count} message records (set phone_number to NULL).")
+            print(f"   Updated {update_count} message records (set phone_number to '{dummy_phone_key}').")
         else:
             print("   No contacts found, skipping message update step.")
 
@@ -1100,7 +1109,7 @@ def clear_contacts_debug():
 
         # 4. Commit the transaction (both update and delete)
         db.session.commit()
-        message = f"Successfully cleared {num_deleted} contact(s) and updated {update_count if contact_keys else 0} message references."
+        message = f"Successfully cleared {num_deleted} contact(s) and updated {update_count} message references to use dummy key '{dummy_phone_key}'."
         print(f"✅ [clear-contacts-debug] {message}")
         flash(message, "success") # Notify user via flash message
 
