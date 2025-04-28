@@ -17,7 +17,7 @@ from flask import (
 )
 from dotenv import load_dotenv
 load_dotenv()
-from sqlalchemy import text, func
+from sqlalchemy import text, func, exc as sqlalchemy_exc # Import sqlalchemy exceptions
 import openai
 
 
@@ -1076,40 +1076,55 @@ def list_uploads():
 def clear_contacts_debug():
     """Temporary route to clear all contacts from the database."""
     print("--- [clear-contacts-debug] Route accessed ---")
-    # *** Define a dummy phone number key that won't conflict ***
-    # Ensure this value is NOT a primary key in your contacts table if you add it there.
-    # Using '0000000000' might be okay if you never have that as a real contact key.
-    # Or use a more specific placeholder like 'UNKNOWN_CONTACT' if your column allows text.
-    # IMPORTANT: Ensure Message.phone_number column can store this value (VARCHAR).
     dummy_phone_key = '0000000000' # Placeholder key
+    dummy_contact_name = 'Deleted Reference'
 
     try:
-        # 1. Get all phone numbers currently in the contacts table
-        contact_keys = [c.phone_number for c in Contact.query.all()]
-        print(f"ℹ️ [clear-contacts-debug] Found {len(contact_keys)} contact keys to process.")
+        # 0. Ensure the dummy contact exists
+        dummy_contact = Contact.query.get(dummy_phone_key)
+        if not dummy_contact:
+            print(f"   Creating dummy contact: {dummy_phone_key} / {dummy_contact_name}")
+            dummy_contact = Contact(phone_number=dummy_phone_key, contact_name=dummy_contact_name)
+            db.session.add(dummy_contact)
+            # Need to commit here so the foreign key constraint is satisfied during the update
+            try:
+                db.session.commit()
+                print("   Dummy contact created/committed.")
+            except sqlalchemy_exc.IntegrityError:
+                 # Handle rare case where another process created it concurrently
+                 db.session.rollback()
+                 print("   Dummy contact likely created concurrently, proceeding.")
+            except Exception as e_dummy:
+                 db.session.rollback()
+                 print(f"   ❌ Error creating dummy contact: {e_dummy}")
+                 raise # Re-raise the exception to prevent proceeding
+
+        # 1. Get all *real* phone numbers currently in the contacts table
+        # Exclude the dummy key itself from the list to be deleted/updated
+        contact_keys = [c.phone_number for c in Contact.query.filter(Contact.phone_number != dummy_phone_key).all()]
+        print(f"ℹ️ [clear-contacts-debug] Found {len(contact_keys)} real contact keys to process.")
         update_count = 0
 
         if contact_keys:
-            # 2. Update messages associated with these contacts to use the dummy key
+            # 2. Update messages associated with these *real* contacts to use the dummy key
             print(f"   Updating messages referencing keys: {contact_keys}...")
-            # Use synchronize_session='fetch' to handle potential concurrent updates if needed,
-            # though 'False' is often fine for simple bulk updates.
             update_count = Message.query.filter(Message.phone_number.in_(contact_keys)).update(
                 {Message.phone_number: dummy_phone_key}, synchronize_session=False
             )
             print(f"   Updated {update_count} message records (set phone_number to '{dummy_phone_key}').")
         else:
-            print("   No contacts found, skipping message update step.")
+            print("   No real contacts found, skipping message update step.")
 
 
-        # 3. Delete all rows from the Contact table
-        print("   Deleting contacts...")
-        num_deleted = db.session.query(Contact).delete()
-        print(f"   Deleted {num_deleted} contact records.")
+        # 3. Delete all *real* rows from the Contact table
+        print("   Deleting real contacts...")
+        # Filter again to ensure we don't delete the dummy contact
+        num_deleted = db.session.query(Contact).filter(Contact.phone_number != dummy_phone_key).delete()
+        print(f"   Deleted {num_deleted} real contact records.")
 
-        # 4. Commit the transaction (both update and delete)
+        # 4. Commit the transaction (message updates and real contact deletions)
         db.session.commit()
-        message = f"Successfully cleared {num_deleted} contact(s) and updated {update_count} message references to use dummy key '{dummy_phone_key}'."
+        message = f"Successfully cleared {num_deleted} real contact(s) and updated {update_count} message references to use dummy key '{dummy_phone_key}'."
         print(f"✅ [clear-contacts-debug] {message}")
         flash(message, "success") # Notify user via flash message
 
