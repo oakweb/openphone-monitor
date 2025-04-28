@@ -386,14 +386,14 @@ def assign_property():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Contacts Management (SAFER DELETE LOGIC)
+#  Contacts Management (SAFER DELETE + EXPLICIT FLUSH)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
     """Manages contacts: add, delete, list known, list recent unknown."""
     current_year = datetime.utcnow().year
     error_message = None
-    dummy_phone_key = '0000000000' # Define dummy key for use in delete
+    dummy_phone_key = '0000000000'
 
     # --- POST Request Handling ---
     if request.method == "POST":
@@ -401,157 +401,135 @@ def contacts_view():
         current_app.logger.debug(f"Contacts POST action: {action}")
         try:
             if action == "add":
-                # --- Add Contact Logic (Mostly unchanged) ---
+                # --- Add Contact Logic (Unchanged) ---
                 name = request.form.get("name", "").strip()
                 phone_key = request.form.get("phone", "").strip()
-
                 if name and phone_key:
                     if len(phone_key) != 10 or not phone_key.isdigit():
-                        flash("Invalid phone key format. Must be 10 digits.", "error")
+                        flash("Invalid phone key format (10 digits).", "error")
                     else:
                         existing = Contact.query.get(phone_key)
                         if existing:
-                            flash(f"Contact key {phone_key} already exists: '{existing.contact_name}'.", "warning")
+                            flash(f"Contact key {phone_key} already exists.", "warning")
                         else:
                             new_contact = Contact(phone_number=phone_key, contact_name=name)
                             db.session.add(new_contact)
-                            app.logger.info(f"Contact '{name}' ({phone_key}) added to session.")
-                            # Commit happens below, flash message after commit
+                            current_app.logger.info(f"Contact '{name}' added to session.")
                 else:
-                    flash("Name and Phone Number Key are required.", "error")
-                # --- End Add Contact Logic ---
+                    flash("Name and Phone Key are required.", "error")
+                # --- End Add ---
 
             elif action == "delete":
-                # --- Delete Contact Logic (REVISED) ---
+                # --- Delete Contact Logic (REVISED with FLUSH) ---
                 contact_key_to_delete = request.form.get("contact_id")
                 if not contact_key_to_delete:
                     flash("No Contact ID provided for deletion.", "error")
                 else:
                     contact_to_delete = Contact.query.get(contact_key_to_delete)
                     if not contact_to_delete:
-                        flash("Contact not found for deletion.", "error")
+                        flash("Contact not found.", "error")
                     elif contact_key_to_delete == dummy_phone_key:
-                         flash("Cannot delete the default 'Deleted Reference' contact.", "warning") # Prevent deleting dummy
+                         flash("Cannot delete the default reference contact.", "warning")
                     else:
-                        # 1. Ensure dummy contact exists (necessary fallback for messages)
+                        # 1. Ensure dummy contact exists
                         dummy_contact = db.session.get(Contact, dummy_phone_key)
                         if not dummy_contact:
-                             current_app.logger.error(f"CRITICAL: Dummy contact '{dummy_phone_key}' not found. Cannot safely delete contact '{contact_key_to_delete}'.")
-                             flash("Internal error: Default reference contact missing. Deletion aborted.", "danger")
-                             # Don't proceed with delete if dummy doesn't exist
+                             current_app.logger.error(f"CRITICAL: Dummy contact '{dummy_phone_key}' missing.")
+                             flash("Internal error: Default reference missing. Delete aborted.", "danger")
                              contact_to_delete = None # Prevent delete op below
                         else:
-                            # 2. Find associated messages BEFORE deleting the contact
-                            current_app.logger.info(f"Finding messages associated with contact key '{contact_key_to_delete}' to reassign to '{dummy_phone_key}'...")
+                            # 2. Find and update associated messages
+                            current_app.logger.info(f"Finding messages for key '{contact_key_to_delete}' to reassign...")
                             messages_to_update = Message.query.filter_by(phone_number=contact_key_to_delete).all()
-                            update_count = 0
                             if messages_to_update:
+                                current_app.logger.info(f"   Found {len(messages_to_update)} messages. Updating phone_number to '{dummy_phone_key}'...")
                                 for msg in messages_to_update:
-                                    msg.phone_number = dummy_phone_key # Reassign to dummy key
-                                    update_count += 1
-                                current_app.logger.info(f"   Marked {update_count} messages for update in session.")
+                                    current_app.logger.debug(f"   Updating Message ID {msg.id}: Setting phone_number FROM {msg.phone_number} TO {dummy_phone_key}")
+                                    msg.phone_number = dummy_phone_key
+                                    db.session.add(msg) # Ensure it's tracked
+
+                                # *** EXPLICITLY FLUSH MESSAGE UPDATES ***
+                                try:
+                                    current_app.logger.info("   Attempting explicit flush for message updates ONLY...")
+                                    db.session.flush(objects=messages_to_update) # Try to write UPDATEs to DB now
+                                    current_app.logger.info("   Explicit flush for message updates successful.")
+                                except Exception as flush_err:
+                                    # If flush fails here, the problem IS the update itself (e.g., type mismatch)
+                                    current_app.logger.error(f"   ❌ Error during explicit flush of message updates: {flush_err}", exc_info=True)
+                                    db.session.rollback() # Rollback immediately
+                                    flash(f"DB error updating message refs: {flush_err}", "danger")
+                                    # Stop further processing for this request
+                                    return redirect(url_for('contacts_view'))
+                                # *** END FLUSH ***
                             else:
-                                current_app.logger.info("   No associated messages found to update.")
+                                current_app.logger.info("   No associated messages found.")
 
-                            # 3. Mark the actual contact for deletion
+                            # 3. Mark the contact for deletion (only if message update/flush succeeded)
+                            current_app.logger.info(f"Marking Contact '{contact_to_delete.contact_name}' for deletion.")
                             db.session.delete(contact_to_delete)
-                            current_app.logger.info(f"Contact '{contact_to_delete.contact_name}' ({contact_key_to_delete}) marked for deletion.")
-                            # Flash message moved after successful commit below
+                # --- End Delete ---
 
-                # --- End Delete Contact Logic ---
-
-
-            # --->>> DIAGNOSTIC LOGGING BEFORE COMMIT <<<---
-            # (Keep this logging from previous step to monitor session state)
-            current_app.logger.debug(f"--- Checking session BEFORE commit in contacts POST (Action: {action}) ---")
+            # --->>> DIAGNOSTIC LOGGING BEFORE FINAL COMMIT <<<---
+            # (Removed the line causing AttributeError)
+            current_app.logger.debug(f"--- Checking session BEFORE final commit (Action: {action}) ---")
             current_app.logger.debug(f"Session is modified: {db.session.is_modified}")
-            current_app.logger.debug(f"Session new objects: {db.session.new}")
-            current_app.logger.debug(f"Session dirty objects: {db.session.dirty}") # Check if messages are dirty now
-            current_app.logger.debug(f"Session deleted objects: {db.session.deleted}") # Should contain the contact being deleted
+            current_app.logger.debug(f"Session new: {db.session.new}")
+            current_app.logger.debug(f"Session dirty: {db.session.dirty}") # Should NOT contain messages now if flush worked
+            current_app.logger.debug(f"Session deleted: {db.session.deleted}")
 
             msg_153_in_session = db.session.get(Message, 153)
             if msg_153_in_session:
-                 # ... (keep the detailed logging for msg 153 as before) ...
-                 current_app.logger.warning(f"Message 153 FOUND in session before commit.")
-                 msg_153_state = attributes.instance_state(msg_153_in_session)
+                 current_app.logger.warning(f"Message 153 is in session.")
                  is_dirty = msg_153_in_session in db.session.dirty
                  current_phone_attr = getattr(msg_153_in_session, 'phone_number', 'ATTRIBUTE_MISSING')
-                 history = msg_153_state.history.get('phone_number', None)
-                 history_info = f"Added: {history.added}, Deleted: {history.deleted}" if history else "NO_HISTORY"
-
                  current_app.logger.warning(f"  Message 153 is dirty: {is_dirty}")
                  current_app.logger.warning(f"  Message 153 current phone_number attribute: {current_phone_attr}")
-                 current_app.logger.warning(f"  Message 153 history for phone_number: {history_info}")
-            else:
-                 current_app.logger.debug("Message 153 NOT found in session identity map before commit.")
             # --->>> END DIAGNOSTIC LOGGING <<<---
 
-
-            # --- Attempt Commit ---
-            current_app.logger.info("Attempting db.session.commit()...")
-            db.session.commit() # Commit message updates AND contact deletion/addition
-            current_app.logger.info("✅ db.session.commit() successful.")
+            # --- Attempt Final Commit ---
+            current_app.logger.info("Attempting final db.session.commit()...")
+            db.session.commit() # Should now only commit contact add/delete
+            current_app.logger.info("✅ Final db.session.commit() successful.")
 
             # Flash success messages AFTER commit worked
-            if action == "add" and 'new_contact' in locals() and new_contact in db.session:
-                 flash(f"Contact '{new_contact.contact_name}' added successfully.", "success")
-            elif action == "delete" and 'contact_to_delete' in locals() and contact_to_delete: # Ensure delete was attempted
-                 flash(f"Contact '{contact_to_delete.contact_name}' deleted successfully.", "success")
+            if action == "add" and 'new_contact' in locals() and db.session.query(Contact).get(new_contact.phone_number):
+                 flash(f"Contact '{new_contact.contact_name}' added.", "success")
+            elif action == "delete" and 'contact_to_delete' in locals() and contact_to_delete:
+                 flash(f"Contact '{contact_to_delete.contact_name}' deleted.", "success")
 
             return redirect(url_for("contacts_view")) # Redirect on success
 
+        # --- Exception Handling (Unchanged) ---
         except sqlalchemy_exc.IntegrityError as ie:
              db.session.rollback()
-             app.logger.error(f"❌ IntegrityError during contact POST commit: {ie}", exc_info=True) # Add exc_info
-             app.logger.error(f"   SQL statement: {getattr(ie, 'statement', 'N/A')}")
-             app.logger.error(f"   Parameters: {getattr(ie, 'params', 'N/A')}")
-             # Check if it's the same NULL violation
-             if "violates not-null constraint" in str(ie) and "phone_number" in str(ie):
-                  flash(f"Database Error: Failed to update message references before deleting contact. Please check logs.", "danger")
-             else: # Other integrity error (e.g., duplicate key on add)
-                  flash(f"Database integrity error: {ie}", "error")
-
+             app.logger.error(f"❌ IntegrityError during contact POST commit: {ie}", exc_info=True)
+             app.logger.error(f"   SQL: {getattr(ie, 'statement', 'N/A')}")
+             app.logger.error(f"   Params: {getattr(ie, 'params', 'N/A')}")
+             flash(f"Database integrity error: {ie}", "error")
         except ValueError:
             db.session.rollback()
-            flash("Invalid ID format provided.", "error")
+            flash("Invalid ID format.", "error")
             app.logger.warning("ValueError during contact POST", exc_info=True)
         except Exception as ex:
              db.session.rollback()
              app.logger.error(f"❌ Unexpected error during contact POST: {ex}", exc_info=True)
              flash(f"An error occurred: {ex}", "danger")
 
-        # --- Failed POST: Redirect back ---
-        return redirect(url_for("contacts_view"))
+        return redirect(url_for("contacts_view")) # Redirect on failure
 
-
-    # --- GET Request Handling ---
-    # (Keep the existing GET logic with the window function query - assumed OK)
+    # --- GET Request Handling (Unchanged - Assumed OK) ---
+    # (Keep the existing GET logic)
     known_contacts_list = []
     unknown_recent_numbers = []
     try:
-        # 1. Fetch known contacts
         known_contacts_list = Contact.query.order_by(Contact.contact_name).all()
         known_numbers_set = {c.phone_number for c in known_contacts_list}
-        app.logger.debug(f"Fetched {len(known_contacts_list)} known contacts for GET.")
-
-        # 2. Fetch recent unknown numbers (using window function)
-        # Ensure imports are at top: from sqlalchemy import select, func, over
-        app.logger.debug("Querying for recent distinct phone numbers (GET)...")
-        row_num_subq = select(
-            Message.phone_number, Message.timestamp,
-            func.row_number().over(
-                partition_by=Message.phone_number, order_by=Message.timestamp.desc()
-            ).label('rn')
-        ).subquery('ranked_messages')
-        latest_distinct_numbers_query = select(row_num_subq.c.phone_number)\
-            .where(row_num_subq.c.rn == 1)\
-            .order_by(row_num_subq.c.timestamp.desc())\
-            .limit(50)
+        # ... (rest of GET logic with window function) ...
+        from sqlalchemy import select, func, over
+        row_num_subq = select(Message.phone_number, Message.timestamp, func.row_number().over(partition_by=Message.phone_number, order_by=Message.timestamp.desc()).label('rn')).subquery('ranked_messages')
+        latest_distinct_numbers_query = select(row_num_subq.c.phone_number).where(row_num_subq.c.rn == 1).order_by(row_num_subq.c.timestamp.desc()).limit(50)
         recent_distinct_numbers_result = db.session.execute(latest_distinct_numbers_query).all()
         recent_distinct_numbers = [num for (num,) in recent_distinct_numbers_result]
-        app.logger.debug(f"Fetched {len(recent_distinct_numbers)} latest distinct numbers.")
-
-        # 3. Filter to get top 10 unknown
         count = 0
         seen_unknown = set()
         for number in recent_distinct_numbers:
@@ -560,15 +538,11 @@ def contacts_view():
                 seen_unknown.add(number)
                 count += 1
                 if count >= 10: break
-        app.logger.debug(f"Found {len(unknown_recent_numbers)} unique unknown recent numbers.")
-
     except Exception as ex:
         db.session.rollback()
         app.logger.error(f"❌ Error loading contacts page data: {ex}", exc_info=True)
         error_message = f"Error loading contacts page data: {ex}"
         flash(error_message, "danger")
-
-    # Render template
     return render_template(
         "contacts.html",
         known_contacts=known_contacts_list,
@@ -576,6 +550,7 @@ def contacts_view():
         error=error_message,
         current_year=current_year,
     )
+
 
 # ... (rest of main.py, including clear_contacts_debug with session expiration) ...
 
