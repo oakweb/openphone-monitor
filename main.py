@@ -767,6 +767,7 @@ def gallery_for_property(property_id):
     image_items_list = [] # List to store dicts: {path, message_id, index}
     error_message = None
     # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
+    print(f"--- [Gallery View /gallery/{property_id}] ---") # DEBUG Start
 
     try:
         # 1️⃣ Query messages associated with this specific property_id
@@ -779,16 +780,24 @@ def gallery_for_property(property_id):
             .order_by(Message.timestamp.desc()) # Show newest first
             .all()
         )
+        # *** DEBUG: Log number of messages found ***
+        print(f"DEBUG: Found {len(msgs_for_property)} messages for property ID {property_id} with media paths.")
 
         # 2️⃣ Extract valid image paths and associate with message/index
         for msg in msgs_for_property:
+            # *** DEBUG: Log the raw paths string ***
+            print(f"   DEBUG: Processing message ID {msg.id}, Paths: '{msg.local_media_paths}'")
             # Split paths, strip whitespace, remove empty strings
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
+            # *** DEBUG: Log the split paths ***
+            print(f"      DEBUG: Split paths: {paths}")
             for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
 
                  # *** REMOVED os.path.isfile CHECK ***
                  # Assume file exists if path is in DB
 
+                 # *** DEBUG: Log path being added ***
+                 print(f"         DEBUG: Adding path to list: '{relative_path}' (Index: {idx})")
                  # Add dict to list
                  image_items_list.append({
                      "path": relative_path, # Path for image source URL in template
@@ -803,6 +812,9 @@ def gallery_for_property(property_id):
          error_message = f"Error loading gallery for property '{prop.name}': {ex}"
          flash(error_message, "danger")
 
+    # *** DEBUG: Log final list size ***
+    print(f"DEBUG: Final image_items_list size: {len(image_items_list)}")
+    print(f"--- [End Gallery View /gallery/{property_id}] ---") # DEBUG End
     # Render the generic gallery template, passing the filtered image items
     return render_template(
         "gallery.html", # Use the existing generic gallery template
