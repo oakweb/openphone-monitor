@@ -143,17 +143,10 @@
   <div class="card w-100">
     <ul id="messagesList" class="list-group list-group-flush">
       {% if messages %}
-        {% for msg in messages %}
+        {% for msg in messages %} {# <<< MAIN LOOP START >>> #}
           {# Determine if the contact is known based on the passed set #}
           {% set is_known = msg.phone_number in known_contact_phones %}
-          {% if messages %}
-        {% for msg in messages %}
-          {# Determine if the contact is known based on the passed set #}
-          {% set is_known = msg.phone_number in known_contact_phones %}
-          <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}" id="msg-{{ msg.id }}"> {# Added ID anchor #}
-            {# --- Message Header --- #}
-            <div class="message-header">
-          <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}" id="msg-{{ msg.id }}"> {# Added ID anchor #}
+          <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}" id="msg-{{ msg.id }}">
             {# --- Message Header --- #}
             <div class="message-header">
               <div>
@@ -190,7 +183,7 @@
                               onerror="this.style.display='none'; console.error('Failed to load image: {{ trimmed_path }}');">
                        </a>
                     {% endif %}
-                  {% endfor %}
+                  {% endfor %} {# Closes inner media loop #}
                 </div>
               {% elif msg.media_urls %}
                  {# Fallback to show original URLs if local paths aren't available #}
@@ -198,10 +191,10 @@
                      <small>Media URLs (not downloaded):
                          {% for url in msg.media_urls.split(',') %}
                            <a href="{{ url }}" target="_blank">{{ url[:50] }}...</a>{% if not loop.last %}, {% endif %}
-                         {% endfor %}
+                         {% endfor %} {# Closes inner URL loop #}
                      </small>
                  </div>
-              {% endif %}
+              {% endif %} {# Ends media display if #}
             </div>
 
             {# --- Add Contact Form (Conditional) --- #}
@@ -218,7 +211,7 @@
                   </button>
                 </form>
               </div>
-            {% endif %}
+            {% endif %} {# Ends if not is_known #}
 
             {# --- Property Assignment Section --- #}
             <div class="assign-property-section">
@@ -238,7 +231,7 @@
                       {% if msg.property_id==p.id %}selected{% endif %}>
                       {{p.name}}
                     </option>
-                  {% endfor %}
+                  {% endfor %} {# Closes property loop #}
                 </select>
                 <button type="submit" class="btn btn-primary btn-sm flex-shrink-0" title="Assign/Update Property">
                   <i class="fas fa-save"></i> Assign
@@ -252,18 +245,18 @@
                       <i class="fas fa-images"></i> View Gallery ({{ msg.property.name }})
                   </a>
                 </div>
-              {% endif %}
+              {% endif %} {# Ends if msg.property #}
             </div>
-          </li>
-        {% endfor %}
+          </li> {# Closes the list item for the message #}
+        {% endfor %} {# <<< THIS IS THE IMPORTANT ENDFOR FOR THE MAIN LOOP >>> #}
       {% else %}
         <li class="list-group-item text-center text-muted p-3">
           No messages found
         </li>
-      {% endif %}
+      {% endif %} {# Ends if messages #}
     </ul>
   </div>
-{% endblock %}
+{% endblock %} {# Closes the content block #}
 
 
 {% block scripts %}
@@ -342,4 +335,4 @@
 
     });
   </script>
-{% endblock %}
+{% endblock %} {# Closes the scripts block #}
