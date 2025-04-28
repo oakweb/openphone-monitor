@@ -386,20 +386,22 @@ def assign_property():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Contacts Management (Revised for Simplicity & DIAGNOSTIC LOGGING)
+#  Contacts Management (SAFER DELETE LOGIC)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
     """Manages contacts: add, delete, list known, list recent unknown."""
     current_year = datetime.utcnow().year
     error_message = None
+    dummy_phone_key = '0000000000' # Define dummy key for use in delete
 
     # --- POST Request Handling ---
     if request.method == "POST":
         action = request.form.get("action")
-        app.logger.debug(f"Contacts POST action: {action}")
+        current_app.logger.debug(f"Contacts POST action: {action}")
         try:
             if action == "add":
+                # --- Add Contact Logic (Mostly unchanged) ---
                 name = request.form.get("name", "").strip()
                 phone_key = request.form.get("phone", "").strip()
 
@@ -414,75 +416,108 @@ def contacts_view():
                             new_contact = Contact(phone_number=phone_key, contact_name=name)
                             db.session.add(new_contact)
                             app.logger.info(f"Contact '{name}' ({phone_key}) added to session.")
-                            # Flash message moved after successful commit below
+                            # Commit happens below, flash message after commit
                 else:
                     flash("Name and Phone Number Key are required.", "error")
+                # --- End Add Contact Logic ---
 
             elif action == "delete":
+                # --- Delete Contact Logic (REVISED) ---
                 contact_key_to_delete = request.form.get("contact_id")
-                if contact_key_to_delete:
-                    contact_to_delete = Contact.query.get(contact_key_to_delete)
-                    if contact_to_delete:
-                        db.session.delete(contact_to_delete)
-                        app.logger.info(f"Contact '{contact_to_delete.contact_name}' marked for deletion.")
-                        # Flash message moved after successful commit below
-                    else:
-                        flash("Contact not found for deletion.", "error")
-                else:
+                if not contact_key_to_delete:
                     flash("No Contact ID provided for deletion.", "error")
+                else:
+                    contact_to_delete = Contact.query.get(contact_key_to_delete)
+                    if not contact_to_delete:
+                        flash("Contact not found for deletion.", "error")
+                    elif contact_key_to_delete == dummy_phone_key:
+                         flash("Cannot delete the default 'Deleted Reference' contact.", "warning") # Prevent deleting dummy
+                    else:
+                        # 1. Ensure dummy contact exists (necessary fallback for messages)
+                        dummy_contact = db.session.get(Contact, dummy_phone_key)
+                        if not dummy_contact:
+                             current_app.logger.error(f"CRITICAL: Dummy contact '{dummy_phone_key}' not found. Cannot safely delete contact '{contact_key_to_delete}'.")
+                             flash("Internal error: Default reference contact missing. Deletion aborted.", "danger")
+                             # Don't proceed with delete if dummy doesn't exist
+                             contact_to_delete = None # Prevent delete op below
+                        else:
+                            # 2. Find associated messages BEFORE deleting the contact
+                            current_app.logger.info(f"Finding messages associated with contact key '{contact_key_to_delete}' to reassign to '{dummy_phone_key}'...")
+                            messages_to_update = Message.query.filter_by(phone_number=contact_key_to_delete).all()
+                            update_count = 0
+                            if messages_to_update:
+                                for msg in messages_to_update:
+                                    msg.phone_number = dummy_phone_key # Reassign to dummy key
+                                    update_count += 1
+                                current_app.logger.info(f"   Marked {update_count} messages for update in session.")
+                            else:
+                                current_app.logger.info("   No associated messages found to update.")
+
+                            # 3. Mark the actual contact for deletion
+                            db.session.delete(contact_to_delete)
+                            current_app.logger.info(f"Contact '{contact_to_delete.contact_name}' ({contact_key_to_delete}) marked for deletion.")
+                            # Flash message moved after successful commit below
+
+                # --- End Delete Contact Logic ---
+
 
             # --->>> DIAGNOSTIC LOGGING BEFORE COMMIT <<<---
-            app.logger.debug(f"--- Checking session BEFORE commit in contacts POST (Action: {action}) ---")
-            app.logger.debug(f"Session is modified: {db.session.is_modified}")
-            app.logger.debug(f"Session new objects: {db.session.new}")
-            app.logger.debug(f"Session dirty objects: {db.session.dirty}") # Look for Message(153) here
-            app.logger.debug(f"Session deleted objects: {db.session.deleted}")
+            # (Keep this logging from previous step to monitor session state)
+            current_app.logger.debug(f"--- Checking session BEFORE commit in contacts POST (Action: {action}) ---")
+            current_app.logger.debug(f"Session is modified: {db.session.is_modified}")
+            current_app.logger.debug(f"Session new objects: {db.session.new}")
+            current_app.logger.debug(f"Session dirty objects: {db.session.dirty}") # Check if messages are dirty now
+            current_app.logger.debug(f"Session deleted objects: {db.session.deleted}") # Should contain the contact being deleted
 
-            # Explicitly check the state of Message 153 in the session identity map
-            # Use .get with a tuple key for composite primary keys if Message had them, but it uses 'id'
-            msg_153_in_session = db.session.get(Message, 153) # Simpler get by PK
+            msg_153_in_session = db.session.get(Message, 153)
             if msg_153_in_session:
-                 app.logger.warning(f"Message 153 FOUND in session before commit.")
+                 # ... (keep the detailed logging for msg 153 as before) ...
+                 current_app.logger.warning(f"Message 153 FOUND in session before commit.")
                  msg_153_state = attributes.instance_state(msg_153_in_session)
                  is_dirty = msg_153_in_session in db.session.dirty
                  current_phone_attr = getattr(msg_153_in_session, 'phone_number', 'ATTRIBUTE_MISSING')
                  history = msg_153_state.history.get('phone_number', None)
                  history_info = f"Added: {history.added}, Deleted: {history.deleted}" if history else "NO_HISTORY"
 
-                 app.logger.warning(f"  Message 153 is dirty: {is_dirty}")
-                 app.logger.warning(f"  Message 153 current phone_number attribute: {current_phone_attr}")
-                 app.logger.warning(f"  Message 153 history for phone_number: {history_info}")
+                 current_app.logger.warning(f"  Message 153 is dirty: {is_dirty}")
+                 current_app.logger.warning(f"  Message 153 current phone_number attribute: {current_phone_attr}")
+                 current_app.logger.warning(f"  Message 153 history for phone_number: {history_info}")
             else:
-                 app.logger.debug("Message 153 NOT found in session identity map before commit.")
+                 current_app.logger.debug("Message 153 NOT found in session identity map before commit.")
             # --->>> END DIAGNOSTIC LOGGING <<<---
 
+
             # --- Attempt Commit ---
-            app.logger.info("Attempting db.session.commit()...")
-            db.session.commit() # This is the line that likely triggers the error
-            app.logger.info("✅ db.session.commit() successful.")
+            current_app.logger.info("Attempting db.session.commit()...")
+            db.session.commit() # Commit message updates AND contact deletion/addition
+            current_app.logger.info("✅ db.session.commit() successful.")
 
             # Flash success messages AFTER commit worked
-            if action == "add" and 'new_contact' in locals() and new_contact in db.session: # Check if still in session
+            if action == "add" and 'new_contact' in locals() and new_contact in db.session:
                  flash(f"Contact '{new_contact.contact_name}' added successfully.", "success")
-            elif action == "delete" and 'contact_to_delete' in locals():
+            elif action == "delete" and 'contact_to_delete' in locals() and contact_to_delete: # Ensure delete was attempted
                  flash(f"Contact '{contact_to_delete.contact_name}' deleted successfully.", "success")
 
             return redirect(url_for("contacts_view")) # Redirect on success
 
         except sqlalchemy_exc.IntegrityError as ie:
              db.session.rollback()
-             app.logger.error(f"❌ IntegrityError during contact POST commit: {ie}")
+             app.logger.error(f"❌ IntegrityError during contact POST commit: {ie}", exc_info=True) # Add exc_info
              app.logger.error(f"   SQL statement: {getattr(ie, 'statement', 'N/A')}")
              app.logger.error(f"   Parameters: {getattr(ie, 'params', 'N/A')}")
-             flash(f"Database integrity error: {ie}", "error") # User friendly message
-             traceback.print_exc()
+             # Check if it's the same NULL violation
+             if "violates not-null constraint" in str(ie) and "phone_number" in str(ie):
+                  flash(f"Database Error: Failed to update message references before deleting contact. Please check logs.", "danger")
+             else: # Other integrity error (e.g., duplicate key on add)
+                  flash(f"Database integrity error: {ie}", "error")
+
         except ValueError:
-            db.session.rollback() # Rollback on ValueError too
+            db.session.rollback()
             flash("Invalid ID format provided.", "error")
+            app.logger.warning("ValueError during contact POST", exc_info=True)
         except Exception as ex:
              db.session.rollback()
-             app.logger.error(f"❌ Unexpected error during contact POST: {ex}")
-             traceback.print_exc()
+             app.logger.error(f"❌ Unexpected error during contact POST: {ex}", exc_info=True)
              flash(f"An error occurred: {ex}", "danger")
 
         # --- Failed POST: Redirect back ---
@@ -490,6 +525,7 @@ def contacts_view():
 
 
     # --- GET Request Handling ---
+    # (Keep the existing GET logic with the window function query - assumed OK)
     known_contacts_list = []
     unknown_recent_numbers = []
     try:
@@ -499,18 +535,16 @@ def contacts_view():
         app.logger.debug(f"Fetched {len(known_contacts_list)} known contacts for GET.")
 
         # 2. Fetch recent unknown numbers (using window function)
+        # Ensure imports are at top: from sqlalchemy import select, func, over
         app.logger.debug("Querying for recent distinct phone numbers (GET)...")
         row_num_subq = select(
-            Message.phone_number,
-            Message.timestamp,
+            Message.phone_number, Message.timestamp,
             func.row_number().over(
-                partition_by=Message.phone_number,
-                order_by=Message.timestamp.desc()
+                partition_by=Message.phone_number, order_by=Message.timestamp.desc()
             ).label('rn')
         ).subquery('ranked_messages')
-        latest_distinct_numbers_query = select(
-                row_num_subq.c.phone_number
-            ).where(row_num_subq.c.rn == 1)\
+        latest_distinct_numbers_query = select(row_num_subq.c.phone_number)\
+            .where(row_num_subq.c.rn == 1)\
             .order_by(row_num_subq.c.timestamp.desc())\
             .limit(50)
         recent_distinct_numbers_result = db.session.execute(latest_distinct_numbers_query).all()
@@ -525,14 +559,12 @@ def contacts_view():
                 unknown_recent_numbers.append(number)
                 seen_unknown.add(number)
                 count += 1
-                if count >= 10:
-                    break
+                if count >= 10: break
         app.logger.debug(f"Found {len(unknown_recent_numbers)} unique unknown recent numbers.")
 
     except Exception as ex:
         db.session.rollback()
-        app.logger.error(f"❌ Error loading contacts page data: {ex}")
-        traceback.print_exc()
+        app.logger.error(f"❌ Error loading contacts page data: {ex}", exc_info=True)
         error_message = f"Error loading contacts page data: {ex}"
         flash(error_message, "danger")
 
@@ -544,6 +576,8 @@ def contacts_view():
         error=error_message,
         current_year=current_year,
     )
+
+# ... (rest of main.py, including clear_contacts_debug with session expiration) ...
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Ask (OpenAI Integration) - Assuming OK, leaving as is
