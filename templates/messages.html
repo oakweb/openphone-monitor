@@ -146,6 +146,7 @@
         {% for msg in messages %} {# <<< MAIN LOOP START >>> #}
           {# Determine if the contact is known based on the passed set #}
           {% set is_known = msg.phone_number in known_contact_phones %}
+          {# <<< SECOND DEBUG LINE >>> #}
           <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}" id="msg-{{ msg.id }}">
             {# --- Message Header --- #}
             <div class="message-header">
@@ -203,6 +204,8 @@
                 <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2 align-items-center">
                   <input type="hidden" name="action" value="add"> {# Ensure action=add is sent #}
                   <input type="hidden" name="phone" value="{{ msg.phone_number }}">
+                  {# Add message SID to help redirect back #}
+                  <input type="hidden" name="message_sid" value="{{ msg.sid }}">
                   <label for="name_{{msg.id}}" class="form-label visually-hidden">Name for {{ msg.phone_number }}</label> {# Hidden label for accessibility #}
                   <input type="text" name="name" id="name_{{msg.id}}" placeholder="Enter name for this number" required
                          class="form-control form-control-sm flex-grow-1">
