@@ -726,20 +726,16 @@ def unsorted_gallery():
             # Split the comma-separated string, strip whitespace, and filter out empty strings
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
             for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
-                 # *** REVISED CHECK ***
-                 # Construct the full absolute path using the app's static folder and the relative path from DB
-                 full_check_path = os.path.join(current_app.static_folder, relative_path)
 
-                 if os.path.isfile(full_check_path):
-                     # If the file exists, add its info to the list for the template
-                     unsorted_items_list.append({
-                         "message": msg, # Pass the whole message object for context
-                         "path": relative_path, # Relative path for URL generation in template
-                         "index": idx # Index needed for the delete URL
-                     })
-                 else:
-                     # Log a warning if a path exists in DB but not on disk using the checked path
-                     print(f"Warning (Unsorted Gallery): File path '{relative_path}' listed in DB for message {msg.id} not found at checked path '{full_check_path}'")
+                 # *** REMOVED os.path.isfile CHECK ***
+                 # Assume file exists if path is in DB
+
+                 # Add its info to the list for the template
+                 unsorted_items_list.append({
+                     "message": msg, # Pass the whole message object for context
+                     "path": relative_path, # Relative path for URL generation in template
+                     "index": idx # Index needed for the delete URL
+                 })
 
         # 3️⃣ Fetch the list of properties for the assignment dropdown
         properties_list = Property.query.order_by(Property.name).all()
@@ -789,20 +785,17 @@ def gallery_for_property(property_id):
             # Split paths, strip whitespace, remove empty strings
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
             for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
-                 # *** REVISED CHECK ***
-                 # Construct the full absolute path using the app's static folder and the relative path from DB
-                 full_check_path = os.path.join(current_app.static_folder, relative_path)
 
-                 if os.path.isfile(full_check_path):
-                     # Add dict to list if file exists
-                     image_items_list.append({
-                         "path": relative_path, # Path for image source URL in template
-                         "message_id": msg.id, # ID of the message this image belongs to
-                         "index": idx # Index of this image within the message's media list
-                     })
-                 else:
-                      # Log warning if DB path doesn't match a file using the checked path
-                      print(f"Warning (Property Gallery {property_id}): File path '{relative_path}' in message {msg.id} not found at checked path '{full_check_path}'.")
+                 # *** REMOVED os.path.isfile CHECK ***
+                 # Assume file exists if path is in DB
+
+                 # Add dict to list
+                 image_items_list.append({
+                     "path": relative_path, # Path for image source URL in template
+                     "message_id": msg.id, # ID of the message this image belongs to
+                     "index": idx # Index of this image within the message's media list
+                 })
+
 
     except Exception as ex:
          # Handle errors during DB query or file checking
@@ -860,12 +853,12 @@ def galleries_overview():
                     potential_thumbs = [p.strip() for p in latest_message_with_media.local_media_paths.split(',') if p.strip()]
                     # Iterate through paths and use the first one that corresponds to an existing file
                     for thumb_path in potential_thumbs: # thumb_path is like "uploads/filename.jpg"
-                         # *** REVISED CHECK ***
-                         # Construct the full absolute path using the app's static folder and the relative path from DB
-                         full_check_path = os.path.join(current_app.static_folder, thumb_path)
-                         if os.path.isfile(full_check_path):
-                              thumbnail_relative_path = thumb_path
-                              break # Stop after finding the first valid thumbnail
+
+                         # *** REMOVED os.path.isfile CHECK ***
+                         # Assume first path exists for thumbnail if paths are present
+
+                         thumbnail_relative_path = thumb_path
+                         break # Stop after finding the first path
 
             # Append summary data for this property to the list
             gallery_summaries_list.append({
@@ -893,13 +886,9 @@ def galleries_overview():
          # Iterate and count existing files
          for msg in unsorted_msgs_query:
               paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-              for p in paths: # p is like "uploads/filename.jpg"
-                  # *** REVISED CHECK ***
-                  # Construct the full absolute path using the app's static folder and the relative path from DB
-                  full_check_path = os.path.join(current_app.static_folder, p)
-                  # Increment count only if the file exists on disk
-                  if os.path.isfile(full_check_path):
-                      unsorted_image_count += 1
+              # Count based on paths in DB, assuming they exist
+              unsorted_image_count += len(paths)
+
     except Exception as ex:
         # Log warning if counting unsorted images fails, but don't block the page
         print(f"Warning: Could not accurately count unsorted images: {ex}")
@@ -956,29 +945,18 @@ def gallery_view():
         for msg in all_msgs_with_media: # Adjust loop if using pagination (iterate over items)
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
             for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
-                 # *** REVISED CHECK ***
-                 # Construct the full absolute path using the app's static folder and the relative path from DB
-                 full_check_path = os.path.join(current_app.static_folder, relative_path)
 
-                 # *** DEBUG: Print check path and result ***
-                 print(f"   DEBUG: Checking for msg {msg.id}, path '{relative_path}' at '{full_check_path}'...")
-                 file_exists = os.path.isfile(full_check_path)
-                 print(f"   DEBUG: os.path.isfile result: {file_exists}")
-                 # *** END DEBUG ***
+                 # *** REMOVED os.path.isfile CHECK ***
+                 # Assume file exists if path is in DB
 
-                 if file_exists:
-                     # Add dict with details to the list
-                     all_image_items_list.append({
-                         "path": relative_path, # Relative path for URL generation in template
-                         "message_id": msg.id,
-                         "index": idx,
-                         "property_name": msg.property.name if msg.property else "Unsorted", # Show property name or 'Unsorted'
-                         "timestamp": msg.timestamp # Include timestamp for potential display/sorting in template
-                     })
-                 else:
-                     # Log warning for missing files using the checked path
-                     # This log should match the previous warnings if the check is still failing
-                     print(f"   Warning (Combined Gallery): File path '{relative_path}' in message {msg.id} not found at checked path '{full_check_path}'.")
+                 # Add dict with details to the list
+                 all_image_items_list.append({
+                     "path": relative_path, # Relative path for URL generation in template
+                     "message_id": msg.id,
+                     "index": idx,
+                     "property_name": msg.property.name if msg.property else "Unsorted", # Show property name or 'Unsorted'
+                     "timestamp": msg.timestamp # Include timestamp for potential display/sorting in template
+                 })
 
 
     except Exception as ex:
