@@ -513,7 +513,16 @@ def contacts_view():
             # Redirect back to the contacts page after processing the POST request
             # Redirect to messages page if adding from there
             if action == "add" and request.referrer and '/messages' in request.referrer:
-                 return redirect(url_for('messages_view'))
+                 # Add anchor to jump back to the message if possible
+                 message_sid = request.form.get("message_sid") # Need to add this to the form
+                 redirect_target = url_for('messages_view')
+                 if message_sid:
+                     # Find message id from sid to create anchor
+                     msg = Message.query.filter_by(sid=message_sid).first()
+                     if msg:
+                         redirect_target += f"#msg-{msg.id}"
+                 return redirect(redirect_target)
+
             return redirect(url_for("contacts_view"))
 
 
@@ -1066,19 +1075,44 @@ def list_uploads():
 @app.route("/clear-contacts-debug", methods=['POST']) # Use POST to prevent accidental access
 def clear_contacts_debug():
     """Temporary route to clear all contacts from the database."""
+    print("--- [clear-contacts-debug] Route accessed ---")
     try:
+        # 1. Get all phone numbers currently in the contacts table
+        contact_keys = [c.phone_number for c in Contact.query.all()]
+        print(f"ℹ️ [clear-contacts-debug] Found {len(contact_keys)} contact keys to process.")
+
+        if contact_keys:
+            # 2. Update messages associated with these contacts to set phone_number to NULL
+            # Assuming Message.phone_number allows NULL. If not, this needs adjustment.
+            print(f"   Updating messages referencing keys: {contact_keys}...")
+            update_count = Message.query.filter(Message.phone_number.in_(contact_keys)).update(
+                {Message.phone_number: None}, synchronize_session=False
+            )
+            print(f"   Updated {update_count} message records (set phone_number to NULL).")
+        else:
+            print("   No contacts found, skipping message update step.")
+
+
+        # 3. Delete all rows from the Contact table
+        print("   Deleting contacts...")
         num_deleted = db.session.query(Contact).delete()
+        print(f"   Deleted {num_deleted} contact records.")
+
+        # 4. Commit the transaction (both update and delete)
         db.session.commit()
-        message = f"Successfully deleted {num_deleted} contact(s)."
+        message = f"Successfully cleared {num_deleted} contact(s) and updated {update_count if contact_keys else 0} message references."
         print(f"✅ [clear-contacts-debug] {message}")
-        flash(message, "success")
+        flash(message, "success") # Notify user via flash message
+
     except Exception as e:
-        db.session.rollback()
+        db.session.rollback() # Rollback on error
         message = f"Error clearing contacts: {e}"
         print(f"❌ [clear-contacts-debug] {message}")
         traceback.print_exc()
         flash(message, "danger")
-    # Redirect back to the contacts page or messages page
+
+    # Redirect back to the messages page after clearing
+    print("--- [clear-contacts-debug] Redirecting to messages view ---")
     return redirect(url_for('messages_view'))
 
 
