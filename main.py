@@ -1078,36 +1078,44 @@ def clear_contacts_debug():
     print("--- [clear-contacts-debug] Route accessed ---")
     dummy_phone_key = '0000000000' # Placeholder key
     dummy_contact_name = 'Deleted Reference'
+    update_count = 0
+    num_deleted = 0
 
     try:
-        # 0. Ensure the dummy contact exists
-        dummy_contact = Contact.query.get(dummy_phone_key)
+        # --- Step 0: Ensure Dummy Contact Exists ---
+        dummy_contact = db.session.get(Contact, dummy_phone_key) # Use db.session.get for primary key lookup
         if not dummy_contact:
-            print(f"   Creating dummy contact: {dummy_phone_key} / {dummy_contact_name}")
+            print(f"   Attempting to create dummy contact: {dummy_phone_key} / {dummy_contact_name}")
             dummy_contact = Contact(phone_number=dummy_phone_key, contact_name=dummy_contact_name)
             db.session.add(dummy_contact)
-            # Need to commit here so the foreign key constraint is satisfied during the update
             try:
+                # Commit *only* the dummy contact first to ensure it exists for the FK constraint
                 db.session.commit()
                 print("   Dummy contact created/committed.")
             except sqlalchemy_exc.IntegrityError:
                  # Handle rare case where another process created it concurrently
                  db.session.rollback()
                  print("   Dummy contact likely created concurrently, proceeding.")
+                 # Re-fetch it to be sure we have it in the session
+                 dummy_contact = db.session.get(Contact, dummy_phone_key)
+                 if not dummy_contact: # Should not happen if IntegrityError occurred, but safety check
+                     raise Exception("Failed to create or fetch dummy contact.")
             except Exception as e_dummy:
                  db.session.rollback()
                  print(f"   ❌ Error creating dummy contact: {e_dummy}")
                  raise # Re-raise the exception to prevent proceeding
+        else:
+            print("   Dummy contact already exists.")
 
-        # 1. Get all *real* phone numbers currently in the contacts table
+        # --- Step 1 & 2: Update Messages ---
+        # Get all *real* phone numbers currently in the contacts table
         # Exclude the dummy key itself from the list to be deleted/updated
         contact_keys = [c.phone_number for c in Contact.query.filter(Contact.phone_number != dummy_phone_key).all()]
         print(f"ℹ️ [clear-contacts-debug] Found {len(contact_keys)} real contact keys to process.")
-        update_count = 0
 
         if contact_keys:
-            # 2. Update messages associated with these *real* contacts to use the dummy key
             print(f"   Updating messages referencing keys: {contact_keys}...")
+            # Perform the update. This should now succeed because the dummy contact exists.
             update_count = Message.query.filter(Message.phone_number.in_(contact_keys)).update(
                 {Message.phone_number: dummy_phone_key}, synchronize_session=False
             )
@@ -1115,21 +1123,21 @@ def clear_contacts_debug():
         else:
             print("   No real contacts found, skipping message update step.")
 
-
-        # 3. Delete all *real* rows from the Contact table
+        # --- Step 3: Delete Real Contacts ---
         print("   Deleting real contacts...")
         # Filter again to ensure we don't delete the dummy contact
         num_deleted = db.session.query(Contact).filter(Contact.phone_number != dummy_phone_key).delete()
         print(f"   Deleted {num_deleted} real contact records.")
 
-        # 4. Commit the transaction (message updates and real contact deletions)
+        # --- Step 4: Commit Changes (Update and Delete) ---
+        # Commit the message updates and contact deletions together
         db.session.commit()
         message = f"Successfully cleared {num_deleted} real contact(s) and updated {update_count} message references to use dummy key '{dummy_phone_key}'."
         print(f"✅ [clear-contacts-debug] {message}")
         flash(message, "success") # Notify user via flash message
 
     except Exception as e:
-        db.session.rollback() # Rollback on error
+        db.session.rollback() # Rollback on any error during the process
         message = f"Error clearing contacts: {e}"
         print(f"❌ [clear-contacts-debug] {message}")
         traceback.print_exc()
