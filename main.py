@@ -127,6 +127,39 @@ def index():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Image Delete
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.route('/delete-media/<int:message_id>/<int:file_index>', methods=['POST'])
+def delete_media(message_id, file_index):
+    message = Message.query.get_or_404(message_id)
+
+    if not message.local_media_paths:
+        flash("No media to delete.", "error")
+        return redirect(request.referrer or url_for('galleries_overview'))
+
+    media_paths = message.local_media_paths.split(',')
+
+    if 0 <= file_index < len(media_paths):
+        file_path = os.path.join(app.static_folder, media_paths[file_index])
+
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                flash(f"Successfully deleted {os.path.basename(file_path)}.", "success")
+            except Exception as e:
+                flash(f"Error deleting file: {e}", "error")
+                return redirect(request.referrer or url_for('galleries_overview'))
+
+        media_paths.pop(file_index)
+        message.local_media_paths = ','.join(media_paths) if media_paths else None
+        db.session.commit()
+    else:
+        flash("Invalid media index.", "error")
+
+    return redirect(request.referrer or url_for('galleries_overview'))
+
+# ──────────────────────────────────────────────────────────────────────────────
 #   Messages & assignment
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/messages")
@@ -425,3 +458,21 @@ with app.app_context():
         methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
         print(f"{rule.endpoint:25} {methods:15} {rule.rule}")
     print("--- END URL MAP ---\n")
+
+@app.route('/delete_media', methods=['POST'])
+def delete_media():
+    file_path = request.form.get('file_path')
+    if file_path:
+        full_path = os.path.join(app.static_folder, file_path)
+        if os.path.exists(full_path):
+            try:
+                os.remove(full_path)
+                flash('File deleted successfully.', 'success')
+            except Exception as e:
+                flash(f'Error deleting file: {e}', 'danger')
+        else:
+            flash('File does not exist.', 'warning')
+    else:
+        flash('No file specified.', 'warning')
+
+    return redirect(request.referrer or url_for('gallery_view'))
