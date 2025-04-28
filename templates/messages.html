@@ -146,7 +146,7 @@
         {% for msg in messages %} {# <<< MAIN LOOP START >>> #}
           {# Determine if the contact is known based on the passed set #}
           {% set is_known = msg.phone_number in known_contact_phones %}
-          {# <<< SECOND DEBUG LINE >>> #}
+          {# <<< SECOND DEBUG LINE ADDED HERE >>> #}
           <li class="list-group-item" data-timestamp="{{ msg.timestamp.isoformat() }}" id="msg-{{ msg.id }}">
             {# --- Message Header --- #}
             <div class="message-header">
