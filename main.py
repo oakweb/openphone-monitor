@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import traceback
 
-# Import necessary Flask components, including 'flash'
+# Import necessary Flask components, including 'flash' and 'current_app'
 from flask import (
     Flask,
     render_template,
@@ -12,7 +12,8 @@ from flask import (
     jsonify,
     url_for,
     redirect,
-    flash, # Added flash import
+    flash,
+    current_app # Import current_app
 )
 from dotenv import load_dotenv
 load_dotenv()
@@ -22,7 +23,7 @@ import openai
 
 from extensions import db
 from models import Contact, Message, Property
-from webhook_route import webhook_bp
+from webhook_route import webhook_bp # Assuming webhook_bp is correctly defined elsewhere
 
 # ──────────────────────────────────────────────────────────────────────────────
 #   App configuration
@@ -58,6 +59,8 @@ app.jinja_env.auto_reload = True
 app.static_folder = 'static'
 # Ensure the upload directory exists within the static folder
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
+# Create the directory on app startup if it doesn't exist
+# This helps ensure the target exists before the first request
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -233,12 +236,13 @@ def delete_media_for_message(message_id, file_index): # Renamed function for cla
     if 0 <= file_index < len(media_paths):
         relative_path_to_delete = media_paths[file_index]
         # Construct the full path to the file within the static folder
-        full_file_path = os.path.join(app.static_folder, relative_path_to_delete)
+        # Use current_app context for robustness
+        upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+        full_file_path = os.path.join(upload_dir, os.path.basename(relative_path_to_delete)) # Use basename for safety
 
-        # Basic security check: ensure the path is within the static folder
-        # This prevents attempts to delete files outside the intended directory
-        if not os.path.abspath(full_file_path).startswith(os.path.abspath(app.static_folder)):
-             flash("Invalid file path specified (attempt to access outside static folder).", "danger")
+        # Basic security check: ensure the path is within the intended upload folder
+        if not os.path.abspath(full_file_path).startswith(os.path.abspath(upload_dir)):
+             flash("Invalid file path specified (attempt to access outside upload folder).", "danger")
              return redirect(redirect_url)
 
         # Check if the file exists on the filesystem
@@ -430,7 +434,9 @@ def assign_property():
     # Redirect back to the previous page, trying to jump to the specific message anchor
     # Check if the redirect URL already has a fragment
     if "#" not in redirect_url:
-        redirect_url += f"#msg-{message_id}"
+        # Add fragment only if message_id is validly processed
+        if 'message_id' in locals() and isinstance(message_id, int):
+             redirect_url += f"#msg-{message_id}"
 
     return redirect(redirect_url)
 
@@ -455,14 +461,20 @@ def contacts_view():
                 # Basic validation: ensure both fields are provided
                 if name and phone:
                     # TODO: Add more robust phone number validation/normalization here
-                    # Check if a contact with this phone number already exists
-                    existing = Contact.query.filter_by(phone_number=phone).first()
+                    # Extract last 10 digits for the key
+                    phone_key = "".join(filter(str.isdigit, phone))[-10:]
+                    if len(phone_key) != 10:
+                         flash("Invalid phone number format. Please provide at least 10 digits.", "error")
+                         return redirect(url_for("contacts_view"))
+
+                    # Check if a contact with this key already exists
+                    existing = Contact.query.get(phone_key)
                     if existing:
                          # Inform user if contact already exists
-                         flash(f"Contact with phone number {phone} already exists: '{existing.contact_name}'.", "warning")
+                         flash(f"Contact with phone number ending in ...{phone_key[-4:]} already exists: '{existing.contact_name}'.", "warning")
                     else:
                         # Create and save the new contact
-                        new_contact = Contact(contact_name=name, phone_number=phone)
+                        new_contact = Contact(phone_number=phone_key, contact_name=name)
                         db.session.add(new_contact)
                         db.session.commit()
                         flash(f"Contact '{name}' ({phone}) added successfully.", "success")
@@ -471,11 +483,10 @@ def contacts_view():
                     flash("Both Name and Phone Number are required to add a contact.", "error")
 
             elif action == "delete":
-                # Get the ID of the contact to delete
-                contact_id_str = request.form.get("contact_id")
-                if contact_id_str:
-                    contact_id = int(contact_id_str)
-                    contact_to_delete = Contact.query.get(contact_id)
+                # Get the ID (phone key) of the contact to delete
+                contact_key_to_delete = request.form.get("contact_id") # Assuming form sends phone_key as contact_id
+                if contact_key_to_delete:
+                    contact_to_delete = Contact.query.get(contact_key_to_delete)
                     if contact_to_delete:
                         # Delete the contact and commit
                         db.session.delete(contact_to_delete)
@@ -619,8 +630,8 @@ def ask_view():
 def gallery_static():
     error_message = None
     image_paths = [] # List to hold relative paths for the template
-    # Define the target folder within the application's static folder
-    static_upload_folder = app.config.get('UPLOAD_FOLDER', os.path.join(app.static_folder, "uploads"))
+    # Define the target folder using app config for consistency
+    static_upload_folder = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, "uploads"))
 
     # Ensure the folder exists before trying to list its contents
     if not os.path.isdir(static_upload_folder):
@@ -686,6 +697,8 @@ def unsorted_gallery():
     unsorted_items_list = [] # List to hold dicts {message, path, index}
     properties_list = [] # List for the property assignment dropdown
     error_message = None
+    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+
 
     try:
         # 1️⃣ Query messages that have no property assigned AND have local media paths stored
@@ -704,7 +717,8 @@ def unsorted_gallery():
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
             for idx, relative_path in enumerate(paths):
                  # Crucially, check if the file *actually exists* in the static folder
-                 full_path = os.path.join(app.static_folder, relative_path)
+                 # Use basename for constructing the check path for safety
+                 full_path = os.path.join(upload_dir, os.path.basename(relative_path))
                  if os.path.isfile(full_path):
                      # If the file exists, add its info to the list for the template
                      unsorted_items_list.append({
@@ -745,6 +759,7 @@ def gallery_for_property(property_id):
     prop = Property.query.get_or_404(property_id)
     image_items_list = [] # List to store dicts: {path, message_id, index}
     error_message = None
+    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
 
     try:
         # 1️⃣ Query messages associated with this specific property_id
@@ -764,7 +779,8 @@ def gallery_for_property(property_id):
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
             for idx, relative_path in enumerate(paths):
                  # Check if the file actually exists on disk
-                 full_path = os.path.join(app.static_folder, relative_path)
+                 # Use basename for constructing the check path for safety
+                 full_path = os.path.join(upload_dir, os.path.basename(relative_path))
                  if os.path.isfile(full_path):
                      # Add dict to list if file exists
                      image_items_list.append({
@@ -801,6 +817,8 @@ def gallery_for_property(property_id):
 def galleries_overview():
     gallery_summaries_list = []
     error_message = None
+    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+
     try:
         # Get all properties, ordered by name
         properties = Property.query.order_by(Property.name).all()
@@ -831,7 +849,8 @@ def galleries_overview():
                     potential_thumbs = [p.strip() for p in latest_message_with_media.local_media_paths.split(',') if p.strip()]
                     # Iterate through paths and use the first one that corresponds to an existing file
                     for thumb_path in potential_thumbs:
-                         if os.path.isfile(os.path.join(app.static_folder, thumb_path)):
+                         # Use basename for constructing the check path for safety
+                         if os.path.isfile(os.path.join(upload_dir, os.path.basename(thumb_path))):
                               thumbnail_relative_path = thumb_path
                               break # Stop after finding the first valid thumbnail
 
@@ -863,7 +882,8 @@ def galleries_overview():
               paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
               for p in paths:
                   # Increment count only if the file exists on disk
-                  if os.path.isfile(os.path.join(app.static_folder, p)):
+                  # Use basename for constructing the check path for safety
+                  if os.path.isfile(os.path.join(upload_dir, os.path.basename(p))):
                       unsorted_image_count += 1
     except Exception as ex:
         # Log warning if counting unsorted images fails, but don't block the page
@@ -890,6 +910,7 @@ def galleries_overview():
 def gallery_view():
     all_image_items_list = [] # List of dicts {path, message_id, index, property_name, timestamp}
     error_message = None
+    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
 
     try:
         # 1️⃣ Get all messages that have non-empty media paths, eager load property info
@@ -909,7 +930,8 @@ def gallery_view():
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
             for idx, relative_path in enumerate(paths):
                  # Check if the file exists on disk
-                 full_path = os.path.join(app.static_folder, relative_path)
+                 # Use basename for constructing the check path for safety
+                 full_path = os.path.join(upload_dir, os.path.basename(relative_path))
                  if os.path.isfile(full_path):
                      # Add dict with details to the list
                      all_image_items_list.append({
@@ -921,7 +943,7 @@ def gallery_view():
                      })
                  else:
                      # Log warning for missing files
-                     print(f"Warning (Combined Gallery): File path '{relative_path}' in message {msg.id} not found.")
+                     print(f"Warning (Combined Gallery): File path '{relative_path}' in message {msg.id} not found at '{full_path}'.")
 
 
     except Exception as ex:
@@ -960,6 +982,49 @@ def ping_route():
         print(f"DB Health Check Failed: {e}")
         return f"Pong! DB Error: {e}", 503
     # return "Pong!", 200 # Original simple response
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#   DEBUG: List Uploaded Files Endpoint
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/list-uploads")
+def list_uploads():
+    """Debug route to list files currently present in the upload directory."""
+    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
+    print(f"ℹ️ [list-uploads] Checking directory: {upload_dir}")
+    try:
+        if not os.path.isdir(upload_dir):
+             print(f"⚠️ [list-uploads] Upload directory not found.")
+             return jsonify({"error": "Upload directory not found.", "path": upload_dir}), 404
+
+        files = os.listdir(upload_dir)
+        print(f"✅ [list-uploads] Found {len(files)} items: {files}")
+        # Optionally, add file sizes or modification times
+        file_details = []
+        for f in files:
+            try:
+                full_path = os.path.join(upload_dir, f)
+                if os.path.isfile(full_path): # List only files
+                     stat_result = os.stat(full_path)
+                     file_details.append({
+                         "name": f,
+                         "size_bytes": stat_result.st_size,
+                         "modified_utc": datetime.utcfromtimestamp(stat_result.st_mtime).isoformat() + "Z"
+                     })
+            except Exception as stat_err:
+                 print(f"⚠️ [list-uploads] Error stating file {f}: {stat_err}")
+                 file_details.append({"name": f, "error": str(stat_err)})
+
+
+        return jsonify({
+            "directory": upload_dir,
+            "file_count": len(file_details),
+            "files": file_details
+        })
+    except Exception as e:
+        print(f"❌ [list-uploads] Error listing directory: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to list uploads: {e}", "path": upload_dir}), 500
 
 
 # ──────────────────────────────────────────────────────────────────────────────
