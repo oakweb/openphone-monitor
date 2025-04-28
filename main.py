@@ -22,7 +22,7 @@ import openai
 
 
 from extensions import db
-from models import Contact, Message, Property
+from models import Contact, Message, Property # Import Contact model
 from webhook_route import webhook_bp # Assuming webhook_bp is correctly defined elsewhere
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -358,6 +358,9 @@ def messages_view():
         known_phones_query = db.session.query(Contact.phone_number).distinct().all()
         known_contact_phones_set = {p for (p,) in known_phones_query} # Use a set for efficient lookup
 
+        # *** DEBUG LINE ***
+        print(f"DEBUG [messages_view]: Known contact phone keys: {known_contact_phones_set}")
+
         # Get all properties for the assignment dropdown, ordered by name
         properties_list = Property.query.order_by(Property.name).all()
 
@@ -365,7 +368,7 @@ def messages_view():
         return render_template(
             "messages.html",
             messages=msgs,
-            known_contact_phones=known_contact_phones_set,
+            known_contact_phones=known_contact_phones_set, # Make sure this is passed
             properties=properties_list,
             current_year=current_year,
         )
@@ -466,31 +469,30 @@ def contacts_view():
             if action == "add":
                 # Get name and phone from form, stripping whitespace
                 name = request.form.get("name", "").strip()
-                phone = request.form.get("phone", "").strip()
+                phone = request.form.get("phone", "").strip() # This is the phone_key (10 digits)
 
                 # Basic validation: ensure both fields are provided
                 if name and phone:
-                    # TODO: Add more robust phone number validation/normalization here
-                    # Extract last 10 digits for the key
-                    phone_key = "".join(filter(str.isdigit, phone))[-10:]
-                    if len(phone_key) != 10:
-                         flash("Invalid phone number format. Please provide at least 10 digits.", "error")
+                    # The 'phone' input from the form IS the 10-digit key
+                    phone_key = phone
+                    if len(phone_key) != 10 or not phone_key.isdigit():
+                         flash("Invalid phone key format received.", "error")
                          return redirect(url_for("contacts_view"))
 
                     # Check if a contact with this key already exists
                     existing = Contact.query.get(phone_key)
                     if existing:
                          # Inform user if contact already exists
-                         flash(f"Contact with phone number ending in ...{phone_key[-4:]} already exists: '{existing.contact_name}'.", "warning")
+                         flash(f"Contact with phone key {phone_key} already exists: '{existing.contact_name}'.", "warning")
                     else:
                         # Create and save the new contact
                         new_contact = Contact(phone_number=phone_key, contact_name=name)
                         db.session.add(new_contact)
                         db.session.commit()
-                        flash(f"Contact '{name}' ({phone}) added successfully.", "success")
+                        flash(f"Contact '{name}' (Key: {phone_key}) added successfully.", "success")
                 else:
                     # Inform user if required fields are missing
-                    flash("Both Name and Phone Number are required to add a contact.", "error")
+                    flash("Both Name and Phone Number Key are required to add a contact.", "error")
 
             elif action == "delete":
                 # Get the ID (phone key) of the contact to delete
@@ -509,7 +511,11 @@ def contacts_view():
                     flash("No Contact ID provided for deletion.", "error")
 
             # Redirect back to the contacts page after processing the POST request
+            # Redirect to messages page if adding from there
+            if action == "add" and request.referrer and '/messages' in request.referrer:
+                 return redirect(url_for('messages_view'))
             return redirect(url_for("contacts_view"))
+
 
         except ValueError:
             flash("Invalid Contact ID provided for deletion.", "error")
@@ -1053,6 +1059,27 @@ def list_uploads():
         print(f"❌ [list-uploads] Error listing directory: {e}")
         traceback.print_exc()
         return jsonify({"error": f"Failed to list uploads: {e}", "path": upload_dir}), 500
+
+# ──────────────────────────────────────────────────────────────────────────────
+#   DEBUG: Clear Contacts Route (Temporary - REMOVE AFTER USE)
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/clear-contacts-debug", methods=['POST']) # Use POST to prevent accidental access
+def clear_contacts_debug():
+    """Temporary route to clear all contacts from the database."""
+    try:
+        num_deleted = db.session.query(Contact).delete()
+        db.session.commit()
+        message = f"Successfully deleted {num_deleted} contact(s)."
+        print(f"✅ [clear-contacts-debug] {message}")
+        flash(message, "success")
+    except Exception as e:
+        db.session.rollback()
+        message = f"Error clearing contacts: {e}"
+        print(f"❌ [clear-contacts-debug] {message}")
+        traceback.print_exc()
+        flash(message, "danger")
+    # Redirect back to the contacts page or messages page
+    return redirect(url_for('messages_view'))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
