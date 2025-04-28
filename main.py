@@ -1,5 +1,7 @@
+# -*- coding: utf-8 -*-
 import os
 import json
+import logging # Import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 import traceback
@@ -17,7 +19,10 @@ from flask import (
 )
 from dotenv import load_dotenv
 load_dotenv()
-from sqlalchemy import text, func, exc as sqlalchemy_exc # Import sqlalchemy exceptions
+# Import SQLAlchemy components needed for queries/operations
+from sqlalchemy import text, func, exc as sqlalchemy_exc, select, over
+from sqlalchemy.orm import attributes, joinedload # Import attributes and joinedload
+
 import openai
 
 
@@ -26,11 +31,19 @@ from models import Contact, Message, Property # Import Contact model
 from webhook_route import webhook_bp # Assuming webhook_bp is correctly defined elsewhere
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   App configuration
+#  App configuration
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 app = Flask(__name__)
+
+# --- Logging Setup ---
+# Use Flask's built-in logger
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s : %(message)s')
+app.logger.setLevel(logging.DEBUG) # Set level for app's logger
+# logging.getLogger('werkzeug').setLevel(logging.INFO) # Optional: Adjust Werkzeug level
+# logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO) # Optional: Log SQL statements
+
 
 # ensure our "instance" folder and sqlite file live next to main.py
 BASEDIR  = Path(__file__).resolve().parent
@@ -56,107 +69,88 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
 # Define the static folder explicitly (usually 'static' by default)
-# Ensure it's an absolute path within the container context if needed
 app.static_folder = os.path.join(app.root_path, 'static') # More robust way to define static folder
 # Ensure the upload directory exists within the static folder
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
-# Create the directory on app startup if it doesn't exist
-# This helps ensure the target exists before the first request
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True) # Create the directory on app startup
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-print(f"ℹ️ Configured UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}") # Log the final path
+app.logger.info(f"ℹ️ Configured UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}")
 
 
 # initialize extensions & webhook blueprint
 db.init_app(app)
-app.register_blueprint(webhook_bp)
+app.register_blueprint(webhook_bp) # Assumes webhook_bp uses url_prefix="/webhook"
 
 # Configure OpenAI API key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Startup: create tables, ensure `sid`, reset sequence
+#  Startup: create tables, ensure `sid`, reset sequence
 # ──────────────────────────────────────────────────────────────────────────────
-# Use a function for startup logic to avoid running it multiple times if imported
 def initialize_database(app_context):
+    """Initializes the database: creates tables, checks columns, resets sequences."""
     with app_context:
-        print("🔄 Initializing Database...")
+        app.logger.info("🔄 Initializing Database...")
         try:
             # 1) Create all tables if missing
-            # This requires the application context
             db.create_all()
-            print("✅ Tables created/verified.")
+            app.logger.info("✅ Tables created/verified.")
 
-            # 2) Ensure the `sid` column exists on messages (SQLite/Postgres compatible)
-            # Using try-except for broader compatibility
+            # 2) Ensure the `sid` column exists on messages
             try:
-                # Use text() for raw SQL execution within a session
                 db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR"))
                 db.session.commit()
-                print("✅ Ensured messages.sid column exists (added if missing).")
+                app.logger.info("✅ Ensured messages.sid column exists (added if missing).")
             except Exception as alter_err:
                 db.session.rollback()
-                # Ignore error if column already exists (common case)
-                # Error messages vary between DBs, check common substrings
                 err_str = str(alter_err).lower()
                 if "already exists" in err_str or "duplicate column name" in err_str:
-                    print("✅ messages.sid column already exists.")
+                    app.logger.info("✅ messages.sid column already exists.")
                 else:
-                     print(f"⚠️  Could not add 'sid' column (may already exist or other issue): {alter_err}")
+                     app.logger.warning(f"⚠️ Could not add 'sid' column (may already exist or other issue): {alter_err}")
 
-
-            # 3) Reset the `id` sequence (PostgreSQL only; safely ignore on others)
+            # 3) Reset the `id` sequence (PostgreSQL only)
             if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
                 try:
-                    # Find the actual sequence name associated with messages.id
-                    sequence_name_query = text("""
-                        SELECT pg_get_serial_sequence('messages', 'id');
-                    """)
+                    sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');")
                     result = db.session.execute(sequence_name_query).scalar()
 
                     if result:
                         sequence_name = result
-                        # Get the maximum current ID, default to 0 if table is empty
                         max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages")
                         max_id = db.session.execute(max_id_query).scalar()
-                        # Set the sequence value to max_id + 1, ensuring it starts at 1 for empty table
                         next_val = max_id + 1
                         reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)")
                         db.session.execute(reset_seq_query, {'next_val': next_val})
                         db.session.commit()
-                        print(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
+                        app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
                     else:
-                        print("⚠️ Could not determine sequence name for messages.id.")
+                        app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
 
                 except Exception as seq_err:
                     db.session.rollback()
-                    # Provide more context on the error
-                    print(f"❌ Error resetting PostgreSQL sequence: {seq_err}")
-                    # Check if it's a permission error, common in managed DBs
+                    app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}")
                     if "permission denied" in str(seq_err).lower():
-                        print("ℹ️ Hint: The database user might lack permissions to alter sequences.")
+                        app.logger.info("ℹ️ Hint: The database user might lack permissions to alter sequences.")
             else:
-                print("ℹ️ Skipping sequence reset (not PostgreSQL).")
+                app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
 
-            # Query property count within the context
             prop_count = Property.query.count()
-            print(f"👉 Properties in DB: {prop_count}")
-            print("✅ Database initialization complete.")
+            app.logger.info(f"👉 Properties in DB: {prop_count}")
+            app.logger.info("✅ Database initialization complete.")
 
         except Exception as e:
-            # Ensure rollback happens on any initialization error
             db.session.rollback()
-            print(f"❌ FATAL STARTUP ERROR during database initialization: {e}")
+            app.logger.critical(f"❌ FATAL STARTUP ERROR during database initialization: {e}")
             traceback.print_exc()
 
 # Call initialization within app context when the app starts
-# Using app.app_context() ensures extensions like SQLAlchemy are ready
 initialize_database(app.app_context())
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Index / Dashboard
+#  Index / Dashboard
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -164,44 +158,30 @@ def index():
     db_status = "Unknown"
     summary_today = "Unavailable"
     summary_week = "Unavailable"
-    count_today = 0 # Default value
-    count_week = 0 # Default value
+    count_today = 0
+    count_week = 0
 
     try:
-        # Check DB connection using a lightweight query
         db.session.execute(text("SELECT 1"))
         db_status = "Connected"
 
-        # Calculate stats using UTC time for consistency
         now_utc = datetime.utcnow()
-        # Combine date part with min time (midnight) in UTC
         start_today_utc = datetime.combine(now_utc.date(), datetime.min.time())
-        # Calculate the start of the week (Monday) based on UTC date
         start_week_utc  = start_today_utc - timedelta(days=now_utc.weekday())
 
-        # Query using the Message model and filter by timestamp
-        count_today = (
-            db.session.query(func.count(Message.id))
-            .filter(Message.timestamp >= start_today_utc)
-            .scalar() or 0 # Ensure it's 0 if query returns None
-        )
-        count_week = (
-            db.session.query(func.count(Message.id))
-            .filter(Message.timestamp >= start_week_utc)
-            .scalar() or 0 # Ensure it's 0 if query returns None
-        )
+        count_today = (db.session.query(func.count(Message.id))
+                       .filter(Message.timestamp >= start_today_utc).scalar() or 0)
+        count_week = (db.session.query(func.count(Message.id))
+                      .filter(Message.timestamp >= start_week_utc).scalar() or 0)
 
-        # Format summary strings
         summary_today = f"{count_today} message(s) today."
         summary_week  = f"{count_week} message(s) this week."
 
     except Exception as ex:
-        db.session.rollback() # Rollback in case of error during query
+        db.session.rollback()
         db_status     = f"Error connecting or querying DB: {ex}"
-        print(f"❌ DB Error on index page: {ex}") # Log the error for debugging
-        # Keep summaries as "Unavailable"
+        app.logger.error(f"❌ DB Error on index page: {ex}")
 
-    # Render the index template with collected data
     return render_template(
         "index.html",
         db_status=db_status,
@@ -212,264 +192,216 @@ def index():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Media Deletion (Associated with a Message)
+#  Media Deletion (Associated with a Message)
 # ──────────────────────────────────────────────────────────────────────────────
-# This route handles deleting a specific media file linked to a message.
 @app.route('/delete-media/<int:message_id>/<int:file_index>', methods=['POST'])
-def delete_media_for_message(message_id, file_index): # Renamed function for clarity
-    # Fetch the message or return 404 if not found
+def delete_media_for_message(message_id, file_index):
     message = Message.query.get_or_404(message_id)
-    # Determine where to redirect after deletion, default to overview
     redirect_url = request.referrer or url_for('galleries_overview')
-    # If the message belongs to a property, redirect to that property's gallery
     if message.property_id:
         redirect_url = url_for('gallery_for_property', property_id=message.property_id)
 
-
-    # Check if the message actually has media paths stored
     if not message.local_media_paths:
         flash("No media associated with this message to delete.", "warning")
         return redirect(redirect_url)
 
-    # Split the comma-separated paths string into a list, removing empty strings and whitespace
     media_paths = [p.strip() for p in message.local_media_paths.split(',') if p.strip()]
 
-    # Validate the provided file index
     if 0 <= file_index < len(media_paths):
-        relative_path_to_delete = media_paths[file_index] # e.g., "uploads/filename.jpg"
-        # Construct the full absolute path to the file on the server's filesystem
-        # Use current_app.static_folder which should be the absolute path to /app/static
-        full_file_path = os.path.join(current_app.static_folder, relative_path_to_delete)
+        relative_path_to_delete = media_paths[file_index]
+        # Use app.config['UPLOAD_FOLDER'] which should be absolute
+        full_file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], os.path.basename(relative_path_to_delete))
 
-        # Basic security check: ensure the path is within the static folder
-        # Use os.path.normpath to handle potential path separators consistently
-        if not os.path.normpath(full_file_path).startswith(os.path.normpath(current_app.static_folder)):
-             flash("Invalid file path specified (attempt to access outside static folder).", "danger")
+        # More robust security check using common path and normpath
+        upload_folder_norm = os.path.normpath(current_app.config['UPLOAD_FOLDER'])
+        file_path_norm = os.path.normpath(full_file_path)
+        if os.path.commonpath([upload_folder_norm, file_path_norm]) != upload_folder_norm:
+             app.logger.error(f"Attempt to delete file outside UPLOAD_FOLDER: {full_file_path}")
+             flash("Invalid file path specified.", "danger")
              return redirect(redirect_url)
 
-        # Check if the file exists on the filesystem using the constructed absolute path
-        print(f"ℹ️ [delete-media] Checking for file existence at: {full_file_path}")
+        app.logger.info(f"ℹ️ [delete-media] Checking for file: {full_file_path}")
         if os.path.exists(full_file_path):
             try:
-                # Attempt to delete the file from the filesystem
                 os.remove(full_file_path)
-                print(f"✅ [delete-media] Successfully deleted file: {full_file_path}")
+                app.logger.info(f"✅ [delete-media] Deleted file: {full_file_path}")
                 flash(f"Successfully deleted media file: {os.path.basename(relative_path_to_delete)}.", "success")
 
-                # If file deletion is successful, remove the path from the list
                 media_paths.pop(file_index)
-                # Update the database record with the modified list of paths
-                # Set to None if the list becomes empty
                 message.local_media_paths = ','.join(media_paths) if media_paths else None
-                db.session.commit() # Commit the change to the database
-                print(f"✅ [delete-media] Updated database for message {message_id}")
+                db.session.commit()
+                app.logger.info(f"✅ [delete-media] Updated DB for message {message_id}")
 
             except OSError as e:
-                # Handle potential OS errors during file deletion (e.g., permissions)
-                print(f"❌ [delete-media] OS error deleting file {full_file_path}: {e}")
+                app.logger.error(f"❌ [delete-media] OS error deleting file {full_file_path}: {e}")
                 flash(f"Error deleting file from disk: {e}", "danger")
-                db.session.rollback() # Rollback DB changes if file deletion failed
+                db.session.rollback()
             except Exception as e:
-                 # Handle any other unexpected errors during deletion
-                 print(f"❌ [delete-media] Unexpected error deleting file {full_file_path}: {e}")
+                 app.logger.error(f"❌ [delete-media] Unexpected error deleting file {full_file_path}: {e}")
                  flash(f"An unexpected error occurred during deletion: {e}", "danger")
                  db.session.rollback()
         else:
-            # If the file doesn't exist on disk, inform the user but still update the DB record
-            print(f"⚠️ [delete-media] File not found on disk at {full_file_path}, but removing from DB record.")
+            app.logger.warning(f"⚠️ [delete-media] File not found on disk: {full_file_path}. Removing from DB.")
             flash(f"Media file not found on disk: {os.path.basename(relative_path_to_delete)}. Removing from database record.", "warning")
-            # Remove the path from the list even if the file was already gone
             media_paths.pop(file_index)
             message.local_media_paths = ','.join(media_paths) if media_paths else None
-            db.session.commit() # Commit the DB change
-            print(f"✅ [delete-media] Updated database for message {message_id} (file was already missing).")
-
-
+            db.session.commit()
+            app.logger.info(f"✅ [delete-media] Updated DB for message {message_id} (file was missing).")
     else:
-        # If the provided index is out of bounds
         flash("Invalid media index provided.", "error")
 
-    # Redirect the user back to the appropriate page
     return redirect(redirect_url)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Messages & Assignment
+#  Messages & Assignment (Handles BOTH Overview and Detail View)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/messages")
 def messages_view():
+    """Displays message overview or detail for a specific number."""
     current_year = datetime.utcnow().year
+    target_phone_number = request.args.get("phone_number")
+    app.logger.debug(f"Accessing messages_view. Target phone: {target_phone_number}")
+
     try:
-        # Query messages, eager load related property, order by newest first
-        msgs = (
-            Message.query
-            .options(db.joinedload(Message.property))
-            .order_by(Message.timestamp.desc())
-            .limit(100) # Limit the number of messages fetched for performance
-            .all()
-        )
-
-        # --- JSON Endpoint Support ---
-        # Check if the request asks for JSON format
-        if request.args.get("format") == "json":
-            now_utc = datetime.utcnow()
-            start_today_utc = datetime.combine(now_utc.date(), datetime.min.time())
-            start_week_utc  = start_today_utc - timedelta(days=now_utc.weekday())
-
-            # Calculate counts specifically for the JSON response
-            count_today_json = (
-                db.session.query(func.count(Message.id))
-                .filter(Message.timestamp >= start_today_utc)
-                .scalar() or 0
+        # --- CASE 1: DETAIL VIEW ---
+        if target_phone_number:
+            app.logger.debug(f"--- Loading DETAIL view for {target_phone_number} ---")
+            msgs_for_number = (
+                Message.query
+                .filter_by(phone_number=target_phone_number)
+                .order_by(Message.timestamp.desc())
+                .all()
             )
-            count_week_json = (
-                db.session.query(func.count(Message.id))
-                .filter(Message.timestamp >= start_week_utc)
-                .scalar() or 0
+            # --- Log query result count ---
+            app.logger.debug(f"Query for {target_phone_number} returned {len(msgs_for_number)} message objects.")
+
+            contact = Contact.query.get(target_phone_number)
+            is_known = contact is not None
+            contact_name = contact.contact_name if is_known else None
+            app.logger.debug(f"Contact lookup for {target_phone_number}: is_known={is_known}, name='{contact_name}'")
+
+            return render_template(
+                "messages_detail.html", # Expects this template to exist
+                phone_number=target_phone_number,
+                messages=msgs_for_number,
+                is_known=is_known,
+                contact_name=contact_name,
+                current_year=current_year,
             )
 
-            # Prepare data structure for messages
-            message_data = [{
-                "id": m.id,
-                "timestamp": m.timestamp.isoformat() + "Z", # Use ISO 8601 format with Z for UTC
-                "phone_number": m.phone_number,
-                "contact_name": m.contact_name,
-                "direction": m.direction,
-                "message": m.message,
-                "media_urls": m.media_urls, # Original URLs (e.g., from Twilio)
-                "local_media_paths": m.local_media_paths, # Paths to locally saved files
-                "property_id": m.property_id,
-                "property_name": m.property.name if m.property else None, # Include property name if available
-                "sid": m.sid # Include Twilio SID if available
-            } for m in msgs]
+        # --- CASE 2: OVERVIEW VIEW ---
+        else:
+            app.logger.debug("--- Loading OVERVIEW view ---")
+            msgs_overview = (
+                Message.query
+                .options(joinedload(Message.property)) # Use joinedload from imports
+                .order_by(Message.timestamp.desc())
+                .limit(100)
+                .all()
+            )
+            # --- Log query result count ---
+            app.logger.debug(f"Query for overview returned {len(msgs_overview)} message objects.")
 
-            # Prepare statistics structure
-            stats_data = {
-                "messages_today": count_today_json,
-                "messages_week": count_week_json,
-                "summary_today": f"{count_today_json} message(s) today.",
-                "summary_week": f"{count_week_json} message(s) this week.",
-            }
-            # Return JSON response
-            return jsonify({"messages": message_data, "stats": stats_data})
+            known_phones_query = db.session.query(Contact.phone_number).distinct().all()
+            known_contact_phones_set = {p for (p,) in known_phones_query}
+            app.logger.debug(f"Known contact phone keys for overview: {known_contact_phones_set}")
 
-        # --- HTML View ---
-        # Get distinct known contact phone numbers for highlighting/linking
-        known_phones_query = db.session.query(Contact.phone_number).distinct().all()
-        known_contact_phones_set = {p for (p,) in known_phones_query} # Use a set for efficient lookup
+            properties_list = Property.query.order_by(Property.name).all()
 
-        # *** DEBUG LINE ***
-        print(f"DEBUG [messages_view]: Known contact phone keys: {known_contact_phones_set}")
-
-        # Get all properties for the assignment dropdown, ordered by name
-        properties_list = Property.query.order_by(Property.name).all()
-
-        # Render the HTML template
-        return render_template(
-            "messages.html",
-            messages=msgs,
-            known_contact_phones=known_contact_phones_set, # Make sure this is passed
-            properties=properties_list,
-            current_year=current_year,
-        )
+            return render_template(
+                "messages_overview.html", # Expects this template to exist
+                messages=msgs_overview,
+                known_contact_phones=known_contact_phones_set,
+                properties=properties_list,
+                current_year=current_year,
+            )
 
     except Exception as ex:
-        # Handle potential errors during database query or processing
-        db.session.rollback() # Rollback any partial transaction
-        traceback.print_exc() # Print detailed error to console/logs
-        flash(f"Error loading messages page: {ex}", "danger") # Show user-friendly error
-        # Render the template with empty data to prevent further errors
+        db.session.rollback()
+        traceback.print_exc()
+        error_msg = f"Error loading messages page: {ex}"
+        app.logger.error(f"❌ {error_msg}")
+        flash(error_msg, "danger")
+        # Fallback rendering (adjust as needed)
+        template_name = "messages_detail.html" if target_phone_number else "messages_overview.html"
         return render_template(
-            "messages.html",
+            template_name,
             messages=[],
             properties=[],
             known_contact_phones=set(),
-            error=str(ex), # Pass error message to template if needed
+            phone_number=target_phone_number,
+            is_known=False,
+            contact_name=None,
+            error=error_msg,
             current_year=current_year,
         )
 
 
 @app.route("/assign_property", methods=["POST"])
 def assign_property():
-    # Get message ID and property ID from the submitted form
+    """Assigns or unassigns a property to a message."""
     message_id_str = request.form.get("message_id")
-    property_id_str = request.form.get("property_id", "") # Default to empty string if not provided
-
-    # Determine the redirect URL (go back where the user came from)
-    # Default to messages view if referrer is not available
+    property_id_str = request.form.get("property_id", "")
     redirect_url = request.referrer or url_for("messages_view")
 
-    # Validate message ID
     if not message_id_str:
-         flash("No message ID provided for assignment.", "error")
+         flash("No message ID provided.", "error")
          return redirect(redirect_url)
 
     try:
-        message_id = int(message_id_str) # Convert message ID to integer
-        message = Message.query.get(message_id) # Fetch the message object
+        message_id = int(message_id_str)
+        message = Message.query.get(message_id)
 
-        # Check if the message exists
         if not message:
-            flash(f"Message with ID {message_id} not found.", "error")
+            flash(f"Message ID {message_id} not found.", "error")
             return redirect(redirect_url)
 
-        # Handle assignment or unassignment based on property_id_str
-        if property_id_str and property_id_str.lower() != "none" and property_id_str != "":
-             # Assigning to a specific property
-             property_id = int(property_id_str) # Convert property ID to integer
-             # Optional: Verify the selected property exists
-             prop = Property.query.get(property_id)
-             if not prop:
-                  flash(f"Property with ID {property_id} not found.", "error")
-                  # Don't commit if property doesn't exist
-                  return redirect(redirect_url)
-
-             message.property_id = property_id # Assign the property ID to the message
-             flash(f"Message (ID: {message_id}) assigned to property: {prop.name}", "success")
+        if property_id_str and property_id_str.lower() not in ["none", ""]:
+            property_id = int(property_id_str)
+            prop = Property.query.get(property_id)
+            if not prop:
+                 flash(f"Property ID {property_id} not found.", "error")
+                 return redirect(redirect_url)
+            message.property_id = property_id
+            flash(f"Message assigned to property: {prop.name}", "success")
         else:
-             # Unassigning the property (if 'None' or empty string was selected)
-             message.property_id = None # Set property_id to None in the database
-             flash(f"Message (ID: {message_id}) unassigned from property.", "info")
+            message.property_id = None
+            flash(f"Message unassigned from property.", "info")
 
-        # Commit the changes to the database
         db.session.commit()
 
     except ValueError:
-         # Handle cases where message_id or property_id are not valid integers
-         flash("Invalid Message or Property ID format provided.", "error")
-         db.session.rollback() # Rollback any potential partial changes
+        flash("Invalid Message or Property ID.", "error")
+        db.session.rollback()
     except Exception as e:
-         # Handle any other unexpected errors during assignment
-         flash(f"An error occurred while assigning property: {e}", "danger")
-         db.session.rollback()
-         traceback.print_exc() # Log the full error details
+        flash(f"Error assigning property: {e}", "danger")
+        db.session.rollback()
+        app.logger.error(f"Error in assign_property: {e}")
+        traceback.print_exc()
 
-    # Redirect back to the previous page, trying to jump to the specific message anchor
-    # Check if the redirect URL already has a fragment
-    if "#" not in redirect_url:
-        # Add fragment only if message_id is validly processed
-        if 'message_id' in locals() and isinstance(message_id, int):
-             redirect_url += f"#msg-{message_id}"
-
+    if "#" not in redirect_url and 'message_id' in locals() and isinstance(message_id, int):
+         redirect_url += f"#msg-{message_id}"
     return redirect(redirect_url)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Contacts Management (Revised for Simplicity)
+#  Contacts Management (Revised for Simplicity & DIAGNOSTIC LOGGING)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
+    """Manages contacts: add, delete, list known, list recent unknown."""
     current_year = datetime.utcnow().year
-    error_message = None # Variable to hold potential error messages
+    error_message = None
 
-    # --- POST Request Handling (Add/Delete Contacts) ---
+    # --- POST Request Handling ---
     if request.method == "POST":
         action = request.form.get("action")
         app.logger.debug(f"Contacts POST action: {action}")
         try:
             if action == "add":
                 name = request.form.get("name", "").strip()
-                phone_key = request.form.get("phone", "").strip() # This is the 10-digit phone_key
+                phone_key = request.form.get("phone", "").strip()
 
                 if name and phone_key:
                     if len(phone_key) != 10 or not phone_key.isdigit():
@@ -477,14 +409,14 @@ def contacts_view():
                     else:
                         existing = Contact.query.get(phone_key)
                         if existing:
-                            flash(f"Contact with phone key {phone_key} already exists: '{existing.contact_name}'.", "warning")
+                            flash(f"Contact key {phone_key} already exists: '{existing.contact_name}'.", "warning")
                         else:
                             new_contact = Contact(phone_number=phone_key, contact_name=name)
                             db.session.add(new_contact)
-                            db.session.commit()
-                            flash(f"Contact '{name}' (Key: {phone_key}) added successfully.", "success")
+                            app.logger.info(f"Contact '{name}' ({phone_key}) added to session.")
+                            # Flash message moved after successful commit below
                 else:
-                    flash("Both Name and Phone Number Key are required to add a contact.", "error")
+                    flash("Name and Phone Number Key are required.", "error")
 
             elif action == "delete":
                 contact_key_to_delete = request.form.get("contact_id")
@@ -492,736 +424,529 @@ def contacts_view():
                     contact_to_delete = Contact.query.get(contact_key_to_delete)
                     if contact_to_delete:
                         db.session.delete(contact_to_delete)
-                        db.session.commit()
-                        flash(f"Contact '{contact_to_delete.contact_name}' deleted.", "success")
+                        app.logger.info(f"Contact '{contact_to_delete.contact_name}' marked for deletion.")
+                        # Flash message moved after successful commit below
                     else:
                         flash("Contact not found for deletion.", "error")
                 else:
                     flash("No Contact ID provided for deletion.", "error")
 
-            # --- Successful POST: Redirect back to contacts page ---
-            return redirect(url_for("contacts_view"))
+            # --->>> DIAGNOSTIC LOGGING BEFORE COMMIT <<<---
+            app.logger.debug(f"--- Checking session BEFORE commit in contacts POST (Action: {action}) ---")
+            app.logger.debug(f"Session is modified: {db.session.is_modified}")
+            app.logger.debug(f"Session new objects: {db.session.new}")
+            app.logger.debug(f"Session dirty objects: {db.session.dirty}") # Look for Message(153) here
+            app.logger.debug(f"Session deleted objects: {db.session.deleted}")
+
+            # Explicitly check the state of Message 153 in the session identity map
+            # Use .get with a tuple key for composite primary keys if Message had them, but it uses 'id'
+            msg_153_in_session = db.session.get(Message, 153) # Simpler get by PK
+            if msg_153_in_session:
+                 app.logger.warning(f"Message 153 FOUND in session before commit.")
+                 msg_153_state = attributes.instance_state(msg_153_in_session)
+                 is_dirty = msg_153_in_session in db.session.dirty
+                 current_phone_attr = getattr(msg_153_in_session, 'phone_number', 'ATTRIBUTE_MISSING')
+                 history = msg_153_state.history.get('phone_number', None)
+                 history_info = f"Added: {history.added}, Deleted: {history.deleted}" if history else "NO_HISTORY"
+
+                 app.logger.warning(f"  Message 153 is dirty: {is_dirty}")
+                 app.logger.warning(f"  Message 153 current phone_number attribute: {current_phone_attr}")
+                 app.logger.warning(f"  Message 153 history for phone_number: {history_info}")
+            else:
+                 app.logger.debug("Message 153 NOT found in session identity map before commit.")
+            # --->>> END DIAGNOSTIC LOGGING <<<---
+
+            # --- Attempt Commit ---
+            app.logger.info("Attempting db.session.commit()...")
+            db.session.commit() # This is the line that likely triggers the error
+            app.logger.info("✅ db.session.commit() successful.")
+
+            # Flash success messages AFTER commit worked
+            if action == "add" and 'new_contact' in locals() and new_contact in db.session: # Check if still in session
+                 flash(f"Contact '{new_contact.contact_name}' added successfully.", "success")
+            elif action == "delete" and 'contact_to_delete' in locals():
+                 flash(f"Contact '{contact_to_delete.contact_name}' deleted successfully.", "success")
+
+            return redirect(url_for("contacts_view")) # Redirect on success
 
         except sqlalchemy_exc.IntegrityError as ie:
              db.session.rollback()
-             flash(f"Database integrity error, likely contact already exists: {ie}", "error")
-             app.logger.error(f"IntegrityError during contact POST: {ie}")
+             app.logger.error(f"❌ IntegrityError during contact POST commit: {ie}")
+             app.logger.error(f"   SQL statement: {getattr(ie, 'statement', 'N/A')}")
+             app.logger.error(f"   Parameters: {getattr(ie, 'params', 'N/A')}")
+             flash(f"Database integrity error: {ie}", "error") # User friendly message
              traceback.print_exc()
         except ValueError:
-            flash("Invalid Contact ID format provided.", "error")
-            db.session.rollback()
+            db.session.rollback() # Rollback on ValueError too
+            flash("Invalid ID format provided.", "error")
         except Exception as ex:
              db.session.rollback()
+             app.logger.error(f"❌ Unexpected error during contact POST: {ex}")
              traceback.print_exc()
-             flash(f"An error occurred while processing the contact action: {ex}", "danger")
-             error_message = str(ex) # Store error for potential display on GET reload
+             flash(f"An error occurred: {ex}", "danger")
 
-        # --- Failed POST: Redirect back to contacts page ---
-        # Flash message should indicate the error
+        # --- Failed POST: Redirect back ---
         return redirect(url_for("contacts_view"))
 
 
-    # --- GET Request Handling (Display Contacts & Recent Unknown Numbers) ---
+    # --- GET Request Handling ---
     known_contacts_list = []
     unknown_recent_numbers = []
-
     try:
-        # 1. Fetch all known contacts, ordered alphabetically by name
+        # 1. Fetch known contacts
         known_contacts_list = Contact.query.order_by(Contact.contact_name).all()
         known_numbers_set = {c.phone_number for c in known_contacts_list}
-        app.logger.debug(f"Fetched {len(known_contacts_list)} known contacts.")
+        app.logger.debug(f"Fetched {len(known_contacts_list)} known contacts for GET.")
 
-        # 2. Fetch recent distinct phone numbers using a window function for correct ordering
-        from sqlalchemy import select, func, over # Make sure these are imported at the top if not already
-
-        app.logger.debug("Querying for recent distinct phone numbers...")
-
-        # Define a subquery using ROW_NUMBER() partitioned by phone_number, ordered by timestamp descending
-        # This assigns '1' to the most recent message for each unique phone number
+        # 2. Fetch recent unknown numbers (using window function)
+        app.logger.debug("Querying for recent distinct phone numbers (GET)...")
         row_num_subq = select(
             Message.phone_number,
-            Message.timestamp, # Include timestamp for ordering the outer query
+            Message.timestamp,
             func.row_number().over(
                 partition_by=Message.phone_number,
                 order_by=Message.timestamp.desc()
             ).label('rn')
         ).subquery('ranked_messages')
-
-        # Select distinct phone numbers where row_number is 1 (i.e., the latest message per number)
-        # Order these unique numbers by their latest timestamp
         latest_distinct_numbers_query = select(
                 row_num_subq.c.phone_number
             ).where(row_num_subq.c.rn == 1)\
             .order_by(row_num_subq.c.timestamp.desc())\
-            .limit(50) # Limit the number of *unique recent* numbers fetched
-
-        # Execute the query
+            .limit(50)
         recent_distinct_numbers_result = db.session.execute(latest_distinct_numbers_query).all()
         recent_distinct_numbers = [num for (num,) in recent_distinct_numbers_result]
-        app.logger.debug(f"Fetched {len(recent_distinct_numbers)} latest distinct numbers using window function.")
+        app.logger.debug(f"Fetched {len(recent_distinct_numbers)} latest distinct numbers.")
 
-        # 3. Filter this list to get the first 10 unknown numbers
+        # 3. Filter to get top 10 unknown
         count = 0
-        seen_unknown = set() # Keep track to avoid duplicates if distinct fails somehow
+        seen_unknown = set()
         for number in recent_distinct_numbers:
-            # Check if the number is valid (e.g., not None or empty) and not known
             if number and number not in known_numbers_set and number not in seen_unknown:
                 unknown_recent_numbers.append(number)
                 seen_unknown.add(number)
                 count += 1
-                if count >= 10: # Stop once we have 10 unique unknown numbers
+                if count >= 10:
                     break
         app.logger.debug(f"Found {len(unknown_recent_numbers)} unique unknown recent numbers.")
 
-
     except Exception as ex:
-        # Handle errors during GET request processing
         db.session.rollback()
+        app.logger.error(f"❌ Error loading contacts page data: {ex}")
         traceback.print_exc()
         error_message = f"Error loading contacts page data: {ex}"
-        app.logger.error(f"❌ {error_message}")
         flash(error_message, "danger")
 
-    # Render the contacts template with both lists
+    # Render template
     return render_template(
         "contacts.html",
         known_contacts=known_contacts_list,
-        unknown_recent_numbers=unknown_recent_numbers, # Pass the new list
-        error=error_message, # Pass any error message for display
+        unknown_recent_numbers=unknown_recent_numbers,
+        error=error_message,
         current_year=current_year,
     )
 
-# Make sure the rest of your main.py file remains the same
-# (including other routes, imports, setup, etc.)
-
-
 # ──────────────────────────────────────────────────────────────────────────────
-#   Ask (OpenAI Integration)
+#  Ask (OpenAI Integration) - Assuming OK, leaving as is
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/ask", methods=["GET", "POST"])
 def ask_view():
     current_year = datetime.utcnow().year
-    openai_response = None # Variable for the response from OpenAI
-    error_message = None # Variable for error messages
-    current_query = None # Variable to hold the user's query for redisplay
+    openai_response = None
+    error_message = None
+    current_query = None
 
-    # --- POST Request Handling (Submit Query to OpenAI) ---
     if request.method == "POST":
-        current_query = request.form.get("query", "").strip() # Get and strip query
-
-        # Validate query presence
+        current_query = request.form.get("query", "").strip()
         if not current_query:
-            error_message = "Please enter a question or prompt."
-            flash(error_message, "warning")
-        # Check if OpenAI API key is configured
+            flash("Please enter a question or prompt.", "warning")
         elif not openai.api_key:
-            error_message = "OpenAI API key is not configured. Please set the OPENAI_API_KEY environment variable."
-            # Log this error server-side as well for easier debugging
-            print(f"ERROR: {error_message}")
+            error_message = "OpenAI API key is not configured."
+            app.logger.error(f"ERROR: {error_message}")
             flash(error_message, "danger")
         else:
-            # --- Call OpenAI API ---
             try:
-                print(f"Sending query to OpenAI: '{current_query}'") # Log the query being sent
-                # Use the ChatCompletion endpoint
+                app.logger.info(f"Sending query to OpenAI: '{current_query}'")
                 completion = openai.ChatCompletion.create(
-                    # Consider making the model configurable via env var or settings
-                    model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"), # Default to cheaper model
-                    # model="gpt-4",
+                    model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
                     messages=[
-                        {"role": "system", "content": os.getenv("OPENAI_SYSTEM_PROMPT", "You are a helpful assistant.")}, # Configurable system prompt
+                        {"role": "system", "content": os.getenv("OPENAI_SYSTEM_PROMPT", "You are a helpful assistant.")},
                         {"role": "user", "content": current_query}
                     ],
-                    temperature=float(os.getenv("OPENAI_TEMPERATURE", 0.7)), # Configurable temperature
-                    max_tokens=int(os.getenv("OPENAI_MAX_TOKENS", 150)), # Limit response length
+                    temperature=float(os.getenv("OPENAI_TEMPERATURE", 0.7)),
+                    max_tokens=int(os.getenv("OPENAI_MAX_TOKENS", 150)),
                 )
-                # Extract the response content
                 openai_response = completion.choices[0].message["content"].strip()
-                print("Received response from OpenAI.") # Log success
-
-            # Handle specific OpenAI errors
+                app.logger.info("Received response from OpenAI.")
             except openai.error.AuthenticationError as auth_err:
-                 error_message = f"OpenAI Authentication Error: {auth_err}. Check your API key."
-                 print(f"ERROR: {error_message}")
+                 error_message = f"OpenAI Auth Error: {auth_err}."
+                 app.logger.error(f"ERROR: {error_message}")
                  flash(error_message, "danger")
-                 traceback.print_exc()
             except openai.error.RateLimitError as rate_err:
-                 error_message = f"OpenAI Rate Limit Exceeded: {rate_err}. Please try again later or check your plan."
-                 print(f"ERROR: {error_message}")
+                 error_message = f"OpenAI Rate Limit Exceeded: {rate_err}."
+                 app.logger.warning(f"ERROR: {error_message}")
                  flash(error_message, "warning")
-            except openai.error.OpenAIError as api_err: # Catch other OpenAI specific errors
+            except openai.error.OpenAIError as api_err:
                  error_message = f"OpenAI API Error: {api_err}"
-                 print(f"ERROR: {error_message}")
+                 app.logger.error(f"ERROR: {error_message}")
                  flash(error_message, "danger")
-                 traceback.print_exc()
-            # Handle general exceptions
             except Exception as ex:
-                error_message = f"An unexpected error occurred while contacting OpenAI: {ex}"
-                print(f"ERROR: {error_message}")
+                error_message = f"Unexpected OpenAI error: {ex}"
+                app.logger.error(f"ERROR: {error_message}")
                 flash(error_message, "danger")
                 traceback.print_exc()
 
-    # --- Render Template (GET or after POST) ---
     return render_template(
         "ask.html",
-        response=openai_response, # Pass the OpenAI response (or None)
-        error=error_message, # Pass any error message
-        current_query=current_query, # Pass the user's query back for display
+        response=openai_response,
+        error=error_message,
+        current_query=current_query,
         current_year=current_year,
     )
 
-
 # ──────────────────────────────────────────────────────────────────────────────
-#   Static Gallery (All Uploads in /static/uploads - Legacy/Debug?)
-#   NOTE: This route directly lists files from the 'static/uploads' folder.
-#   It does NOT use the database `local_media_paths`. Use with caution.
-#   Consider if '/gallery' (Combined DB Gallery) or '/galleries' (Overview)
-#   are better suited for primary use.
+#  Gallery Routes - Assuming OK, leaving as is, using logger
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/gallery_static")
 def gallery_static():
     error_message = None
-    image_paths = [] # List to hold relative paths for the template
-    # Define the target folder using app config for consistency
+    image_paths = []
     static_upload_folder = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, "uploads"))
 
-    # Ensure the folder exists before trying to list its contents
     if not os.path.isdir(static_upload_folder):
-         # Log a warning if the folder is missing
-         print(f"Warning: Static upload folder not found at: {static_upload_folder}")
-         # Optionally create it: os.makedirs(static_upload_folder, exist_ok=True)
-         flash(f"Static upload folder ('{os.path.basename(static_upload_folder)}') not found.", "warning")
-         # Return template with empty list and error
-         return render_template(
-            "gallery.html", # Reusing the generic gallery template
-            image_items=[], # Pass empty list
-            gallery_title="Static Uploads Gallery (Folder Not Found)",
-            error=f"Folder not found: {static_upload_folder}",
-            current_year=datetime.utcnow().year,
-         )
+         app.logger.warning(f"Static upload folder not found: {static_upload_folder}")
+         flash(f"Static upload folder not found.", "warning")
+         # Render empty gallery page
+         return render_template("gallery.html", image_items=[], gallery_title="Static Uploads (Folder Not Found)", error=f"Folder not found", current_year=datetime.utcnow().year)
 
     try:
-        # List all files in the specified upload folder
+        allowed_extensions = {".jpg", ".png", ".gif", ".jpeg", ".webp", ".heic", ".avif", ".svg"}
+        upload_dir_name = os.path.basename(static_upload_folder)
         for filename in os.listdir(static_upload_folder):
-            # Construct the full path to check if it's a file
-            full_path = os.path.join(static_upload_folder, filename)
-            if os.path.isfile(full_path):
-                 # Check if the file extension is an allowed image type
-                 if os.path.splitext(filename)[1].lower() in {
-                     ".jpg", ".png", ".gif", ".jpeg", ".webp", ".heic", ".avif", ".svg" # Added common image types
-                 }:
-                     # Create the relative path for use in `url_for('static', filename=...)`
-                     # Assumes UPLOAD_FOLDER is directly inside static_folder
-                     relative_path = os.path.join(os.path.basename(static_upload_folder), filename)
-                     # Store as a simple dict for consistency if gallery.html expects items
-                     image_paths.append({"path": relative_path, "message_id": None, "index": None})
-                     # Or just the path if gallery.html handles strings:
-                     # image_paths.append(relative_path)
-
-    except FileNotFoundError:
-        # This case should be handled by the isdir check above, but keep as fallback
-        error_message = f"Static upload folder not found: {static_upload_folder}"
-        flash(error_message, "warning")
+            if os.path.splitext(filename)[1].lower() in allowed_extensions:
+                full_path = os.path.join(static_upload_folder, filename)
+                if os.path.isfile(full_path):
+                    relative_path = os.path.join(upload_dir_name, filename)
+                    image_paths.append({"path": relative_path, "message_id": None, "index": None})
     except Exception as ex:
-        # Handle any other errors during file listing
         error_message = f"Error loading static gallery: {ex}"
+        app.logger.error(f"❌ {error_message}")
         flash(error_message, "danger")
         traceback.print_exc()
 
-    # Render the gallery template
-    return render_template(
-        "gallery.html", # Reusing gallery.html template
-        # Pass image_paths as image_items if gallery.html expects dicts
-        image_items=image_paths,
-        # Or pass directly if gallery.html expects a list of path strings:
-        # image_files=image_paths,
-        gallery_title="Static Uploads Gallery", # Provide a title
-        error=error_message,
-        current_year=datetime.utcnow().year,
-    )
+    return render_template("gallery.html", image_items=image_paths, gallery_title="Static Uploads Gallery", error=error_message, current_year=datetime.utcnow().year)
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-#   Unsorted Images Gallery (Media from DB messages without assigned property)
-# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/unsorted")
 def unsorted_gallery():
-    unsorted_items_list = [] # List to hold dicts {message, path, index}
-    properties_list = [] # List for the property assignment dropdown
+    unsorted_items_list = []
+    properties_list = []
     error_message = None
-    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
-
-
     try:
-        # 1️⃣ Query messages that have no property assigned AND have local media paths stored
         msgs_with_unsorted_media = (
             Message.query
-            .filter(Message.property_id.is_(None)) # Filter for messages where property_id IS NULL
-            .filter(Message.local_media_paths.isnot(None)) # Filter for messages where local_media_paths is NOT NULL
-            .filter(Message.local_media_paths != '') # Filter out messages where the path string is empty
-            .order_by(Message.timestamp.desc()) # Order by newest first
-            .all()
-        )
+            .filter(Message.property_id.is_(None), Message.local_media_paths.isnot(None), Message.local_media_paths != '')
+            .order_by(Message.timestamp.desc()).all() )
 
-        # 2️⃣ Process each message to extract individual media paths
         for msg in msgs_with_unsorted_media:
-            # Split the comma-separated string, strip whitespace, and filter out empty strings
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-            for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
+            for idx, relative_path in enumerate(paths):
+                 unsorted_items_list.append({"message": msg, "path": relative_path, "index": idx})
 
-                 # *** REMOVED os.path.isfile CHECK ***
-                 # Assume file exists if path is in DB
-
-                 # Add its info to the list for the template
-                 unsorted_items_list.append({
-                     "message": msg, # Pass the whole message object for context
-                     "path": relative_path, # Relative path for URL generation in template
-                     "index": idx # Index needed for the delete URL
-                 })
-
-        # 3️⃣ Fetch the list of properties for the assignment dropdown
         properties_list = Property.query.order_by(Property.name).all()
-
     except Exception as ex:
-        # Handle errors during database query or file checking
         db.session.rollback()
+        app.logger.error(f"❌ Error loading unsorted gallery: {ex}")
         traceback.print_exc()
         error_message = f"Error loading unsorted media gallery: {ex}"
         flash(error_message, "danger")
 
-    # Render the specific template for the unsorted gallery
-    return render_template(
-        "unsorted.html",
-        unsorted_items=unsorted_items_list, # Pass the list of media items
-        properties=properties_list, # Pass the list of properties for dropdown
-        error=error_message, # Pass any error message
-        current_year=datetime.utcnow().year,
-    )
+    return render_template("unsorted.html", unsorted_items=unsorted_items_list, properties=properties_list, error=error_message, current_year=datetime.utcnow().year)
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-#   Per-Property Gallery (Media associated with a specific property)
-# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/gallery/<int:property_id>")
 def gallery_for_property(property_id):
-    # Fetch the property object or return 404 if the ID is invalid
     prop = Property.query.get_or_404(property_id)
-    image_items_list = [] # List to store dicts: {path, message_id, index}
+    image_items_list = []
     error_message = None
-    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
-    print(f"--- [Gallery View /gallery/{property_id}] ---") # DEBUG Start
-
+    app.logger.debug(f"--- Loading Gallery for Property ID: {property_id} ({prop.name}) ---")
     try:
-        # 1️⃣ Query messages associated with this specific property_id
-        # Also ensure they have non-empty local_media_paths
         msgs_for_property = (
             Message.query
-            .filter_by(property_id=property_id) # Filter by the given property ID
-            .filter(Message.local_media_paths.isnot(None)) # Must have media paths
-            .filter(Message.local_media_paths != '') # Paths string must not be empty
-            .order_by(Message.timestamp.desc()) # Show newest first
-            .all()
-        )
-        # *** DEBUG: Log number of messages found ***
-        print(f"DEBUG: Found {len(msgs_for_property)} messages for property ID {property_id} with media paths.")
+            .filter_by(property_id=property_id)
+            .filter(Message.local_media_paths.isnot(None), Message.local_media_paths != '')
+            .order_by(Message.timestamp.desc()).all() )
+        app.logger.debug(f"Found {len(msgs_for_property)} messages for property.")
 
-        # 2️⃣ Extract valid image paths and associate with message/index
         for msg in msgs_for_property:
-            # *** DEBUG: Log the raw paths string ***
-            print(f"   DEBUG: Processing message ID {msg.id}, Paths: '{msg.local_media_paths}'")
-            # Split paths, strip whitespace, remove empty strings
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-            # *** DEBUG: Log the split paths ***
-            print(f"      DEBUG: Split paths: {paths}")
-            for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
-
-                 # *** REMOVED os.path.isfile CHECK ***
-                 # Assume file exists if path is in DB
-
-                 # *** DEBUG: Log path being added ***
-                 print(f"         DEBUG: Adding path to list: '{relative_path}' (Index: {idx})")
-                 # Add dict to list
-                 image_items_list.append({
-                     "path": relative_path, # Path for image source URL in template
-                     "message_id": msg.id, # ID of the message this image belongs to
-                     "index": idx # Index of this image within the message's media list
-                 })
-
+            for idx, relative_path in enumerate(paths):
+                 image_items_list.append({"path": relative_path, "message_id": msg.id, "index": idx})
+        app.logger.debug(f"Processed {len(image_items_list)} image items for property gallery.")
 
     except Exception as ex:
-         # Handle errors during DB query or file checking
+         app.logger.error(f"❌ Error loading gallery for property {property_id}: {ex}")
          traceback.print_exc()
-         error_message = f"Error loading gallery for property '{prop.name}': {ex}"
+         error_message = f"Error loading gallery: {ex}"
          flash(error_message, "danger")
 
-    # *** DEBUG: Log final list size ***
-    print(f"DEBUG: Final image_items_list size: {len(image_items_list)}")
-    print(f"--- [End Gallery View /gallery/{property_id}] ---") # DEBUG End
-    # Render the generic gallery template, passing the filtered image items
-    return render_template(
-        "gallery.html", # Use the existing generic gallery template
-        image_items=image_items_list, # Pass the list of dicts {path, message_id, index}
-        property=prop, # Pass the property object for context (e.g., title)
-        gallery_title=f"Gallery for {prop.name}", # Dynamic title for the page
-        error=error_message,
-        current_year=datetime.utcnow().year,
-    )
+    return render_template("gallery.html", image_items=image_items_list, property=prop, gallery_title=f"Gallery for {prop.name}", error=error_message, current_year=datetime.utcnow().year)
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-#   “All Galleries” Overview (Summary of each property's gallery)
-# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/galleries")
 def galleries_overview():
     gallery_summaries_list = []
     error_message = None
-    # upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Not needed if using static_folder directly
-
+    unsorted_image_count = 0
     try:
-        # Get all properties, ordered by name
         properties = Property.query.order_by(Property.name).all()
         for prop in properties:
-            # --- Efficiently count media messages and get one thumbnail ---
-
-            # 1. Count messages with non-empty local_media_paths for this property
-            # This avoids loading all message objects just for counting
             media_message_count = db.session.query(func.count(Message.id)).filter(
-                 Message.property_id == prop.id,
-                 Message.local_media_paths.isnot(None),
-                 Message.local_media_paths != ''
-             ).scalar() or 0 # Default to 0 if count is None
+                 Message.property_id == prop.id, Message.local_media_paths.isnot(None), Message.local_media_paths != ''
+              ).scalar() or 0
 
-            # 2. Get a thumbnail path (if any media exists)
             thumbnail_relative_path = None
             if media_message_count > 0:
-                # Find the most recent message associated with this property that has media
                 latest_message_with_media = Message.query.filter(
-                    Message.property_id == prop.id,
-                    Message.local_media_paths.isnot(None),
-                    Message.local_media_paths != ''
-                ).order_by(Message.timestamp.desc()).first() # Get only the latest one
-
-                # If a message is found, try to get the first valid media path from it
+                     Message.property_id == prop.id, Message.local_media_paths.isnot(None), Message.local_media_paths != ''
+                 ).order_by(Message.timestamp.desc()).first()
                 if latest_message_with_media and latest_message_with_media.local_media_paths:
-                    # Split paths, strip whitespace, remove empty strings
                     potential_thumbs = [p.strip() for p in latest_message_with_media.local_media_paths.split(',') if p.strip()]
-                    # Iterate through paths and use the first one that corresponds to an existing file
-                    for thumb_path in potential_thumbs: # thumb_path is like "uploads/filename.jpg"
+                    if potential_thumbs:
+                         thumbnail_relative_path = potential_thumbs[0] # Just take the first path
 
-                         # *** REMOVED os.path.isfile CHECK ***
-                         # Assume first path exists for thumbnail if paths are present
+            gallery_summaries_list.append({"property": prop, "count": media_message_count, "thumb": thumbnail_relative_path})
 
-                         thumbnail_relative_path = thumb_path
-                         break # Stop after finding the first path
-
-            # Append summary data for this property to the list
-            gallery_summaries_list.append({
-                "property": prop, # The property object itself
-                "count": media_message_count, # Count of messages with media
-                "thumb": thumbnail_relative_path, # Relative path to thumbnail (or None)
-            })
+        # Count unsorted separately
+        unsorted_msgs_query = Message.query.filter(
+            Message.property_id.is_(None), Message.local_media_paths.isnot(None), Message.local_media_paths != ''
+        ).all()
+        for msg in unsorted_msgs_query:
+            paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
+            unsorted_image_count += len(paths)
 
     except Exception as ex:
-         # Handle errors during property query or thumbnail fetching
+         app.logger.error(f"❌ Error loading galleries overview: {ex}")
          traceback.print_exc()
          error_message = f"Error loading galleries overview: {ex}"
          flash(error_message, "danger")
 
-    # --- Calculate count of unsorted images separately ---
-    # This involves checking files for all unsorted messages, could be optimized if needed
-    unsorted_image_count = 0
-    try:
-         # Query messages with no property and non-empty media paths
-         unsorted_msgs_query = Message.query.filter(
-             Message.property_id.is_(None),
-             Message.local_media_paths.isnot(None),
-             Message.local_media_paths != ''
-         ).all()
-         # Iterate and count existing files
-         for msg in unsorted_msgs_query:
-              paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-              # Count based on paths in DB, assuming they exist
-              unsorted_image_count += len(paths)
+    return render_template("galleries_overview.html", gallery_summaries=gallery_summaries_list, unsorted_count=unsorted_image_count, error=error_message, current_year=datetime.utcnow().year)
 
-    except Exception as ex:
-        # Log warning if counting unsorted images fails, but don't block the page
-        print(f"Warning: Could not accurately count unsorted images: {ex}")
-        # Optionally flash a less severe message:
-        # flash("Could not accurately count unsorted images.", "info")
-
-    # Render the overview template
-    return render_template(
-        "galleries_overview.html",
-        gallery_summaries=gallery_summaries_list, # Pass the list of property summaries
-        unsorted_count=unsorted_image_count, # Pass the count of unsorted items
-        error=error_message, # Pass any critical error message
-        current_year=datetime.utcnow().year,
-    )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#   Combined Uploads Gallery (All Media from All Messages in DB)
-#   NOTE: This route queries *all* messages with media. Can be resource-intensive.
-#   Consider adding pagination if performance becomes an issue.
-# ──────────────────────────────────────────────────────────────────────────────
-@app.route("/gallery", endpoint="gallery_view") # Explicit endpoint name for clarity
+@app.route("/gallery", endpoint="gallery_view")
 def gallery_view():
-    all_image_items_list = [] # List of dicts {path, message_id, index, property_name, timestamp}
+    all_image_items_list = []
     error_message = None
-    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads')) # Get upload dir path
+    upload_dir = current_app.config.get('UPLOAD_FOLDER')
+    app.logger.debug(f"--- Loading Combined Gallery View ---")
+    if upload_dir:
+        try:
+            app.logger.debug(f"Listing upload directory: {upload_dir}")
+            current_files = os.listdir(upload_dir)
+            app.logger.debug(f"Files in upload dir ({len(current_files)}): {current_files[:10]}...") # Log first few
+        except Exception as list_err:
+            app.logger.warning(f"Could not list upload directory: {list_err}")
+    else:
+         app.logger.warning("UPLOAD_FOLDER not configured, cannot list files.")
 
     try:
-        # *** DEBUG: List directory contents at the start of the request ***
-        print(f"--- [Gallery View /gallery] ---")
-        try:
-            print(f"DEBUG: Checking upload directory: {upload_dir}")
-            current_files = os.listdir(upload_dir)
-            print(f"DEBUG: Files currently in upload dir ({len(current_files)}): {current_files}")
-        except Exception as list_err:
-            print(f"DEBUG: Error listing upload directory: {list_err}")
-        # *** END DEBUG ***
-
-
-        # 1️⃣ Get all messages that have non-empty media paths, eager load property info
         all_msgs_with_media = (
             Message.query
-            .options(db.joinedload(Message.property)) # Eager load property to avoid N+1 queries
-            .filter(Message.local_media_paths.isnot(None))
-            .filter(Message.local_media_paths != '')
-            .order_by(Message.timestamp.desc()) # Order by newest first
-            # TODO: Add pagination here for large datasets
-            # .paginate(page=request.args.get('page', 1, type=int), per_page=50)
-            .all() # Remove .all() if using pagination
-        )
-        print(f"DEBUG: Found {len(all_msgs_with_media)} messages with media paths in DB.")
+            .options(joinedload(Message.property))
+            .filter(Message.local_media_paths.isnot(None), Message.local_media_paths != '')
+            .order_by(Message.timestamp.desc()).all() )
+        app.logger.debug(f"Found {len(all_msgs_with_media)} total messages with media paths.")
 
-        # 2️⃣ Extract all valid paths from these messages
-        for msg in all_msgs_with_media: # Adjust loop if using pagination (iterate over items)
+        for msg in all_msgs_with_media:
             paths = [p.strip() for p in (msg.local_media_paths or "").split(",") if p.strip()]
-            for idx, relative_path in enumerate(paths): # relative_path is like "uploads/filename.jpg"
-
-                 # *** REMOVED os.path.isfile CHECK ***
-                 # Assume file exists if path is in DB
-
-                 # Add dict with details to the list
+            for idx, relative_path in enumerate(paths):
                  all_image_items_list.append({
-                     "path": relative_path, # Relative path for URL generation in template
-                     "message_id": msg.id,
-                     "index": idx,
-                     "property_name": msg.property.name if msg.property else "Unsorted", # Show property name or 'Unsorted'
-                     "timestamp": msg.timestamp # Include timestamp for potential display/sorting in template
-                 })
-
+                    "path": relative_path, "message_id": msg.id, "index": idx,
+                    "property_name": msg.property.name if msg.property else "Unsorted",
+                    "timestamp": msg.timestamp })
+        app.logger.debug(f"Processed {len(all_image_items_list)} total image items.")
 
     except Exception as ex:
-         # Handle errors during query or file checking
+         app.logger.error(f"❌ Error loading combined gallery: {ex}")
          traceback.print_exc()
          error_message = f"Error loading combined media gallery: {ex}"
          flash(error_message, "danger")
 
-    print(f"DEBUG: Added {len(all_image_items_list)} items to be rendered.")
-    print(f"--- [End Gallery View /gallery] ---")
-    # Render the generic gallery template
-    return render_template(
-        "gallery.html", # Use the existing generic gallery template
-        image_items=all_image_items_list, # Pass the list of all image items
-        gallery_title="All Media Gallery (from Database)", # Set appropriate title
-        # Optionally pass property=None if the template requires it
-        property=None,
-        error=error_message,
-        current_year=datetime.utcnow().year,
-        # If pagination was added, pass pagination object:
-        # pagination=all_msgs_with_media
-    )
+    return render_template("gallery.html", image_items=all_image_items_list, gallery_title="All Media Gallery", property=None, error=error_message, current_year=datetime.utcnow().year)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Health check endpoint
+#  Health check endpoint
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/ping")
 def ping_route():
-    # Simple "Pong" response indicates the web server is running
-    # Optional: Add a quick DB check for a more comprehensive health check
+    """Basic health check, includes DB connectivity."""
     try:
         db.session.execute(text("SELECT 1"))
         return "Pong! DB OK.", 200
     except Exception as e:
-        # Return 503 Service Unavailable if DB connection fails
-        print(f"DB Health Check Failed: {e}")
+        app.logger.error(f"DB Health Check Failed: {e}")
         return f"Pong! DB Error: {e}", 503
-    # return "Pong!", 200 # Original simple response
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   DEBUG: List Uploaded Files Endpoint
+#  DEBUG: List Uploaded Files Endpoint
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/list-uploads")
 def list_uploads():
-    """Debug route to list files currently present in the upload directory."""
-    upload_dir = current_app.config.get('UPLOAD_FOLDER', os.path.join(current_app.static_folder, 'uploads'))
-    print(f"ℹ️ [list-uploads] Checking directory: {upload_dir}")
+    """Debug route to list files currently present in the upload directory via JSON."""
+    upload_dir = current_app.config.get('UPLOAD_FOLDER')
+    if not upload_dir:
+         return jsonify({"error": "UPLOAD_FOLDER not configured.", "path": None}), 500
+
+    app.logger.info(f"ℹ️ [list-uploads] Checking directory: {upload_dir}")
     try:
         if not os.path.isdir(upload_dir):
-             print(f"⚠️ [list-uploads] Upload directory not found.")
+             app.logger.warning(f"⚠️ [list-uploads] Upload directory not found.")
              return jsonify({"error": "Upload directory not found.", "path": upload_dir}), 404
 
         files = os.listdir(upload_dir)
-        print(f"✅ [list-uploads] Found {len(files)} items (raw): {files}")
-        # Optionally, add file sizes or modification times
+        app.logger.info(f"✅ [list-uploads] Found {len(files)} raw items.")
         file_details = []
         for f in files:
             try:
                 full_path = os.path.join(upload_dir, f)
-                if os.path.isfile(full_path): # List only files
+                if os.path.isfile(full_path):
                      stat_result = os.stat(full_path)
                      file_details.append({
-                         "name": f,
-                         "size_bytes": stat_result.st_size,
-                         "modified_utc": datetime.utcfromtimestamp(stat_result.st_mtime).isoformat() + "Z"
-                     })
-                # else: # Optionally log directories found
-                #      print(f"ℹ️ [list-uploads] Found directory, skipping: {f}")
+                        "name": f, "size_bytes": stat_result.st_size,
+                        "modified_utc": datetime.utcfromtimestamp(stat_result.st_mtime).isoformat() + "Z" })
             except Exception as stat_err:
-                 print(f"⚠️ [list-uploads] Error stating file {f}: {stat_err}")
+                 app.logger.warning(f"⚠️ [list-uploads] Error stating file {f}: {stat_err}")
                  file_details.append({"name": f, "error": str(stat_err)})
 
-
-        return jsonify({
-            "directory": upload_dir,
-            "file_count": len(file_details),
-            "files": file_details
-        })
+        return jsonify({"directory": upload_dir, "file_count": len(file_details), "files": file_details})
     except Exception as e:
-        print(f"❌ [list-uploads] Error listing directory: {e}")
+        app.logger.error(f"❌ [list-uploads] Error listing directory: {e}")
         traceback.print_exc()
         return jsonify({"error": f"Failed to list uploads: {e}", "path": upload_dir}), 500
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   DEBUG: Clear Contacts Route (Temporary - REMOVE AFTER USE)
+#  DEBUG: Clear Contacts Route (SAFER VERSION - Use with caution!)
 # ──────────────────────────────────────────────────────────────────────────────
-@app.route("/clear-contacts-debug", methods=['POST']) # Use POST to prevent accidental access
+@app.route("/clear-contacts-debug", methods=['POST'])
 def clear_contacts_debug():
-    """Temporary route to clear all contacts from the database."""
-    print("--- [clear-contacts-debug] Route accessed ---")
-    dummy_phone_key = '0000000000' # Placeholder key
+    """Temporary route to clear all contacts and update message references."""
+    current_app.logger.warning("--- [clear-contacts-debug] Route accessed ---")
+    dummy_phone_key = '0000000000'
     dummy_contact_name = 'Deleted Reference'
     update_count = 0
     num_deleted = 0
 
+    if not dummy_phone_key or len(dummy_phone_key) != 10 or not dummy_phone_key.isdigit():
+         app.logger.critical(f"   ❌ Invalid dummy_phone_key defined: '{dummy_phone_key}'. Aborting.")
+         flash("Internal config error: Invalid dummy phone key.", "danger")
+         return redirect(url_for('contacts_view'))
+
     try:
-        # --- Step 0: Ensure Dummy Contact Exists ---
-        dummy_contact = db.session.get(Contact, dummy_phone_key) # Use db.session.get for primary key lookup
+        # 1: Ensure Dummy Contact Exists
+        dummy_contact = db.session.get(Contact, dummy_phone_key)
         if not dummy_contact:
-            print(f"   Attempting to create dummy contact: {dummy_phone_key} / {dummy_contact_name}")
+            app.logger.info(f"   Creating dummy contact: {dummy_phone_key}")
             dummy_contact = Contact(phone_number=dummy_phone_key, contact_name=dummy_contact_name)
             db.session.add(dummy_contact)
             try:
-                # Commit *only* the dummy contact first to ensure it exists for the FK constraint
                 db.session.commit()
-                print("   Dummy contact created/committed.")
-            except sqlalchemy_exc.IntegrityError:
-                 # Handle rare case where another process created it concurrently
-                 db.session.rollback()
-                 print("   Dummy contact likely created concurrently, proceeding.")
-                 # Re-fetch it to be sure we have it in the session
-                 dummy_contact = db.session.get(Contact, dummy_phone_key)
-                 if not dummy_contact: # Should not happen if IntegrityError occurred, but safety check
-                     raise Exception("Failed to create or fetch dummy contact.")
+                app.logger.info("   Dummy contact created/committed.")
             except Exception as e_dummy:
-                 db.session.rollback()
-                 print(f"   ❌ Error creating dummy contact: {e_dummy}")
-                 raise # Re-raise the exception to prevent proceeding
+                db.session.rollback()
+                app.logger.error(f"   ❌ Error creating dummy contact, cannot proceed: {e_dummy}", exc_info=True)
+                flash(f"Error creating dummy contact: {e_dummy}. Aborting.", "danger")
+                return redirect(url_for('contacts_view'))
         else:
-            print("   Dummy contact already exists.")
+             app.logger.info("   Dummy contact already exists.")
 
-        # --- Step 1 & 2: Update Messages ---
-        # Get all *real* phone numbers currently in the contacts table
-        # Exclude the dummy key itself from the list to be deleted/updated
-        contact_keys = [c.phone_number for c in Contact.query.filter(Contact.phone_number != dummy_phone_key).all()]
-        print(f"ℹ️ [clear-contacts-debug] Found {len(contact_keys)} real contact keys to process.")
+        # 2: Identify Real Contacts
+        contacts_to_delete = Contact.query.filter(Contact.phone_number != dummy_phone_key).all()
+        contact_keys = [c.phone_number for c in contacts_to_delete]
+        app.logger.info(f"ℹ️ Found {len(contact_keys)} real contact keys to process: {contact_keys}")
 
+        # 3: Update Associated Messages
         if contact_keys:
-            print(f"   Updating messages referencing keys: {contact_keys}...")
-            # Perform the update. This should now succeed because the dummy contact exists.
-            update_count = Message.query.filter(Message.phone_number.in_(contact_keys)).update(
-                {Message.phone_number: dummy_phone_key}, synchronize_session=False
-            )
-            print(f"   Updated {update_count} message records (set phone_number to '{dummy_phone_key}').")
+            app.logger.info(f"   Attempting bulk update on Messages for keys {contact_keys} -> '{dummy_phone_key}'...")
+            try:
+                update_count = Message.query.filter(
+                    Message.phone_number.in_(contact_keys)
+                ).update(
+                    {Message.phone_number: dummy_phone_key}, synchronize_session=False # Use 'fetch' if issues persist, but 'False' is often fine
+                )
+                app.logger.info(f"   ✅ Bulk update successful for {update_count} message records.")
+
+                # CRITICAL: Expire updated messages from session
+                # This clears SQLAlchemy's cache for objects that might have been affected by the bulk update.
+                app.logger.info("   Expiring ALL objects from session identity map to prevent stale state issues...")
+                db.session.expire_all()
+                app.logger.info("   Session objects expired.")
+
+            except Exception as update_err:
+                 app.logger.error(f"   ❌ Error during bulk update of Messages: {update_err}", exc_info=True)
+                 flash(f"Error updating message records: {update_err}", "danger")
+                 db.session.rollback()
+                 return redirect(url_for('contacts_view'))
         else:
-            print("   No real contacts found, skipping message update step.")
+            app.logger.info("   No real contacts found, skipping message update step.")
 
-        # --- Step 3: Delete Real Contacts ---
-        print("   Deleting real contacts...")
-        # Filter again to ensure we don't delete the dummy contact
-        num_deleted = db.session.query(Contact).filter(Contact.phone_number != dummy_phone_key).delete()
-        print(f"   Deleted {num_deleted} real contact records.")
+        # 4: Delete Real Contacts
+        if contacts_to_delete:
+            app.logger.info(f"   Attempting to delete {len(contacts_to_delete)} real contact records...")
+            try:
+                # Delete using the objects fetched earlier
+                for contact_obj in contacts_to_delete:
+                     db.session.delete(contact_obj)
+                num_deleted = len(contacts_to_delete)
+                app.logger.info(f"   ✅ Marked {num_deleted} real contacts for deletion in session.")
+            except Exception as delete_err:
+                 app.logger.error(f"   ❌ Error during deletion of Contacts: {delete_err}", exc_info=True)
+                 flash(f"Error deleting contact records: {delete_err}", "danger")
+                 db.session.rollback()
+                 return redirect(url_for('contacts_view'))
+        else:
+            num_deleted = 0
+            app.logger.info("   No real contact records to delete.")
 
-        # --- Step 4: Commit Changes (Update and Delete) ---
-        # Commit the message updates and contact deletions together
+        # 5: Commit All Changes
+        app.logger.info("   Attempting final commit for updates and deletions...")
         db.session.commit()
-        message = f"Successfully cleared {num_deleted} real contact(s) and updated {update_count} message references to use dummy key '{dummy_phone_key}'."
-        print(f"✅ [clear-contacts-debug] {message}")
-        flash(message, "success") # Notify user via flash message
+        message = f"Cleared {num_deleted} real contacts. Updated {update_count} msg refs (if any)."
+        app.logger.info(f"✅ [clear-contacts-debug] {message}")
+        flash(message, "success")
 
     except Exception as e:
-        db.session.rollback() # Rollback on any error during the process
-        message = f"Error clearing contacts: {e}"
-        print(f"❌ [clear-contacts-debug] {message}")
-        traceback.print_exc()
+        db.session.rollback()
+        message = f"Error during clear contacts operation: {e}"
+        app.logger.error(f"❌ [clear-contacts-debug] {message}", exc_info=True)
         flash(message, "danger")
 
-    # Redirect back to the messages page after clearing
-    print("--- [clear-contacts-debug] Redirecting to messages view ---")
-    return redirect(url_for('messages_view'))
+    # Redirect back to messages overview after clearing
+    redirect_target_url = url_for('messages_view')
+    app.logger.info(f"--- [clear-contacts-debug] Redirecting to {redirect_target_url} ---")
+    return redirect(redirect_target_url)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Debug URL map (Prints registered routes at startup)
+#  Debug URL map (Prints registered routes at startup)
 # ──────────────────────────────────────────────────────────────────────────────
-# Use a function to avoid re-running this logic on every import/reload in dev
 def print_url_map(app_instance):
-     # Ensure this runs within an application context
+     """Logs all registered URL routes."""
      with app_instance.app_context():
-         print("\n--- URL MAP ---")
-         # Sort rules by endpoint name for consistent order
-         rules = sorted(app_instance.url_map.iter_rules(), key=lambda r: r.endpoint)
-         for rule in rules:
-             # Format methods nicely, excluding common HEAD/OPTIONS
-             methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
-             # Print endpoint, methods, and the URL rule
-             print(f"{rule.endpoint:30} {methods:<15} {rule.rule}")
-         print("--- END URL MAP ---\n")
+        app.logger.info("\n--- URL MAP ---")
+        rules = sorted(app_instance.url_map.iter_rules(), key=lambda r: r.endpoint)
+        for rule in rules:
+            methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
+            app.logger.info(f"{rule.endpoint:30} {methods:<15} {rule.rule}")
+        app.logger.info("--- END URL MAP ---\n")
 
-# Print the map once when the script is initially run
-# This helps verify routes are registered as expected
 print_url_map(app)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Conflicting Route Definition Removed
-# ──────────────────────────────────────────────────────────────────────────────
-# The duplicate @app.route('/delete_media', ...) definition that caused the
-# initial startup error was removed in the previous correction.
-# The specific route `/delete-media/<int:message_id>/<int:file_index>` handles
-# media deletion now.
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#   Entry Point for Development Server (if script is run directly)
+#  Entry Point for Development Server (if script is run directly)
 # ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # This block executes only when the script is run directly (e.g., `python main.py`)
-    # It's common practice for running the Flask development server.
-    # NOTE: Gunicorn or another production-ready WSGI server (like Waitress on Windows)
-    # should be used for deployment, not the Flask development server.
-
-    print("🚀 Starting Flask development server...")
-    # Get host and port from environment variables, with defaults
-    host = os.environ.get("FLASK_RUN_HOST", "0.0.0.0") # 0.0.0.0 makes it accessible on network
-    port = int(os.environ.get("FLASK_RUN_PORT", 8080)) # Default port 8080
-    # Get debug flag from environment variable (important: should be 'False' in production)
-    # The string 'true' (case-insensitive) enables debug mode.
+    app.logger.info("🚀 Starting Flask development server...")
+    host = os.environ.get("FLASK_RUN_HOST", "0.0.0.0")
+    port = int(os.environ.get("FLASK_RUN_PORT", 8080))
     debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ['true', '1', 't']
-
-    # Run the Flask development server
+    app.logger.info(f"Running on http://{host}:{port} with debug mode: {debug_mode}")
     app.run(host=host, port=port, debug=debug_mode)
