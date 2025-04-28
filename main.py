@@ -531,17 +531,34 @@ def contacts_view():
         known_numbers_set = {c.phone_number for c in known_contacts_list}
         app.logger.debug(f"Fetched {len(known_contacts_list)} known contacts.")
 
-        # 2. Fetch recent distinct phone numbers from messages
-        # We fetch a larger batch initially to increase chances of finding 10 unknown
-        # Ordering by timestamp DESC prioritizes more recently active numbers overall
-        # Using distinct() ensures we only consider each number once in this initial pull
-        recent_message_numbers_query = db.session.query(Message.phone_number)\
-            .order_by(Message.timestamp.desc())\
-            .distinct()\
-            .limit(50) # Fetch up to 50 most recently active distinct numbers
+        # 2. Fetch recent distinct phone numbers using a window function for correct ordering
+        from sqlalchemy import select, func, over # Make sure these are imported at the top if not already
 
-        recent_distinct_numbers = [num for (num,) in recent_message_numbers_query.all()]
-        app.logger.debug(f"Fetched {len(recent_distinct_numbers)} distinct recent numbers from messages.")
+        app.logger.debug("Querying for recent distinct phone numbers...")
+
+        # Define a subquery using ROW_NUMBER() partitioned by phone_number, ordered by timestamp descending
+        # This assigns '1' to the most recent message for each unique phone number
+        row_num_subq = select(
+            Message.phone_number,
+            Message.timestamp, # Include timestamp for ordering the outer query
+            func.row_number().over(
+                partition_by=Message.phone_number,
+                order_by=Message.timestamp.desc()
+            ).label('rn')
+        ).subquery('ranked_messages')
+
+        # Select distinct phone numbers where row_number is 1 (i.e., the latest message per number)
+        # Order these unique numbers by their latest timestamp
+        latest_distinct_numbers_query = select(
+                row_num_subq.c.phone_number
+            ).where(row_num_subq.c.rn == 1)\
+            .order_by(row_num_subq.c.timestamp.desc())\
+            .limit(50) # Limit the number of *unique recent* numbers fetched
+
+        # Execute the query
+        recent_distinct_numbers_result = db.session.execute(latest_distinct_numbers_query).all()
+        recent_distinct_numbers = [num for (num,) in recent_distinct_numbers_result]
+        app.logger.debug(f"Fetched {len(recent_distinct_numbers)} latest distinct numbers using window function.")
 
         # 3. Filter this list to get the first 10 unknown numbers
         count = 0
