@@ -469,23 +469,6 @@ def contacts_view():
                             db.session.delete(contact_to_delete)
                 # --- End Delete ---
 
-            # --->>> DIAGNOSTIC LOGGING BEFORE FINAL COMMIT <<<---
-            # (Removed the line causing AttributeError)
-            current_app.logger.debug(f"--- Checking session BEFORE final commit (Action: {action}) ---")
-            current_app.logger.debug(f"Session is modified: {db.session.is_modified}")
-            current_app.logger.debug(f"Session new: {db.session.new}")
-            current_app.logger.debug(f"Session dirty: {db.session.dirty}") # Should NOT contain messages now if flush worked
-            current_app.logger.debug(f"Session deleted: {db.session.deleted}")
-
-            msg_153_in_session = db.session.get(Message, 153)
-            if msg_153_in_session:
-                 current_app.logger.warning(f"Message 153 is in session.")
-                 is_dirty = msg_153_in_session in db.session.dirty
-                 current_phone_attr = getattr(msg_153_in_session, 'phone_number', 'ATTRIBUTE_MISSING')
-                 current_app.logger.warning(f"  Message 153 is dirty: {is_dirty}")
-                 current_app.logger.warning(f"  Message 153 current phone_number attribute: {current_phone_attr}")
-            # --->>> END DIAGNOSTIC LOGGING <<<---
-
             # --- Attempt Final Commit ---
             current_app.logger.info("Attempting final db.session.commit()...")
             db.session.commit() # Should now only commit contact add/delete
