@@ -36,7 +36,17 @@
             </form>
             {# --- End of Add New Contact form --- #}
 
+
+
+            <p>DEBUG: Clear button form should be below this line.</p>
+ 
+            <form action="{{ url_for('clear_contacts_debug') }}" method="POST" onsubmit="return confirm('ARE YOU SURE you want to delete ALL contacts? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger">DEBUG: Clear All Contacts</button>
+            </form>
+
+
             {# --- Existing Contacts List --- #}
+           
             <h3 class="secondary-title mt-4 mb-3">Existing Contacts</h3> {# Added heading #}
             <ul class="list-group list-group-flush"> {# Only one UL tag here #}
                 {% if known_contacts and known_contacts|length > 0 %}
