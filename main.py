@@ -455,117 +455,127 @@ def assign_property():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#   Contacts Management
+#  Contacts Management (Revised for Simplicity)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
     current_year = datetime.utcnow().year
-    error_message = None # Variable to hold potential error messages for the template
+    error_message = None # Variable to hold potential error messages
 
     # --- POST Request Handling (Add/Delete Contacts) ---
     if request.method == "POST":
-        action = request.form.get("action") # Determine if adding or deleting
+        action = request.form.get("action")
+        app.logger.debug(f"Contacts POST action: {action}")
         try:
             if action == "add":
-                # Get name and phone from form, stripping whitespace
                 name = request.form.get("name", "").strip()
-                phone = request.form.get("phone", "").strip() # This is the phone_key (10 digits)
+                phone_key = request.form.get("phone", "").strip() # This is the 10-digit phone_key
 
-                # Basic validation: ensure both fields are provided
-                if name and phone:
-                    # The 'phone' input from the form IS the 10-digit key
-                    phone_key = phone
+                if name and phone_key:
                     if len(phone_key) != 10 or not phone_key.isdigit():
-                         flash("Invalid phone key format received.", "error")
-                         return redirect(url_for("contacts_view"))
-
-                    # Check if a contact with this key already exists
-                    existing = Contact.query.get(phone_key)
-                    if existing:
-                         # Inform user if contact already exists
-                         flash(f"Contact with phone key {phone_key} already exists: '{existing.contact_name}'.", "warning")
+                        flash("Invalid phone key format. Must be 10 digits.", "error")
                     else:
-                        # Create and save the new contact
-                        new_contact = Contact(phone_number=phone_key, contact_name=name)
-                        db.session.add(new_contact)
-                        db.session.commit()
-                        flash(f"Contact '{name}' (Key: {phone_key}) added successfully.", "success")
+                        existing = Contact.query.get(phone_key)
+                        if existing:
+                            flash(f"Contact with phone key {phone_key} already exists: '{existing.contact_name}'.", "warning")
+                        else:
+                            new_contact = Contact(phone_number=phone_key, contact_name=name)
+                            db.session.add(new_contact)
+                            db.session.commit()
+                            flash(f"Contact '{name}' (Key: {phone_key}) added successfully.", "success")
                 else:
-                    # Inform user if required fields are missing
                     flash("Both Name and Phone Number Key are required to add a contact.", "error")
 
             elif action == "delete":
-                # Get the ID (phone key) of the contact to delete
-                contact_key_to_delete = request.form.get("contact_id") # Assuming form sends phone_key as contact_id
+                contact_key_to_delete = request.form.get("contact_id")
                 if contact_key_to_delete:
                     contact_to_delete = Contact.query.get(contact_key_to_delete)
                     if contact_to_delete:
-                        # Delete the contact and commit
                         db.session.delete(contact_to_delete)
                         db.session.commit()
                         flash(f"Contact '{contact_to_delete.contact_name}' deleted.", "success")
                     else:
-                        # Inform user if contact ID is invalid
                         flash("Contact not found for deletion.", "error")
                 else:
                     flash("No Contact ID provided for deletion.", "error")
 
-            # Redirect back to the contacts page after processing the POST request
-            # Redirect to messages page if adding from there
-            if action == "add" and request.referrer and '/messages' in request.referrer:
-                 # Add anchor to jump back to the message if possible
-                 message_sid = request.form.get("message_sid") # Need to add this to the form
-                 redirect_target = url_for('messages_view')
-                 if message_sid:
-                     # Find message id from sid to create anchor
-                     msg = Message.query.filter_by(sid=message_sid).first()
-                     if msg:
-                         redirect_target += f"#msg-{msg.id}"
-                 return redirect(redirect_target)
-
+            # --- Successful POST: Redirect back to contacts page ---
             return redirect(url_for("contacts_view"))
 
-
+        except sqlalchemy_exc.IntegrityError as ie:
+             db.session.rollback()
+             flash(f"Database integrity error, likely contact already exists: {ie}", "error")
+             app.logger.error(f"IntegrityError during contact POST: {ie}")
+             traceback.print_exc()
         except ValueError:
-            flash("Invalid Contact ID provided for deletion.", "error")
+            flash("Invalid Contact ID format provided.", "error")
             db.session.rollback()
         except Exception as ex:
-             # Handle any unexpected errors during POST processing
              db.session.rollback()
              traceback.print_exc()
              flash(f"An error occurred while processing the contact action: {ex}", "danger")
              error_message = str(ex) # Store error for potential display on GET reload
 
-    # --- GET Request Handling (Display Contacts) ---
+        # --- Failed POST: Redirect back to contacts page ---
+        # Flash message should indicate the error
+        return redirect(url_for("contacts_view"))
+
+
+    # --- GET Request Handling (Display Contacts & Recent Unknown Numbers) ---
     known_contacts_list = []
-    recent_calls_list = [] # Placeholder for potential future implementation
+    unknown_recent_numbers = []
 
     try:
-        # Fetch all known contacts, ordered alphabetically by name
+        # 1. Fetch all known contacts, ordered alphabetically by name
         known_contacts_list = Contact.query.order_by(Contact.contact_name).all()
+        known_numbers_set = {c.phone_number for c in known_contacts_list}
+        app.logger.debug(f"Fetched {len(known_contacts_list)} known contacts.")
 
-        # Example: Fetch recent unique phone numbers from messages (optional)
-        # recent_numbers_query = db.session.query(Message.phone_number)\
-        #     .order_by(Message.timestamp.desc())\
-        #     .distinct()\
-        #     .limit(15).all() # Get last 15 unique numbers
-        # recent_calls_list = [num for (num,) in recent_numbers_query]
+        # 2. Fetch recent distinct phone numbers from messages
+        # We fetch a larger batch initially to increase chances of finding 10 unknown
+        # Ordering by timestamp DESC prioritizes more recently active numbers overall
+        # Using distinct() ensures we only consider each number once in this initial pull
+        recent_message_numbers_query = db.session.query(Message.phone_number)\
+            .order_by(Message.timestamp.desc())\
+            .distinct()\
+            .limit(50) # Fetch up to 50 most recently active distinct numbers
+
+        recent_distinct_numbers = [num for (num,) in recent_message_numbers_query.all()]
+        app.logger.debug(f"Fetched {len(recent_distinct_numbers)} distinct recent numbers from messages.")
+
+        # 3. Filter this list to get the first 10 unknown numbers
+        count = 0
+        seen_unknown = set() # Keep track to avoid duplicates if distinct fails somehow
+        for number in recent_distinct_numbers:
+            # Check if the number is valid (e.g., not None or empty) and not known
+            if number and number not in known_numbers_set and number not in seen_unknown:
+                unknown_recent_numbers.append(number)
+                seen_unknown.add(number)
+                count += 1
+                if count >= 10: # Stop once we have 10 unique unknown numbers
+                    break
+        app.logger.debug(f"Found {len(unknown_recent_numbers)} unique unknown recent numbers.")
+
 
     except Exception as ex:
         # Handle errors during GET request processing
         db.session.rollback()
         traceback.print_exc()
-        error_message = f"Error loading contacts list: {ex}"
+        error_message = f"Error loading contacts page data: {ex}"
+        app.logger.error(f"❌ {error_message}")
         flash(error_message, "danger")
 
-    # Render the contacts template
+    # Render the contacts template with both lists
     return render_template(
         "contacts.html",
         known_contacts=known_contacts_list,
-        recent_calls=recent_calls_list, # Pass the list (even if empty)
+        unknown_recent_numbers=unknown_recent_numbers, # Pass the new list
         error=error_message, # Pass any error message for display
         current_year=current_year,
     )
+
+# Make sure the rest of your main.py file remains the same
+# (including other routes, imports, setup, etc.)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

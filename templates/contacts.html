@@ -1,112 +1,140 @@
-{% extends 'base.html' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Contacts</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"> <style>
+        /* Basic styling */
+        body { font-family: sans-serif; margin: 2em; }
+        .container { display: flex; gap: 2em; flex-wrap: wrap; }
+        .section { border: 1px solid #ccc; padding: 1.5em; border-radius: 8px; flex: 1; min-width: 300px; }
+        .section h2 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 0.5em; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 1em; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .form-group { margin-bottom: 1em; }
+        label { display: block; margin-bottom: 0.5em; }
+        input[type="text"], input[type="tel"] { width: 95%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button.delete-btn { background-color: #dc3545; font-size: 0.8em; padding: 5px 10px; }
+        button:hover { opacity: 0.9; }
+        .flashes { list-style: none; padding: 0; margin-bottom: 1em; }
+        .flashes li { padding: 0.75em; margin-bottom: 0.5em; border-radius: 4px; }
+        .flashes li.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flashes li.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .flashes li.warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .flashes li.info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .unknown-list li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px dotted #eee; }
+        .unknown-list button { font-size: 0.8em; padding: 3px 8px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Manage Contacts</h1>
+        <nav>
+             <a href="{{ url_for('index') }}">Dashboard</a> |
+             <a href="{{ url_for('messages_view') }}">Messages Overview</a>
+             </nav>
+    </header>
 
-{% block title %}Manage Contacts{% endblock %}
+    <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class=flashes>
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
 
-{% block content %}
-<div class="content-container">
-    <h1 class="page-title">Manage Contacts</h1>
-    <div class="tech-divider"></div>
+        {% if error %}
+            <p style="color: red;"><strong>Error:</strong> {{ error }}</p>
+        {% endif %}
 
-    <div class="card">
-        <div class="card-body">
-            {# Display errors if any occurred during POST processing #}
-            {% if error %}
-                <div class="alert alert-danger">{{ error }}</div>
-            {% endif %}
+        <div class="container">
 
-            {# --- Add New Contact Form --- #}
-            <h3 class="secondary-title mt-2 mb-3">Add New Contact</h3> {# Adjusted margin top #}
-            <form method="POST" action="{{ url_for('contacts_view') }}" class="mb-4 p-3 border rounded" style="background-color: rgba(255, 255, 255, 0.05);">
-                <div class="row g-2 align-items-end">
-                    <div class="col-md">
-                        <label for="phone" class="form-label small">Phone Number:</label>
-                        <input type="tel" class="form-control form-control-sm" id="phone" name="phone" placeholder="+1XXXXXXXXXX" required>
+            <div class="section add-contact">
+                <h2>Add New Contact</h2>
+                <form action="{{ url_for('contacts_view') }}" method="post">
+                    <input type="hidden" name="action" value="add">
+                    <div class="form-group">
+                        <label for="name">Name:</label>
+                        <input type="text" id="name" name="name" required>
                     </div>
-                    <div class="col-md">
-                        <label for="name" class="form-label small">Contact Name:</label>
-                        <input type="text" class="form-control form-control-sm" id="name" name="name" placeholder="Enter name" required>
+                    <div class="form-group">
+                        <label for="phone">Phone Number (10 digits):</label>
+                        <input type="tel" id="phone" name="phone" required pattern="\d{10}" title="Enter exactly 10 digits">
                     </div>
-                    <div class="col-md-auto">
-                        {# This button triggers the 'add' action in main.py #}
-                        <button type="submit" name="action" value="add" class="btn btn-success btn-sm w-100">
-                            <i class="fas fa-plus"></i> Add Contact
-                        </button>
-                    </div>
-                </div>
-            </form>
-            {# --- End of Add New Contact form --- #}
-
-
-
-            <p>DEBUG: Clear button form should be below this line.</p>
- 
-            <form action="{{ url_for('clear_contacts_debug') }}" method="POST" onsubmit="return confirm('ARE YOU SURE you want to delete ALL contacts? This cannot be undone.');">
-                <button type="submit" class="btn btn-danger">DEBUG: Clear All Contacts</button>
-            </form>
-
-
-            {# --- Existing Contacts List --- #}
-           
-            <h3 class="secondary-title mt-4 mb-3">Existing Contacts</h3> {# Added heading #}
-            <ul class="list-group list-group-flush"> {# Only one UL tag here #}
-                {% if known_contacts and known_contacts|length > 0 %}
-                    {% for contact in known_contacts %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center" style="background-color: transparent; border-color: rgba(108, 185, 211, 0.2);"> {# Style list items #}
-                            <div class="contact-info">
-                                {# Display name or fallback text if name is missing #}
-                                <span class="contact-name"><strong>{{ contact.contact_name or '(No Name Set)' }}</strong></span>
-                                <br>
-                                {# Display the phone number used as ID #}
-                                <span class="contact-number text-muted small">{{ contact.phone_number }}</span>
-                            </div>
-                            {# Delete form for each contact #}
-                            <form method="POST" action="{{ url_for('contacts_view') }}" style="margin-bottom: 0;">
-                                <input type="hidden" name="phone" value="{{ contact.phone_number }}">
-                                <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm">
-                                    <i class="fas fa-trash-alt"></i> Delete
-                                </button>
-                            </form>
-                        </li>
-                    {% endfor %}
-                {% else %}
-                    {# Message shown if database table has no contacts #}
-                    <li class="list-group-item text-center text-muted" style="background-color: transparent;">No contacts found in database.</li>
-                {% endif %} {# Closes the 'if known_contacts' block #}
-            </ul> {# Closes the list group #}
-            {# --- End of Existing Contacts List --- #}
-
-        </div> {# Closes card-body #}
-    </div> {# Closes the card div #}
-
-    {# Section for recent unknown calls (currently not populated by main.py) #}
-    {% if recent_calls and recent_calls|length > 0 %}
-        <h3 class="secondary-title mt-4">Recent Unknown Numbers</h3>
-        <div class="card">
-            <div class="card-body">
-                <ul class="list-group list-group-flush">
-                    {% for call in recent_calls %}
-                        <li class="list-group-item recent-call-item">
-                            <span class="contact-number">{{ call.phone_number }}</span>
-                            {% if call.message %}
-                                <span class="contact-message text-muted">Last message: "{{ call.message|truncate(80) }}"</span>
-                            {% endif %}
-                            <div class="contact-form mt-2 d-flex">
-                                <form method="POST" action="{{ url_for('contacts_view') }}" class="d-flex gap-2 flex-grow-1">
-                                    <input type="hidden" name="phone" value="{{ call.phone_number }}">
-                                    <input type="text" name="name" placeholder="Enter name to add" class="form-control form-control-sm" required>
-                                    <button type="submit" name="action" value="add" class="btn btn-success btn-sm flex-shrink-0">Add</button>
-                                </form>
-                            </div>
-                        </li>
-                    {% endfor %}
-                </ul>
+                    <button type="submit">Add Contact</button>
+                </form>
             </div>
-        </div>
-    {% endif %} {# Closes the 'if recent_calls' block #}
 
-</div> {# Closes content-container #}
-{% endblock %} {# Closes the content block #}
+            <div class="section unknown-numbers">
+                <h2>Recent Unknown Numbers</h2>
+                {% if unknown_recent_numbers %}
+                    <p>Last 10 numbers from messages not in your contacts:</p>
+                    <ul class="unknown-list">
+                        {% for number in unknown_recent_numbers %}
+                        <li>
+                            <span>{{ number }}</span>
+                            <button onclick="fillContactForm('{{ number }}')">Add Contact</button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No recent unknown numbers found in messages.</p>
+                {% endif %}
+            </div>
 
-{% block scripts %}
-{# You can add JavaScript here if needed later #}
-{% endblock %} {# Closes the scripts block #}
+            <div class="section known-contacts">
+                <h2>Known Contacts</h2>
+                {% if known_contacts %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Phone Number Key</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for contact in known_contacts %}
+                            <tr>
+                                <td>{{ contact.contact_name }}</td>
+                                <td>{{ contact.phone_number }}</td>
+                                <td>
+                                    <form action="{{ url_for('contacts_view') }}" method="post" style="display: inline;">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="contact_id" value="{{ contact.phone_number }}"> <button type="submit" class="delete-btn" onclick="return confirm('Are you sure you want to delete {{ contact.contact_name }}?')">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No contacts saved yet.</p>
+                {% endif %}
+            </div>
+
+        </div> </main>
+
+    <footer>
+        <p>&copy; {{ current_year }} Your Application</p>
+    </footer>
+
+    <script>
+        // Simple JavaScript function to pre-fill the phone number in the Add Contact form
+        function fillContactForm(phoneNumber) {
+            document.getElementById('phone').value = phoneNumber;
+            // Optional: Scroll to the form and focus the name field
+            const nameField = document.getElementById('name');
+            nameField.focus();
+            nameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    </script>
+
+</body>
+</html>
