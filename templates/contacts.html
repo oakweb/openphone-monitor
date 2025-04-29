@@ -1,101 +1,75 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="en" data-bs-theme="dark"> <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Contacts | OpenPhone System</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
     <style>
-        /* Paste the full style block from index.html/previous version here */
-        body { font-family: 'Segoe UI', /*...*/ }
-        .bg-wrapper { /*...*/ }
-        .header { /*...*/ }
-        .header-content { /*...*/ }
-        .logo-area { /*...*/ }
-        .logo-text { /*...*/ }
-        .logo-subtext { /*...*/ }
-        .header-nav a { /*...*/ }
-        .main-content-area { /*...*/ }
-        .content-container { /*...*/ }
-        .page-title { /*...*/ }
-        .tech-divider { /*...*/ }
-        .card { /*...*/ }
-        .card-body { /*...*/ }
-        .card h2 { /*...*/ }
-        .form-group { /*...*/ }
-        label { /*...*/ }
-        input[type="text"], input[type="tel"], /*...*/ { /*...*/ }
-        input:focus, textarea:focus { /*...*/ }
-        .btn { /*...*/ }
-        .btn:hover { /*...*/ }
-        .btn-primary { /*...*/ }
-        .btn-primary:hover { /*...*/ }
-        .btn-danger { /*...*/ }
-        .btn-danger:hover { /*...*/ }
-        .btn-sm { /*...*/ }
-        .table { /*...*/ }
-        .table th { /*...*/ }
-        .table td { /*...*/ }
-        .table-dark { /*...*/ }
-        .table-striped tbody tr:nth-of-type(odd) { /*...*/ }
-        .table-hover tbody tr:hover { /*...*/ }
-        .flashes { /*...*/ }
-        .flashes li { /*...*/ }
-        .flashes li.success { /*...*/ }
-        .flashes li.error { /*...*/ }
-        .flashes li.warning { /*...*/ }
-        .flashes li.info { /*...*/ }
-        /* Rename/Adjust Unknown List Styling */
-        .rename-list { list-style: none; padding: 0; }
-        .rename-list li { display: flex; flex-wrap: wrap; /* Allow wrapping */ justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px dotted rgba(108, 185, 211, 0.2); gap: 10px; /* Add gap */ }
-        .rename-list li .phone-info { color: #ccc; flex-basis: 150px; /* Give phone number space */ }
-        .rename-list li .rename-form { display: flex; gap: 5px; flex-grow: 1; /* Allow form to grow */ }
-        .rename-list li .rename-form input[type="text"] { flex-grow: 1; /* Input takes available space */ min-width: 150px; /* Prevent extreme shrinking */ }
-        .footer { /*...*/ }
-        .copyright { /*...*/ }
-        @media (max-width: 768px) { /*...*/ }
+        body { background-color: #121416; } /* Keep dark background */
+        /* Add any absolutely essential overrides here, but try without first */
+         .table { --bs-table-bg: transparent; --bs-table-striped-bg: rgba(255, 255, 255, 0.03); } /* Minor tweaks for dark table */
+         /* Let Bootstrap handle most things */
+         .header-nav a { color: #adb5bd; text-decoration: none; margin-left: 20px; transition: color 0.3s; font-weight: 500; }
+         .header-nav a:hover, .header-nav a.active { color: #6cb9d3; } /* Keep nav link colors */
+         .page-title { margin-bottom: 1.5rem; font-weight: 700; }
+         .tech-divider { height: 3px; width: 100px; background: linear-gradient(90deg, #6cb9d3, #3a8bab); margin: 0 auto 30px; border-radius: 2px; }
+
     </style>
 </head>
-<body>
-    <div class="bg-wrapper"></div>
-    <header class="header">
-        <div class="header-content">
-            <div class="logo-area"> </div>
-            <nav class="header-nav">
-                <a href="{{ url_for('index') }}">Dashboard</a>
-                <a href="{{ url_for('messages_view') }}">Messages</a>
-                <a href="{{ url_for('contacts_view') }}" class="active">Contacts</a>
-                <a href="{{ url_for('galleries_overview') }}">Galleries</a>
-                 <a href="{{ url_for('ask_view') }}">Ask</a>
-            </nav>
+<body class="d-flex flex-column min-vh-100"> <header class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top border-bottom border-secondary">
+        <div class="container-fluid"> <a class="navbar-brand" href="{{ url_for('index') }}">
+                <div>
+                    <span class="fw-bold fs-5">Sin City Rentals</span><br>
+                    <small class="text-info">OpenPhone System</small> </div>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="mainNavbar">
+                <nav class="navbar-nav ms-auto mb-2 mb-lg-0 header-nav"> <a class="nav-link" href="{{ url_for('index') }}">Dashboard</a>
+                    <a class="nav-link" href="{{ url_for('messages_view') }}">Messages</a>
+                    <a class="nav-link active" href="{{ url_for('contacts_view') }}">Contacts</a> <a class="nav-link" href="{{ url_for('galleries_overview') }}">Galleries</a>
+                    <a class="nav-link" href="{{ url_for('ask_view') }}">Ask</a>
+                </nav>
+            </div>
         </div>
     </header>
 
-    <main class="main-content-area">
-        <div class="container">
-            <h1 class="page-title">Manage Contacts</h1>
+    <main class="flex-grow-1 py-4"> <div class="container"> <h1 class="text-center page-title">Manage Contacts</h1>
             <div class="tech-divider"></div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}<div class="row justify-content-center"><div class="col-md-10 col-lg-8"><ul class="flashes">{% for category, message in messages %}<li class="{{ category }}">{{ message }}</li>{% endfor %}</ul></div></div>{% endif %}
+              {% if messages %}
+                <div class="row justify-content-center">
+                    <div class="col-md-10 col-lg-8">
+                         {% for category, message in messages %}
+                          {% set category = 'danger' if category == 'error' else category %} <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                          </div>
+                        {% endfor %}
+                    </div>
+                </div>
+              {% endif %}
             {% endwith %}
 
-            {% if error %}<div class="alert alert-danger" role="alert"><strong>Error:</strong> {{ error }}</div>{% endif %}
+             {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    <strong>Error:</strong> {{ error }}
+                </div>
+            {% endif %}
+
 
             <div class="row g-4">
 
-                <div class="col-lg-5">
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <h2>Add New Contact</h2>
-                            <form action="{{ url_for('contacts_view') }}" method="post">
+                <div class="col-lg-5 d-flex flex-column"> <div class="card bg-dark border-secondary mb-4"> <div class="card-body">
+                            <h2 class="card-title h5 text-info">Add New Contact</h2> <form action="{{ url_for('contacts_view') }}" method="post">
                                 <input type="hidden" name="action" value="add">
-                                <div class="form-group">
-                                    <label for="name">Name:</label>
+                                <div class="mb-3"> <label for="name" class="form-label">Name:</label>
                                     <input type="text" class="form-control" id="name" name="name" required>
                                 </div>
-                                <div class="form-group">
-                                    <label for="phone">Phone Number (10 digits):</label>
+                                <div class="mb-3">
+                                    <label for="phone" class="form-label">Phone Number (10 digits):</label>
                                     <input type="tel" class="form-control" id="phone" name="phone" required pattern="\d{10}" title="Enter exactly 10 digits">
                                 </div>
                                 <button type="submit" class="btn btn-primary w-100">Add Contact</button>
@@ -103,37 +77,33 @@
                         </div>
                     </div>
 
-                    <div class="card">
+                    <div class="card bg-dark border-secondary">
                         <div class="card-body">
-                             <h2>Recent Contacts (Needs Naming?)</h2>
+                             <h2 class="card-title h5 text-info">Recent Contacts (Needs Naming?)</h2>
                             {% if recent_auto_named_contacts %}
-                                <p><small>Contacts automatically added by recent messages:</small></p>
-                                <ul class="rename-list">
-                                    {% for contact in recent_auto_named_contacts %}
-                                    <li>
-                                        <span class="phone-info" title="Current Name: {{ contact.contact_name }}">{{ contact.phone_number }}</span>
-                                        <form action="{{ url_for('update_contact_name') }}" method="post" class="rename-form">
-                                            <input type="hidden" name="phone_key" value="{{ contact.phone_number }}">
-                                            <input type="text" name="new_name" class="form-control form-control-sm" placeholder="Enter proper name..." required>
-                                            <button type="submit" class="btn btn-sm btn-outline-light">Save</button>
-                                        </form>
+                                <p class="text-muted"><small>Contacts automatically added by recent messages:</small></p>
+                                <ul class="list-group list-group-flush"> {% for contact in recent_auto_named_contacts %}
+                                    <li class="list-group-item bg-transparent d-flex flex-wrap justify-content-between align-items-center py-2 px-0 border-secondary"> <span class="me-2" title="Current Name: {{ contact.contact_name }}">{{ contact.phone_number }}</span>
+                                        <form action="{{ url_for('update_contact_name') }}" method="post" class="d-flex flex-grow-1 ms-2 rename-form"> <input type="hidden" name="phone_key" value="{{ contact.phone_number }}">
+                                            <input type="text" name="new_name" class="form-control form-control-sm me-1" placeholder="Enter name..." required style="min-width: 120px;">
+                                            <button type="submit" class="btn btn-sm btn-outline-info">Save</button> </form>
                                     </li>
                                     {% endfor %}
                                 </ul>
                             {% else %}
-                                <p>No recently active contacts need naming.</p>
+                                <p class="text-muted">No recently active contacts need naming.</p>
                             {% endif %}
                         </div>
                     </div>
                 </div>
 
                 <div class="col-lg-7">
-                    <div class="card">
+                    <div class="card bg-dark border-secondary">
                         <div class="card-body">
-                            <h2>Named Contacts</h2>
-                            {% if properly_known_contacts %} <div class="table-responsive">
-                                    <table class="table table-dark table-striped table-hover">
-                                        <thead>
+                            <h2 class="card-title h5 text-info">Named Contacts</h2>
+                            {% if properly_known_contacts %}
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped table-hover mb-0"> <thead>
                                             <tr>
                                                 <th>Name</th>
                                                 <th>Phone Key</th>
@@ -149,8 +119,7 @@
                                                     <form action="{{ url_for('contacts_view') }}" method="post" style="display: inline;">
                                                         <input type="hidden" name="action" value="delete">
                                                         <input type="hidden" name="contact_id" value="{{ contact.phone_number }}">
-                                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete {{ contact.contact_name }}?')">Delete</button>
-                                                    </form>
+                                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete {{ contact.contact_name }}?')">Del</button> </form>
                                                 </td>
                                             </tr>
                                             {% endfor %}
@@ -158,7 +127,7 @@
                                     </table>
                                 </div>
                             {% else %}
-                                <p>No named contacts found.</p>
+                                <p class="text-muted">No named contacts found.</p>
                             {% endif %}
                         </div>
                     </div>
@@ -166,13 +135,16 @@
 
             </div> </div> </main>
 
-    <footer class="footer">
-        <p class="copyright">© {{ current_year }} Sin City Rentals. All rights reserved.</p>
+    <footer class="footer mt-auto py-3 bg-dark border-top border-secondary"> <div class="container text-center">
+        <span class="text-muted small">© {{ current_year }} Sin City Rentals. All rights reserved.</span>
+      </div>
     </footer>
 
     <script>
         function fillContactForm(phoneNumber) { /* ... */ }
     </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>
