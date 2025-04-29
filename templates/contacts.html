@@ -4,31 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Contacts</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"> <style>
-        /* Basic styling */
-        body { font-family: sans-serif; margin: 2em; }
-        .container { display: flex; gap: 2em; flex-wrap: wrap; }
-        .section { border: 1px solid #ccc; padding: 1.5em; border-radius: 8px; flex: 1; min-width: 300px; }
-        .section h2 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 0.5em; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 1em; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .form-group { margin-bottom: 1em; }
-        label { display: block; margin-bottom: 0.5em; }
-        input[type="text"], input[type="tel"] { width: 95%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button.delete-btn { background-color: #dc3545; font-size: 0.8em; padding: 5px 10px; }
-        button:hover { opacity: 0.9; }
-        .flashes { list-style: none; padding: 0; margin-bottom: 1em; }
-        .flashes li { padding: 0.75em; margin-bottom: 0.5em; border-radius: 4px; }
-        .flashes li.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .flashes li.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .flashes li.warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-        .flashes li.info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-        .unknown-list li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px dotted #eee; }
-        .unknown-list button { font-size: 0.8em; padding: 3px 8px; }
-    </style>
-</head>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    </head>
 <body>
     <header>
         <h1>Manage Contacts</h1>
@@ -41,7 +18,7 @@
     <main>
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
-            <ul class=flashes>
+            <ul class="flashes">
             {% for category, message in messages %}
               <li class="{{ category }}">{{ message }}</li>
             {% endfor %}
@@ -50,36 +27,34 @@
         {% endwith %}
 
         {% if error %}
-            <p style="color: red;"><strong>Error:</strong> {{ error }}</p>
+            <p class="error-message" style="color: red;"><strong>Error:</strong> {{ error }}</p>
         {% endif %}
 
-        <div class="container">
+        <div class="container" style="display: flex; gap: 2em; flex-wrap: wrap;">
 
-            <div class="section add-contact">
+            <div class="section add-contact" style="border: 1px solid #ccc; padding: 1.5em; border-radius: 8px; flex: 1; min-width: 300px;">
                 <h2>Add New Contact</h2>
                 <form action="{{ url_for('contacts_view') }}" method="post">
                     <input type="hidden" name="action" value="add">
-                    <div class="form-group">
-                        <label for="name">Name:</label>
+                    <div class="form-group"> <label for="name">Name:</label>
                         <input type="text" id="name" name="name" required>
                     </div>
                     <div class="form-group">
                         <label for="phone">Phone Number (10 digits):</label>
                         <input type="tel" id="phone" name="phone" required pattern="\d{10}" title="Enter exactly 10 digits">
                     </div>
-                    <button type="submit">Add Contact</button>
-                </form>
+                    <button type="submit">Add Contact</button> </form>
             </div>
 
-            <div class="section unknown-numbers">
+            <div class="section unknown-numbers" style="border: 1px solid #ccc; padding: 1.5em; border-radius: 8px; flex: 1; min-width: 300px;">
                 <h2>Recent Unknown Numbers</h2>
                 {% if unknown_recent_numbers %}
                     <p>Last 10 numbers from messages not in your contacts:</p>
                     <ul class="unknown-list">
                         {% for number in unknown_recent_numbers %}
-                        <li>
+                        <li style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px dotted #eee;">
                             <span>{{ number }}</span>
-                            <button onclick="fillContactForm('{{ number }}')">Add Contact</button>
+                            <button class="button-small" onclick="fillContactForm('{{ number }}')">Add Contact</button>
                         </li>
                         {% endfor %}
                     </ul>
@@ -88,7 +63,7 @@
                 {% endif %}
             </div>
 
-            <div class="section known-contacts">
+            <div class="section known-contacts" style="border: 1px solid #ccc; padding: 1.5em; border-radius: 8px; flex: 1; min-width: 300px;">
                 <h2>Known Contacts</h2>
                 {% if known_contacts %}
                     <table>
@@ -107,7 +82,8 @@
                                 <td>
                                     <form action="{{ url_for('contacts_view') }}" method="post" style="display: inline;">
                                         <input type="hidden" name="action" value="delete">
-                                        <input type="hidden" name="contact_id" value="{{ contact.phone_number }}"> <button type="submit" class="delete-btn" onclick="return confirm('Are you sure you want to delete {{ contact.contact_name }}?')">Delete</button>
+                                        <input type="hidden" name="contact_id" value="{{ contact.phone_number }}">
+                                        <button type="submit" class="button-delete button-small" onclick="return confirm('Are you sure you want to delete {{ contact.contact_name }}?')">Delete</button>
                                     </form>
                                 </td>
                             </tr>
@@ -126,10 +102,8 @@
     </footer>
 
     <script>
-        // Simple JavaScript function to pre-fill the phone number in the Add Contact form
         function fillContactForm(phoneNumber) {
             document.getElementById('phone').value = phoneNumber;
-            // Optional: Scroll to the form and focus the name field
             const nameField = document.getElementById('name');
             nameField.focus();
             nameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
