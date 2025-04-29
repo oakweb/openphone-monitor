@@ -83,7 +83,7 @@
                             {% if recent_auto_named_contacts %}
                                 <p class="text-muted"><small>Contacts automatically added by recent messages:</small></p>
                                 <ul class="list-group list-group-flush"> {% for contact in recent_auto_named_contacts %}
-                                    <li class="list-group-item bg-transparent d-flex flex-wrap justify-content-between align-items-center py-2 px-0 border-secondary"> <span class="me-2" title="Current Name: {{ contact.contact_name }}">{{ contact.phone_number }}</span>
+                                    <li class="list-group-item bg-transparent d-flex flex-wrap justify-content-between align-items-center py-2 px-0 border-secondary"> <span class="me-2 text-light" title="Current Name: {{ contact.contact_name }}">{{ contact.phone_number }}</span>
                                         <form action="{{ url_for('update_contact_name') }}" method="post" class="d-flex flex-grow-1 ms-2 rename-form"> <input type="hidden" name="phone_key" value="{{ contact.phone_number }}">
                                             <input type="text" name="new_name" class="form-control form-control-sm me-1" placeholder="Enter name..." required style="min-width: 120px;">
                                             <button type="submit" class="btn btn-sm btn-outline-info">Save</button> </form>
