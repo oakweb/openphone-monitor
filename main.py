@@ -384,158 +384,217 @@ def assign_property():
          redirect_url += f"#msg-{message_id}"
     return redirect(redirect_url)
 
-
 # ──────────────────────────────────────────────────────────────────────────────
-#  Contacts Management (SAFER DELETE + EXPLICIT FLUSH)
+#  Contacts Management (SEPARATE NAMED/AUTO CONTACTS + INLINE EDIT PREP)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
-    """Manages contacts: add, delete, list known, list recent unknown."""
+    """Manages contacts: add, list/delete named, list/rename auto-added."""
     current_year = datetime.utcnow().year
     error_message = None
     dummy_phone_key = '0000000000'
 
-    # --- POST Request Handling ---
+    # --- POST Request Handling (Assumed OK from previous steps) ---
     if request.method == "POST":
         action = request.form.get("action")
         current_app.logger.debug(f"Contacts POST action: {action}")
         try:
             if action == "add":
-                # --- Add Contact Logic (Unchanged) ---
+                # ... (Keep your working Add Contact logic here) ...
                 name = request.form.get("name", "").strip()
                 phone_key = request.form.get("phone", "").strip()
                 if name and phone_key:
-                    if len(phone_key) != 10 or not phone_key.isdigit():
-                        flash("Invalid phone key format (10 digits).", "error")
+                    if len(phone_key) != 10 or not phone_key.isdigit(): flash("Invalid phone key format (10 digits).", "error")
                     else:
                         existing = Contact.query.get(phone_key)
-                        if existing:
-                            flash(f"Contact key {phone_key} already exists.", "warning")
+                        if existing: flash(f"Contact key {phone_key} already exists.", "warning")
                         else:
                             new_contact = Contact(phone_number=phone_key, contact_name=name)
                             db.session.add(new_contact)
                             current_app.logger.info(f"Contact '{name}' added to session.")
-                else:
-                    flash("Name and Phone Key are required.", "error")
-                # --- End Add ---
+                            # Commit below
+                else: flash("Name and Phone Key are required.", "error")
 
             elif action == "delete":
-                # --- Delete Contact Logic (REVISED with FLUSH) ---
+                 # ... (Keep your working Delete Contact logic here, including finding messages and updating to dummy_phone_key) ...
                 contact_key_to_delete = request.form.get("contact_id")
-                if not contact_key_to_delete:
-                    flash("No Contact ID provided for deletion.", "error")
+                if not contact_key_to_delete: flash("No Contact ID provided.", "error")
                 else:
                     contact_to_delete = Contact.query.get(contact_key_to_delete)
-                    if not contact_to_delete:
-                        flash("Contact not found.", "error")
-                    elif contact_key_to_delete == dummy_phone_key:
-                         flash("Cannot delete the default reference contact.", "warning")
+                    if not contact_to_delete: flash("Contact not found.", "error")
+                    elif contact_key_to_delete == dummy_phone_key: flash("Cannot delete default reference.", "warning")
                     else:
-                        # 1. Ensure dummy contact exists
                         dummy_contact = db.session.get(Contact, dummy_phone_key)
                         if not dummy_contact:
                              current_app.logger.error(f"CRITICAL: Dummy contact '{dummy_phone_key}' missing.")
-                             flash("Internal error: Default reference missing. Delete aborted.", "danger")
-                             contact_to_delete = None # Prevent delete op below
+                             flash("Internal error: Default reference missing.", "danger"); contact_to_delete = None # Abort
                         else:
-                            # 2. Find and update associated messages
-                            current_app.logger.info(f"Finding messages for key '{contact_key_to_delete}' to reassign...")
                             messages_to_update = Message.query.filter_by(phone_number=contact_key_to_delete).all()
                             if messages_to_update:
-                                current_app.logger.info(f"   Found {len(messages_to_update)} messages. Updating phone_number to '{dummy_phone_key}'...")
-                                for msg in messages_to_update:
-                                    current_app.logger.debug(f"   Updating Message ID {msg.id}: Setting phone_number FROM {msg.phone_number} TO {dummy_phone_key}")
-                                    msg.phone_number = dummy_phone_key
-                                    db.session.add(msg) # Ensure it's tracked
-
-                                # *** EXPLICITLY FLUSH MESSAGE UPDATES ***
+                                current_app.logger.info(f"Updating {len(messages_to_update)} messages for contact delete...")
+                                for msg in messages_to_update: msg.phone_number = dummy_phone_key; db.session.add(msg)
                                 try:
-                                    current_app.logger.info("   Attempting explicit flush for message updates ONLY...")
-                                    db.session.flush(objects=messages_to_update) # Try to write UPDATEs to DB now
-                                    current_app.logger.info("   Explicit flush for message updates successful.")
+                                    current_app.logger.info("Flushing message updates..."); db.session.flush(objects=messages_to_update); current_app.logger.info("Flush successful.")
                                 except Exception as flush_err:
-                                    # If flush fails here, the problem IS the update itself (e.g., type mismatch)
-                                    current_app.logger.error(f"   ❌ Error during explicit flush of message updates: {flush_err}", exc_info=True)
-                                    db.session.rollback() # Rollback immediately
-                                    flash(f"DB error updating message refs: {flush_err}", "danger")
-                                    # Stop further processing for this request
-                                    return redirect(url_for('contacts_view'))
-                                # *** END FLUSH ***
-                            else:
-                                current_app.logger.info("   No associated messages found.")
-
-                            # 3. Mark the contact for deletion (only if message update/flush succeeded)
+                                    current_app.logger.error(f"Flush Error: {flush_err}", exc_info=True); db.session.rollback(); flash(f"DB error updating refs: {flush_err}", "danger"); return redirect(url_for('contacts_view'))
                             current_app.logger.info(f"Marking Contact '{contact_to_delete.contact_name}' for deletion.")
                             db.session.delete(contact_to_delete)
-                # --- End Delete ---
 
-            # --- Attempt Final Commit ---
+            # --- Commit Add/Delete Operations ---
             current_app.logger.info("Attempting final db.session.commit()...")
-            db.session.commit() # Should now only commit contact add/delete
+            db.session.commit()
             current_app.logger.info("✅ Final db.session.commit() successful.")
 
             # Flash success messages AFTER commit worked
-            if action == "add" and 'new_contact' in locals() and db.session.query(Contact).get(new_contact.phone_number):
-                 flash(f"Contact '{new_contact.contact_name}' added.", "success")
-            elif action == "delete" and 'contact_to_delete' in locals() and contact_to_delete:
-                 flash(f"Contact '{contact_to_delete.contact_name}' deleted.", "success")
+            if action == "add" and 'new_contact' in locals() and db.session.query(Contact).get(new_contact.phone_number): flash(f"Contact '{new_contact.contact_name}' added.", "success")
+            elif action == "delete" and 'contact_to_delete' in locals() and contact_to_delete: flash(f"Contact '{contact_to_delete.contact_name}' deleted.", "success")
 
-            return redirect(url_for("contacts_view")) # Redirect on success
+            return redirect(url_for("contacts_view")) # Redirect on success/failure handled by flash
 
-        # --- Exception Handling (Unchanged) ---
-        except sqlalchemy_exc.IntegrityError as ie:
-             db.session.rollback()
-             app.logger.error(f"❌ IntegrityError during contact POST commit: {ie}", exc_info=True)
-             app.logger.error(f"   SQL: {getattr(ie, 'statement', 'N/A')}")
-             app.logger.error(f"   Params: {getattr(ie, 'params', 'N/A')}")
-             flash(f"Database integrity error: {ie}", "error")
-        except ValueError:
-            db.session.rollback()
-            flash("Invalid ID format.", "error")
-            app.logger.warning("ValueError during contact POST", exc_info=True)
-        except Exception as ex:
-             db.session.rollback()
-             app.logger.error(f"❌ Unexpected error during contact POST: {ex}", exc_info=True)
-             flash(f"An error occurred: {ex}", "danger")
-
+        # --- Exception Handling for POST (Keep as before) ---
+        except sqlalchemy_exc.IntegrityError as ie: # Catch specific first
+             db.session.rollback(); app.logger.error(f"❌ IntegrityError POST: {ie}", exc_info=True); flash(f"Database integrity error: {ie}", "error")
+        except ValueError: # Catch specific second
+            db.session.rollback(); flash("Invalid ID format.", "error"); app.logger.warning("ValueError POST", exc_info=True)
+        except Exception as ex: # Catch general last
+             db.session.rollback(); app.logger.error(f"❌ Unexpected error POST: {ex}", exc_info=True); flash(f"An error occurred: {ex}", "danger")
         return redirect(url_for("contacts_view")) # Redirect on failure
 
-    # --- GET Request Handling (Unchanged - Assumed OK) ---
-    # (Keep the existing GET logic)
-    known_contacts_list = []
-    unknown_recent_numbers = []
+
+    # --- GET Request Handling (REVISED LOGIC) ---
+    properly_known_contacts = []
+    recent_auto_named_contacts = []
     try:
-        known_contacts_list = Contact.query.order_by(Contact.contact_name).all()
-        known_numbers_set = {c.phone_number for c in known_contacts_list}
-        # ... (rest of GET logic with window function) ...
-        from sqlalchemy import select, func, over
-        row_num_subq = select(Message.phone_number, Message.timestamp, func.row_number().over(partition_by=Message.phone_number, order_by=Message.timestamp.desc()).label('rn')).subquery('ranked_messages')
-        latest_distinct_numbers_query = select(row_num_subq.c.phone_number).where(row_num_subq.c.rn == 1).order_by(row_num_subq.c.timestamp.desc()).limit(50)
+        # 1. Fetch ALL contacts and put in a dictionary for easy lookup
+        all_contacts_list = Contact.query.all()
+        all_contacts_dict = {c.phone_number: c for c in all_contacts_list}
+        app.logger.debug(f"Fetched {len(all_contacts_list)} total contacts from DB.")
+
+        # 2. Separate contacts into "Properly Named" and "Auto-Named" lists
+        auto_named_contacts_dict = {} # Temp dict for auto-named ones
+        for contact in all_contacts_list:
+            # Check if name looks like the default "+1..." format (adjust if webhook saves differently)
+            # Also check against 10-digit key format if webhook might save that as name
+            is_default_name = False
+            if contact.contact_name:
+                looks_like_plus_e164 = (
+                    contact.contact_name.startswith('+') and
+                    len(contact.contact_name) > 1 and
+                    contact.contact_name[1:].isdigit()
+                )
+                looks_like_key = (
+                    len(contact.contact_name) == 10 and
+                    contact.contact_name.isdigit() and
+                    contact.contact_name == contact.phone_number # Check if name IS the key
+                 )
+                is_default_name = looks_like_plus_e164 or looks_like_key
+
+            # Add to appropriate list (exclude dummy contact from 'properly known')
+            if not is_default_name and contact.phone_number != dummy_phone_key:
+                properly_known_contacts.append(contact)
+            elif is_default_name: # It IS likely auto-named
+                 auto_named_contacts_dict[contact.phone_number] = contact
+
+        # Sort the properly known list alphabetically by name (case-insensitive)
+        properly_known_contacts.sort(key=lambda x: x.contact_name.lower() if x.contact_name else "")
+        app.logger.debug(f"Separated into {len(properly_known_contacts)} properly named contacts.")
+
+        # 3. Fetch recent distinct phone numbers involved in messages (window function query)
+        app.logger.debug("Querying for recent distinct phone numbers (GET)...")
+        row_num_subq = select(
+            Message.phone_number, Message.timestamp,
+            func.row_number().over(
+                partition_by=Message.phone_number, order_by=Message.timestamp.desc()
+            ).label('rn')
+        ).subquery('ranked_messages')
+        latest_distinct_numbers_query = select(row_num_subq.c.phone_number)\
+            .where(row_num_subq.c.rn == 1)\
+            .order_by(row_num_subq.c.timestamp.desc())\
+            .limit(50) # Fetch recent numbers involved in messages
         recent_distinct_numbers_result = db.session.execute(latest_distinct_numbers_query).all()
         recent_distinct_numbers = [num for (num,) in recent_distinct_numbers_result]
+        app.logger.debug(f"Fetched {len(recent_distinct_numbers)} latest distinct numbers from messages.")
+
+        # 4. Create the list of "Recent Auto-Named Contacts" based on recency
         count = 0
-        seen_unknown = set()
+        processed_keys = set() # Ensure we don't add the same key twice
         for number in recent_distinct_numbers:
-            if number and number not in known_numbers_set and number not in seen_unknown:
-                unknown_recent_numbers.append(number)
-                seen_unknown.add(number)
+            # Check if this recent number corresponds to an auto-named contact
+            if number in auto_named_contacts_dict and number not in processed_keys:
+                recent_auto_named_contacts.append(auto_named_contacts_dict[number])
+                processed_keys.add(number)
                 count += 1
-                if count >= 10: break
+                if count >= 10: # Limit to 10
+                    break
+        app.logger.debug(f"Found {len(recent_auto_named_contacts)} recent auto-named contacts to display.")
+
+    # --- Exception Handling for GET ---
     except Exception as ex:
         db.session.rollback()
         app.logger.error(f"❌ Error loading contacts page data: {ex}", exc_info=True)
         error_message = f"Error loading contacts page data: {ex}"
         flash(error_message, "danger")
+
+    # Render template with the two separated lists
     return render_template(
         "contacts.html",
-        known_contacts=known_contacts_list,
-        unknown_recent_numbers=unknown_recent_numbers,
+        # Pass the list of contacts that have proper names
+        properly_known_contacts=properly_known_contacts,
+        # Pass the list of contacts that were recently active but likely auto-named
+        recent_auto_named_contacts=recent_auto_named_contacts,
         error=error_message,
         current_year=current_year,
     )
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  NEW ROUTE: Update Contact Name (for inline editing)
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/update_contact_name", methods=["POST"])
+def update_contact_name():
+    """Handles inline name updates from the contacts page."""
+    phone_key = request.form.get("phone_key")
+    new_name = request.form.get("new_name", "").strip()
+    current_app.logger.info(f"Attempting to update name for key '{phone_key}' to '{new_name}'")
 
-# ... (rest of main.py, including clear_contacts_debug with session expiration) ...
+    if not phone_key:
+        flash("Missing phone key for name update.", "error")
+        return redirect(url_for('contacts_view'))
+
+    if not new_name:
+        flash("New contact name cannot be empty.", "error")
+        return redirect(url_for('contacts_view'))
+
+    try:
+        contact_to_update = Contact.query.get(phone_key)
+        if contact_to_update:
+            # Check if new name is just the phone number again (prevent accidental revert)
+            is_reverting_to_default = (
+                (new_name.startswith('+') and len(new_name) > 1 and new_name[1:].isdigit()) or
+                (len(new_name) == 10 and new_name.isdigit() and new_name == phone_key)
+            )
+            if is_reverting_to_default and new_name != contact_to_update.contact_name :
+                 flash(f"Cannot set name to just the phone number ('{new_name}').", "warning")
+                 return redirect(url_for('contacts_view'))
+
+            old_name = contact_to_update.contact_name
+            contact_to_update.contact_name = new_name
+            db.session.commit()
+            current_app.logger.info(f"✅ Updated contact name for '{phone_key}' from '{old_name}' to '{new_name}'.")
+            flash(f"Contact name for {phone_key} updated to '{new_name}'.", "success")
+        else:
+            flash(f"Contact with key '{phone_key}' not found for update.", "error")
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"❌ Error updating contact name for key '{phone_key}': {e}", exc_info=True)
+        flash(f"Error updating contact name: {e}", "danger")
+
+    return redirect(url_for('contacts_view'))
+
+# ... (Rest of your main.py: ask_view, gallery routes, clear_contacts_debug, etc.) ...
+
+# Ensure 'select', 'func', 'over', 'String', 'cast' are imported from sqlalchemy at the top
+# Ensure 'attributes' is imported from sqlalchemy.orm if using expire logic in clear_contacts_debug
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Ask (OpenAI Integration) - Assuming OK, leaving as is
