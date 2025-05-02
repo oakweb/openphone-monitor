@@ -22,6 +22,7 @@ load_dotenv()
 # Import SQLAlchemy components needed for queries/operations
 from sqlalchemy import text, func, exc as sqlalchemy_exc, select, over
 from sqlalchemy.orm import attributes, joinedload # Import attributes and joinedload
+from flask_migrate import Migrate
 
 import openai
 
@@ -81,6 +82,8 @@ app.logger.info(f"ℹ️ Configured UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}
 db.init_app(app)
 app.register_blueprint(webhook_bp) # Assumes webhook_bp uses url_prefix="/webhook"
 
+migrate = Migrate(app, db)
+
 # Configure OpenAI API key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -136,8 +139,8 @@ def initialize_database(app_context):
             else:
                 app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
 
-            prop_count = Property.query.count()
-            app.logger.info(f"👉 Properties in DB: {prop_count}")
+           # prop_count = Property.query.count()
+           # app.logger.info(f"👉 Properties in DB: {prop_count}")
             app.logger.info("✅ Database initialization complete.")
 
         except Exception as e:
