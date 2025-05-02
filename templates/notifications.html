@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Notifications | OpenPhone System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <style>
+        body { background-color: #121416; color: #fff; }
+        .table { --bs-table-bg: transparent; --bs-table-striped-bg: rgba(255, 255, 255, 0.03); }
+        .header-nav a { color: #adb5bd; text-decoration: none; margin-left: 20px; transition: color 0.3s; font-weight: 500; }
+        .header-nav a:hover, .header-nav a.active { color: #6cb9d3; }
+        .page-title { margin-bottom: 1.5rem; font-weight: 700; }
+        .tech-divider { height: 3px; width: 100px; background: linear-gradient(90deg, #6cb9d3, #3a8bab); margin: 0 auto 30px; border-radius: 2px; }
+        /* Add specific styles if needed */
+    </style>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+
+</head>
+<body class="d-flex flex-column min-vh-100">
+
+    <header class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top border-bottom border-secondary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('index') }}"><div><span class="fw-bold fs-5">Sin City Rentals</span><br><small class="text-info">OpenPhone System</small></div></a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+            <div class="collapse navbar-collapse" id="mainNavbar">
+                <nav class="navbar-nav ms-auto mb-2 mb-lg-0 header-nav">
+                    <a class="nav-link" href="{{ url_for('index') }}">Dashboard</a>
+                    <a class="nav-link" href="{{ url_for('messages_view') }}">Messages</a>
+                    <a class="nav-link" href="{{ url_for('contacts_view') }}">Contacts</a>
+                    <a class="nav-link active" href="{{ url_for('notifications_view') }}">Notifications</a> <a class="nav-link" href="{{ url_for('galleries_overview') }}">Galleries</a>
+                    <a class="nav-link" href="{{ url_for('ask_view') }}">Ask</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow-1 py-4">
+        <div class="container">
+            <h1 class="text-center page-title">Send Tenant Notifications</h1>
+            <div class="tech-divider"></div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}<div class="row justify-content-center"><div class="col-md-10 col-lg-8">{% for category, message in messages %}{% set category = 'danger' if category == 'error' else category %}<div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">{{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>{% endfor %}</div></div>{% endif %}
+            {% endwith %}
+
+             {% if error %}<div class="alert alert-danger" role="alert"><strong>Error:</strong> {{ error }}</div>{% endif %}
+
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-body">
+                    <h2 class="card-title h5 text-info">Compose Notification</h2>
+                    <form action="{{ url_for('notifications_view') }}" method="POST">
+                        <div class="mb-3">
+                            <label for="property_ids" class="form-label">Target Properties:</label>
+                            <select class="form-select" id="property_ids" name="property_ids" multiple required>
+                                {% for prop in properties %}
+                                <option value="{{ prop.id }}">{{ prop.name }}</option>
+                                {% else %}
+                                <option disabled>No properties found</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Hold Ctrl (or Cmd on Mac) to select multiple properties.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="subject" class="form-label">Subject (for Email):</label>
+                            <input type="text" class="form-control" id="subject" name="subject" placeholder="e.g., Important HOA Notice">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="message_body" class="form-label">Message Body:</label>
+                            <textarea class="form-control" id="message_body" name="message_body" rows="6" required placeholder="Type your notification here..."></textarea>
+                            </div>
+
+                        <div class="mb-3">
+                            <label class="form-label d-block">Send Via:</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="send_email" name="channels" value="email" checked>
+                                <label class="form-check-label" for="send_email">Email</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="send_sms" name="channels" value="sms">
+                                <label class="form-check-label" for="send_sms">Text (SMS via OpenPhone)</label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Send Notification</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card bg-dark border-secondary">
+                <div class="card-body">
+                    <h2 class="card-title h5 text-info">Recent Notification History</h2>
+                    {% if history %}
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp (UTC)</th>
+                                        <th>Subject/Body Snippet</th>
+                                        <th>Channels</th>
+                                        <th>Status</th>
+                                        <th>Target/Recipients</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in history %}
+                                    <tr>
+                                        <td>{{ item.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td>
+                                            {% if item.subject %}<strong>{{ item.subject }}</strong><br>{% endif %}
+                                            {{ item.body | truncate(100) }} {# Show first 100 chars #}
+                                        </td>
+                                        <td>{{ item.channels }}</td>
+                                        <td>
+                                            <span class="badge bg-{{ 'success' if item.status == 'Sent' else ('warning' if item.status == 'Partial Failure' else 'danger') }}">
+                                                {{ item.status }}
+                                            </span>
+                                            {% if item.error_info %}
+                                            <small class="d-block text-danger" title="{{ item.error_info }}">Error details logged</small>
+                                            {% endif %}
+                                        </td>
+                                         <td><small>{{ item.properties_targeted or 'N/A' }}<br>{{ item.recipients_summary or 'N/A' }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No notification history found.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div> </main>
+
+    <footer class="footer mt-auto py-3 bg-dark border-top border-secondary"> <div class="container text-center"> <span class="text-muted small">© {{ current_year }} Sin City Rentals. All rights reserved.</span> </div> </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script>
+        // Initialize Select2 for the property dropdown
+        $(document).ready(function() {
+            $('#property_ids').select2({
+                theme: "bootstrap-5", // Use Bootstrap 5 theme
+                placeholder: "Select properties...",
+                // allowClear: true // Optional: adds a clear button
+            });
+        });
+
+        // TODO: Add JavaScript for AI Assist button if implementing later
+    </script>
+
+</body>
+</html>

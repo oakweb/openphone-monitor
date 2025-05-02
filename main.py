@@ -195,6 +195,48 @@ def index():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Tenant Notifications Page
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/notifications", methods=["GET", "POST"])
+def notifications_view():
+    """Displays notification form and history, handles sending."""
+    current_year = datetime.utcnow().year
+    properties = []
+    history = []
+    error_message = None
+
+    # --- POST Logic (We'll build this later) ---
+    if request.method == "POST":
+        # TODO: Handle form submission for sending notifications
+        flash("Send notification logic not yet implemented.", "info")
+        return redirect(url_for('notifications_view'))
+
+    # --- GET Logic ---
+    try:
+        # Fetch properties for the dropdown/selector
+        properties = Property.query.order_by(Property.name).all()
+        current_app.logger.debug(f"Fetched {len(properties)} properties for notification form.")
+
+        # Fetch recent notification history
+        history = NotificationHistory.query.order_by(NotificationHistory.timestamp.desc()).limit(20).all()
+        current_app.logger.debug(f"Fetched {len(history)} recent notification history records.")
+
+    except Exception as ex:
+        db.session.rollback()
+        app.logger.error(f"❌ Error loading notifications page data: {ex}", exc_info=True)
+        error_message = f"Error loading page data: {ex}"
+        flash(error_message, "danger")
+
+    return render_template(
+        "notifications.html", # New template file
+        properties=properties,
+        history=history,
+        error=error_message,
+        current_year=current_year
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  Media Deletion (Associated with a Message)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route('/delete-media/<int:message_id>/<int:file_index>', methods=['POST'])
