@@ -202,6 +202,15 @@ def index():
     except Exception as ex: db.session.rollback(); db_status = f"Error: {ex}"; app.logger.error(f"❌ DB Error index: {ex}")
     return render_template("index.html", db_status=db_status, summary_today=summary_today, summary_week=summary_week, current_year=current_year)
 
+@app.route('/properties')
+def properties_list_view():
+    # Fetch all properties from the database, ordered by name perhaps
+    properties = Property.query.order_by(Property.name).all()
+    current_year = datetime.datetime.utcnow().year # For footer
+    return render_template('properties_list.html',
+                           properties=properties,
+                           current_year=current_year)
+
 
 # --- /messages, /assign_property, /contacts, /update_contact_name ---
 # (Using the versions we finalized before the AI intervention)

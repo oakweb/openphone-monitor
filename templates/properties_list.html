@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Properties Overview | OpenPhone System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <style>
+        /* Add your usual base styles */
+        body { background-color: #121416; color: #fff; }
+        .list-group-item { background-color: #212529; border-color: #495057; color: #fff; }
+        .list-group-item a { color: #6cb9d3; text-decoration: none; }
+        .list-group-item a:hover { text-decoration: underline; }
+        .page-title { margin-bottom: 1.5rem; font-weight: 700; }
+        .tech-divider { height: 3px; width: 100px; background: linear-gradient(90deg, #6cb9d3, #3a8bab); margin: 0 auto 30px; border-radius: 2px; }
+    </style>
+</head>
+<body class="d-flex flex-column min-vh-100">
+    {% include '_header.html' %} {# Assuming you have a header template #}
+
+    <main class="flex-grow-1 py-4">
+        <div class="container">
+            <h1 class="text-center page-title">Properties Overview</h1>
+            <div class="tech-divider"></div>
+
+            {% if properties %}
+                <div class="list-group">
+                    {% for prop in properties %}
+                        <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <a href="{{ url_for('property_detail_view', property_id=prop.id) }}">
+                                {{ prop.name }} (ID: {{ prop.id }})
+                            </a>
+                            </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-center text-muted">No properties found in the database.</p>
+            {% endif %}
+        </div>
+    </main>
+
+    {% include '_footer.html' %} {# Assuming you have a footer template #}
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
