@@ -187,6 +187,62 @@ if os.environ.get("FLASK_DEBUG", "false").lower() in ['true', '1', 't']:
 #  ROUTES
 # ──────────────────────────────────────────────────────────────────────────────
 
+# --- Add this new route definition ---
+
+@app.route('/property/<int:property_id>')
+def property_detail_view(property_id):
+    """Displays details for a specific property, its tenants, and communication history."""
+    current_app.logger.info(f"--- /property/{property_id} route accessed ---")
+    try:
+        # 1. Fetch the specific property by its ID
+        #    get_or_404 is convenient: it gets the object or raises a 404 Not Found error
+        prop = Property.query.get_or_404(property_id)
+        current_app.logger.debug(f" Found property: {prop.name}")
+
+        # 2. Fetch tenants associated with this property
+        #    Ordered by name for consistency
+        tenants = Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
+        current_app.logger.debug(f" Found {len(tenants)} tenants for property {prop.id}")
+
+        # 3. Fetch recent communication history (e.g., last 50 entries)
+        #    Adjust the .limit() as needed for performance vs. history depth
+        recent_history_all = NotificationHistory.query.order_by(NotificationHistory.timestamp.desc()).limit(50).all()
+        current_app.logger.debug(f" Fetched {len(recent_history_all)} recent history entries for filtering")
+
+        # 4. Filter history for entries targeted at this specific property
+        #    IMPORTANT: This assumes your 'properties_targeted' field in NotificationHistory
+        #    is a string that reliably contains something like '(ID:xx)' for each property.
+        #    This string matching might be slow if history grows very large.
+        property_identifier_string = f'(ID:{property_id})'
+        relevant_history = [
+            item for item in recent_history_all
+            if item.properties_targeted and property_identifier_string in item.properties_targeted
+        ]
+        current_app.logger.debug(f" Filtered down to {len(relevant_history)} history entries relevant to property {prop.id}")
+
+        # 5. Get current year for the footer
+        current_year = datetime.utcnow().year
+
+        # 6. Render the detail template, passing the data
+        return render_template('property_detail.html',
+                               prop=prop, # The specific Property object
+                               tenants=tenants, # List of Tenant objects for this property
+                               history=relevant_history, # Filtered list of NotificationHistory objects
+                               current_year=current_year)
+
+    except Exception as e:
+        # Log any unexpected errors during data fetching or processing
+        current_app.logger.error(f"❌ Error loading property detail page for ID {property_id}: {e}")
+        traceback.print_exc() # Print detailed traceback to logs
+        # Optionally, render a generic error page or abort(500)
+        # from flask import abort
+        # abort(500)
+        # For now, just showing a simple error message might be okay during development
+        return "An error occurred while loading property details.", 500
+
+# --- End of new route definition ---
+
+
 @app.route("/")
 def index():
     """Displays the main dashboard."""
