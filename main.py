@@ -206,7 +206,7 @@ def index():
 def properties_list_view():
     # Fetch all properties from the database, ordered by name perhaps
     properties = Property.query.order_by(Property.name).all()
-    current_year = datetime.datetime.utcnow().year # For footer
+    current_year = datetime.utcnow().year # For footer
     return render_template('properties_list.html',
                            properties=properties,
                            current_year=current_year)
