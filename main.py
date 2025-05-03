@@ -371,13 +371,12 @@ def notifications_view():
 
         # Input Validation
         if not property_ids: flash("Please select at least one property.", "error"); return redirect(url_for('notifications_view'))
-        if request.method == 'POST':
     # ... (get message body, selected properties, etc.)
-    uploaded_files = request.files.getlist('attachments')
-    attachments_data = []
-    for file in uploaded_files:
-        if file and file.filename: # Check if a file was actually selected and has a name
-            filename = secure_filename(file.filename)
+        uploaded_files = request.files.getlist('attachments')
+        attachments_data = []
+        for file in uploaded_files:
+            if file and file.filename: # Check if a file was actually selected and has a name
+                 filename = secure_filename(file.filename)
             # Option 1: Read content directly
             file_content = file.read()
             # Option 2: Save temporarily (less common for direct emailing)
