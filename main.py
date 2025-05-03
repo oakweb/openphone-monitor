@@ -444,8 +444,11 @@ def notifications_view():
 
                 for email in emails_to_send:
                     try:
-                        send_email(to_address=email, subject=email_subject, plain_content=message_body, html_content=wrap_email_html(html_body))
-                        email_success_count += 1
+                        send_email(
+                            to_emails=[email],  # Change keyword to 'to_emails' and make it a list
+                                subject=email_subject,
+                                html_content=wrap_email_html(html_body), # Keep html_content
+                                attachments=attachments_data  # ADD THIS ARGUMENT
                     except Exception as e:
                         current_app.logger.error(f"Email fail to {email}: {e}", exc_info=True)
                         email_errors.append(f"{email}: Error")
