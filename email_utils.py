@@ -151,34 +151,39 @@ def _send_via_sendgrid(
         if hasattr(e, "body"):
             print(f"SendGrid Error Body: {e.body}")
         raise
+    
+def send_email(to_emails, subject, html_content, attachments=None):
+    message = Mail(
+        from_email=From('your_verified_sender@example.com', 'Your HOA Name'),
+        to_emails=to_emails, # Can be a list of emails or To objects
+        subject=Subject(subject),
+        html_content=HtmlContent(html_content)
+    )
 
-def send_email(
-    to_address: str,
-    subject: str,
-    html_content: str,
-    plain_content: str = None,
-    attachments: list = None,
-):
-    use_sendgrid = bool(os.getenv("SENDGRID_API_KEY"))
-    primary_method = _send_via_sendgrid if use_sendgrid else _send_via_smtp
-    fallback_method = _send_via_smtp if use_sendgrid else _send_via_sendgrid
+    if attachments:
+        processed_attachments = []
+        for attachment_data in attachments:
+            # Ensure content is Base64 encoded string
+            encoded_content = base64.b64encode(attachment_data['content']).decode()
 
-    email_args = {
-        "to_address": to_address,
-        "subject": subject,
-        "html_content": html_content,
-        "plain_content": plain_content,
-        "attachments": attachments,
-    }
+            attachment = Attachment(
+                FileContent(encoded_content),
+                FileName(attachment_data['filename']),
+                FileType(attachment_data['type']), # Use the content type from Flask
+                Disposition('attachment') # 'inline' is also an option for images
+                # ContentId('...') # Optional: Used for inline images
+            )
+            processed_attachments.append(attachment)
+
+        message.attachment = processed_attachments # Assign the list of attachments
 
     try:
-        print(f"Attempting email send via {'SendGrid' if use_sendgrid else 'SMTP'}...")
-        primary_method(**email_args)
+        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        response = sg.send(message)
+        print(f"Email sent to {to_emails}, Status Code: {response.status_code}")
+        # Handle response status, body, headers as needed
+        return True
     except Exception as e:
-        print(f"⚠️ Primary method failed ({'SendGrid' if use_sendgrid else 'SMTP'}): {e}")
-        print("Attempting fallback method...")
-        try:
-            fallback_method(**email_args)
-        except Exception as inner_e:
-            print(f"❌ Fallback method also failed: {inner_e}")
-            raise e
+        print(f"Error sending email to {to_emails}: {e}")
+        # Log the error details (e.g., e.body if available)
+        return False

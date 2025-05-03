@@ -50,7 +50,7 @@
             <div class="card bg-dark border-secondary mb-4">
                 <div class="card-body">
                     <h2 class="card-title h5 text-info">Compose Notification</h2>
-                    <form action="{{ url_for('notifications_view') }}" method="POST">
+                    <form action="{{ url_for('notifications_view') }}" method="POST" enctype="multipart/form-data">
                         <div class="mb-3">
                             <label for="property_ids" class="form-label">Target Properties:</label>
                             <select class="form-select" id="property_ids" name="property_ids" multiple required>
@@ -73,6 +73,11 @@
                             <textarea class="form-control" id="message_body" name="message_body" rows="6" required placeholder="Type your notification here..."></textarea>
                             </div>
 
+                        <div class="mb-3">
+                            <label for="attachments" class="form-label">Attachments (for Email):</label>
+                            <input class="form-control" type="file" id="attachments" name="attachments" multiple>
+                            <small class="text-muted">Select one or more files to attach to emails.</small>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label d-block">Send Via:</label>
                             <div class="form-check form-check-inline">

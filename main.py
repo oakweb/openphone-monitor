@@ -371,6 +371,25 @@ def notifications_view():
 
         # Input Validation
         if not property_ids: flash("Please select at least one property.", "error"); return redirect(url_for('notifications_view'))
+        if request.method == 'POST':
+    # ... (get message body, selected properties, etc.)
+    uploaded_files = request.files.getlist('attachments')
+    attachments_data = []
+    for file in uploaded_files:
+        if file and file.filename: # Check if a file was actually selected and has a name
+            filename = secure_filename(file.filename)
+            # Option 1: Read content directly
+            file_content = file.read()
+            # Option 2: Save temporarily (less common for direct emailing)
+            # temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename) # Define UPLOAD_FOLDER if using this
+            # file.save(temp_path)
+
+            attachments_data.append({
+                'content': file_content, # Pass content if using Option 1
+                # 'path': temp_path, # Pass path if using Option 2
+                'filename': filename,
+                'type': file.content_type # Flask provides the detected content type
+            })
         if not message_body: flash("Message body cannot be empty.", "error"); return redirect(url_for('notifications_view'))
         if not channels: flash("Please select at least one channel (Email or SMS).", "error"); return redirect(url_for('notifications_view'))
 
