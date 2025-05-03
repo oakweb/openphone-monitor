@@ -391,10 +391,10 @@ def notifications_view():
 
 
         # --->>> DEBUG LOGGING FOR STATUS (NOW USING WARNING LEVEL) <<<---
-        current_app.logger.warning(f"Status Calc: Channels Attempted={channels_attempted}")
-        current_app.logger.warning(f"Status Calc: Email Success={email_success_count}, Email Attempts={total_email_attempts}")
-        current_app.logger.warning(f"Status Calc: SMS Success={sms_success_count}, SMS Attempts={total_sms_attempts}")
-        current_app.logger.warning(f"Status Calc: Total Successes={total_successes}, Total Attempts={total_attempts}")
+            current_app.logger.warning(f"Status Calc: Channels Attempted={channels_attempted}")
+            current_app.logger.warning(f"Status Calc: Email Success={email_success_count}, Email Attempts={total_email_attempts}")
+            current_app.logger.warning(f"Status Calc: SMS Success={sms_success_count}, SMS Attempts={total_sms_attempts}")
+            current_app.logger.warning(f"Status Calc: Total Successes={total_successes}, Total Attempts={total_attempts}")
         # --->>> END DEBUG LOGGING <<<---
 
         recipients_summary = f"Email: {email_success_count}/{total_email_attempts}. SMS: {sms_success_count}/{total_sms_attempts}."
