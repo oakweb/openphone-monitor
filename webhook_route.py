@@ -1,4 +1,4 @@
-# webhook_route.py (or your chosen filename)
+# webhook_route.py
 
 import os
 import traceback
@@ -204,14 +204,15 @@ def webhook():
                         if os.path.exists(full_path):
                             try:
                                 with open(full_path, "rb") as f:
-                                    content_b64 = base64.b64encode(f.read()).decode()
+                                    # Read file content directly for Base64 encoding
+                                    file_content_bytes = f.read()
+                                # Pass the raw bytes to send_email, let it handle encoding
                                 attachments.append({
-                                    "content": content_b64,
+                                    "content_bytes": file_content_bytes, # Pass bytes
                                     "type": mimetypes.guess_type(full_path)[0] or "application/octet-stream",
                                     "filename": os.path.basename(full_path),
-                                    "disposition": "attachment",
                                 })
-                                current_app.logger.debug(f"   📎 Added attachment: {os.path.basename(full_path)}")
+                                current_app.logger.debug(f"   📎 Added attachment data: {os.path.basename(full_path)}")
                             except Exception as read_err:
                                 current_app.logger.warning(f"   ⚠️ Error reading file for email attachment ({full_path}): {read_err}")
                         else:
@@ -221,7 +222,7 @@ def webhook():
 
 
                 email_subject = f"New message from {contact.contact_name}"
-                email_plain_content = text or f"Message from {contact.contact_name} with {len(attachments)} attachment(s)."
+                # email_plain_content = text or f"Message from {contact.contact_name} with {len(attachments)} attachment(s)." # Removed
                 # Ensure HTML is escaped properly if `text` contains HTML
                 # Using a simple pre-wrap for now. Consider html.escape if needed.
                 email_html_content = wrap_email_html(f"""
@@ -235,12 +236,13 @@ def webhook():
 
                 try:
                     current_app.logger.info(f"   Sending email to {to_addr}...")
+                    # **** EDITED send_email call ****
                     send_email(
-                        to_address=to_addr,
+                        to_emails=[to_addr], # Changed: Pass as list
                         subject=email_subject,
-                        plain_content=email_plain_content,
+                        # plain_content=email_plain_content, # Removed: Assuming not needed by send_email
                         html_content=email_html_content,
-                        attachments=attachments if attachments else None,
+                        attachments=attachments if attachments else None # Changed: Pass the list of dicts
                     )
                     current_app.logger.info("   ✅ Email sent successfully.")
                 except Exception as e:
