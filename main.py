@@ -8,6 +8,7 @@ import traceback
 import requests # For OpenPhone API calls
 
 # Import necessary Flask components
+from werkzeug.utils import secure_filename
 from flask import (
     Flask, render_template, request, jsonify, url_for, redirect, flash, current_app
 )
