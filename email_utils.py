@@ -8,6 +8,7 @@ import mimetypes
 
 # SendGrid imports
 from sendgrid import SendGridAPIClient
+# In email_utils.py
 from sendgrid.helpers.mail import (
     Mail,
     Attachment,
@@ -15,6 +16,10 @@ from sendgrid.helpers.mail import (
     FileName,
     FileType,
     Disposition,
+    From,             # Add this
+    To,               # Add this
+    Subject,          # Add this
+    HtmlContent       # Add this
 )
 
 def wrap_email_html(content: str) -> str:
@@ -151,7 +156,7 @@ def _send_via_sendgrid(
         if hasattr(e, "body"):
             print(f"SendGrid Error Body: {e.body}")
         raise
-    
+
 def send_email(to_emails, subject, html_content, attachments=None):
     message = Mail(
         from_email=From('your_verified_sender@example.com', 'Your HOA Name'),
