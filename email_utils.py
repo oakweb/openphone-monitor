@@ -159,7 +159,7 @@ def _send_via_sendgrid(
 
 def send_email(to_emails, subject, html_content, attachments=None):
     message = Mail(
-        from_email=From('your_verified_sender@example.com', 'Your HOA Name'),
+        from_email=From('phil@sincityrentals.com', 'Sin City Rentals'),
         to_emails=to_emails, # Can be a list of emails or To objects
         subject=Subject(subject),
         html_content=HtmlContent(html_content)
