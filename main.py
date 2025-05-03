@@ -79,63 +79,58 @@ def send_openphone_sms(recipient_phone, message_body):
     Requires OPENPHONE_API_TOKEN and OPENPHONE_SENDING_NUMBER/OPENPHONE_FROM env vars.
     """
     api_token = os.getenv("OPENPHONE_API_TOKEN")
-    # Allow either env var name for the sending number
     sending_number = os.getenv("OPENPHONE_FROM") or os.getenv("OPENPHONE_SENDING_NUMBER")
 
     if not api_token or not sending_number:
-        # Use current_app logger if available and configured, otherwise basic print/logging
-        log_func = getattr(current_app, "logger", None)
-        if log_func:
-            log_func.error("OpenPhone API Token or Sending Number not configured.")
-        else:
-            print("ERROR: OpenPhone API Token or Sending Number not configured.")
+        log_func = getattr(current_app, "logger", logging.getLogger())
+        log_func.error("OpenPhone API Token or Sending Number not configured.")
         return False
 
-    # --- Use Correct v1 Endpoint ---
     api_url = "https://api.openphone.com/v1/messages"
     headers = {
-        "Authorization": f"Bearer {api_token}",
+        # --- FIX: Remove "Bearer " prefix ---
+        "Authorization": api_token,
+        # --- END FIX ---
         "Content-Type": "application/json",
     }
-    # --- Use Correct Payload Structure (v1 API info) ---
     payload = {
-        "from": sending_number,      # Your OpenPhone number from env var
-        "to": [recipient_phone],     # <<< Recipient MUST be in a list/array >>>
-        "content": message_body,     # <<< Use 'content', not 'body' >>>
+        "from": sending_number,
+        "to": [recipient_phone],  # Recipient MUST be in a list/array
+        "content": message_body,  # Use 'content', not 'body'
     }
-    # --- End Corrected Structure ---
 
-    log_func = getattr(current_app, "logger", logging.getLogger()) # Fallback logger
+    log_func = getattr(current_app, "logger", logging.getLogger())
 
     try:
         log_func.debug(f"Sending OpenPhone SMS To: {payload['to']}, From: {payload['from']}")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=20) # 20s timeout
-        response.raise_for_status() # Raises HTTPError for 4xx/5xx responses
+        # Log the header FORMAT being sent (without exposing full token)
+        log_func.debug(f"Authorization Header Type Sent: {'Bearer included' if 'Bearer' in headers['Authorization'] else 'Direct Token'}")
+
+        response = requests.post(api_url, headers=headers, json=payload, timeout=20)
+        response.raise_for_status()
 
         response_data = response.json()
-        # Log relevant success info (check OpenPhone v1 docs for exact response fields)
         message_id = response_data.get('id', 'N/A')
-        status = response_data.get('status', 'N/A') # e.g., 'queued', 'sent'
+        status = response_data.get('status', 'N/A')
         log_func.info(f"Successfully sent SMS via OpenPhone to {recipient_phone}. Response ID: {message_id}, Status: {status}")
         return True
 
     except requests.exceptions.HTTPError as http_err:
-        # Handle HTTP errors specifically (4xx, 5xx)
         log_func.error(f"HTTP Error sending OpenPhone SMS to {recipient_phone}: {http_err}")
         try:
-            error_details = response.json() # Use response captured before raise_for_status failed
-            log_func.error(f"OpenPhone API Error Response: Status={response.status_code}, Details={error_details}")
-        except: # Handle cases where response might not be JSON
-             log_func.error(f"OpenPhone API Error Response: Status={response.status_code}, Body={response.text}")
+            error_details = http_err.response.json()
+            log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
+        except:
+             try: log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
+             except: pass
         return False
     except requests.exceptions.RequestException as req_err:
-        # Handle other network/request errors (timeout, connection error)
         log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}")
         return False
-    except Exception as e: # Catch any other unexpected errors
+    except Exception as e:
          log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True)
          return False
-
+    
 
 # --- Database Initialization Helper ---
 def initialize_database(app_context):
