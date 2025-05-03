@@ -449,6 +449,7 @@ def notifications_view():
                                 subject=email_subject,
                                 html_content=wrap_email_html(html_body), # Keep html_content
                                 attachments=attachments_data  # ADD THIS ARGUMENT
+                        )
                     except Exception as e:
                         current_app.logger.error(f"Email fail to {email}: {e}", exc_info=True)
                         email_errors.append(f"{email}: Error")
