@@ -484,6 +484,8 @@ def clear_contacts_debug():
      flash("Debug clear executed (ensure safe version).", "info")
      return redirect(url_for('messages_view'))
 
+
+
 # --- Keep __main__ block ---
 if __name__ == "__main__":
     # ... (Keep as before) ...
