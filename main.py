@@ -390,22 +390,38 @@ def notifications_view():
                  if 'sms' in channels: current_app.logger.info("SMS channel selected, but no valid tenant phone numbers found.")
 
 
-            # Determine Overall Status & Log History
-            total_email_attempts = len(emails_to_send) if 'email' in channels_attempted else 0
-            total_sms_attempts = len(phones_to_send) if 'sms' in channels_attempted else 0
-            total_successes = email_success_count + sms_success_count
-            total_attempts = total_email_attempts + total_sms_attempts
+        # --->>> DEBUG LOGGING FOR STATUS (NOW USING WARNING LEVEL) <<<---
+        current_app.logger.warning(f"Status Calc: Channels Attempted={channels_attempted}")
+        current_app.logger.warning(f"Status Calc: Email Success={email_success_count}, Email Attempts={total_email_attempts}")
+        current_app.logger.warning(f"Status Calc: SMS Success={sms_success_count}, SMS Attempts={total_sms_attempts}")
+        current_app.logger.warning(f"Status Calc: Total Successes={total_successes}, Total Attempts={total_attempts}")
+        # --->>> END DEBUG LOGGING <<<---
 
-            recipients_summary = f"Email: {email_success_count}/{total_email_attempts}. SMS: {sms_success_count}/{total_sms_attempts}."
-            error_details = []
-            if email_errors: error_details.append(f"{len(email_errors)} Email errors")
-            if sms_errors: error_details.append(f"{len(sms_errors)} SMS errors")
-            error_info_str = "; ".join(error_details) + " (Check logs)" if error_details else None
+        recipients_summary = f"Email: {email_success_count}/{total_email_attempts}. SMS: {sms_success_count}/{total_sms_attempts}."
+        # ... error info calculation ...
 
-            if total_attempts == 0: final_status = "No Recipients Found"; flash("No current tenants with contact info for selected channels/properties.", "warning")
-            elif total_successes == total_attempts: final_status = "Sent"; flash(f"Notifications sent successfully! ({recipients_summary})", "success")
-            elif total_successes > 0: final_status = "Partial Failure"; flash(f"Notifications sent with some failures. ({recipients_summary})", "warning")
-            else: final_status = "Failed"; flash(f"All notifications failed to send.", "danger")
+        # Determine final status based on calculated values
+        if total_attempts == 0:
+            final_status = "No Recipients Found"
+            current_app.logger.warning("!!!!!! EXECUTING 'No Recipients Found' BLOCK !!!!!!") # Keep this as warning too
+            flash("No valid email addresses or phone numbers found...", "warning")
+        elif total_successes == total_attempts:
+            final_status = "Sent"
+            current_app.logger.info("Setting final status to 'Sent'.")
+            flash(f"Notifications sent successfully! ({recipients_summary})", "success")
+        elif total_successes > 0:
+            final_status = "Partial Failure"
+            current_app.logger.warning(f"Setting final status to 'Partial Failure'. Successes: {total_successes}, Attempts: {total_attempts}")
+            flash(f"Notifications sent with some failures. ({recipients_summary})", "warning")
+        else: # total_successes must be 0 if total_attempts > 0
+            final_status = "Failed"
+            current_app.logger.error(f"Setting final status to 'Failed'. Successes: {total_successes}, Attempts: {total_attempts}")
+            flash(f"All notifications failed to send. Check logs.", "danger")
+
+        # Log to DB
+        # ... (Create history_log object using final_status) ...
+        # Log the status that was ACTUALLY saved
+        current_app.logger.info(f"Notification history logged (ID: {history_log.id}, Status: {history_log.status}).") # Final check
 
             # Log to DB
             history_log = NotificationHistory(
