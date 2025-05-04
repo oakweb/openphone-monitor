@@ -828,31 +828,51 @@ def gallery_for_property(property_id):
 
         # Process the paths from the messages found
         for msg in messages_with_media:
-            if msg.local_media_paths: # Check if the list/JSON is not empty
-                 for idx, path in enumerate(msg.local_media_paths): # Path is like 'uploads/...'
-                    trimmed_path = path.strip()
-                    # --- START ADDED LOGGING ---
-                    current_app.logger.debug(f"  Checking path for gallery: '{trimmed_path}' (Msg ID: {msg.id})") # Log the path
-                    is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False # Check if it's an image
-                    current_app.logger.debug(f"  Path ends with valid extension? {is_image}") # Log the check result
-                    # --- END ADDED LOGGING ---
+            # --- Check if local_media_paths is a string and split it ---
+            if msg.local_media_paths and isinstance(msg.local_media_paths, str):
+                paths = [p.strip() for p in msg.local_media_paths.split(',') if p.strip()]
+                current_app.logger.debug(f"  Paths split from string: {paths} (Msg ID: {msg.id})")
 
-                    # Check if path exists and is an image type we want to display
-                    if trimmed_path and is_image: # Use the check result
-                        current_app.logger.debug(f"  >>> Adding image item: {trimmed_path}") # Log when adding
+                for idx, path in enumerate(paths): # Iterate the split list
+                    trimmed_path = path # Already stripped
+                    current_app.logger.debug(f"  Checking path for gallery: '{trimmed_path}' (Msg ID: {msg.id})")
+                    is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False
+                    current_app.logger.debug(f"  Path ends with valid extension? {is_image}")
+
+                    if trimmed_path and is_image:
+                        current_app.logger.debug(f"  >>> Adding image item: {trimmed_path}")
                         image_items.append({
                             "path": trimmed_path,
                             "message_id": msg.id,
-                            "index": idx, # Index within the message's media list
+                            "index": idx,
                             "timestamp": msg.timestamp,
-                            "sender_info": msg.contact.get_display_name() if msg.contact else msg.phone_number # Add sender
+                            "sender_info": msg.contact.get_display_name() if msg.contact else msg.phone_number
                         })
-                    # --- ADDED ELSE LOGGING ---
                     else:
-                       current_app.logger.debug(f"  --- Skipping non-image or empty path: '{trimmed_path}'") # Log when skipping
-                    # --- END ADDED ELSE LOGGING ---
+                        current_app.logger.debug(f"  --- Skipping non-image or empty path from split: '{trimmed_path}'")
 
-        # Sort the collected images by message timestamp (newest first) - already ordered by query
+            # --- Optional: Handle if it's already a list ---
+            elif msg.local_media_paths and isinstance(msg.local_media_paths, list):
+                current_app.logger.debug(f"  local_media_paths is already a list: {msg.local_media_paths} (Msg ID: {msg.id})")
+                for idx, path in enumerate(msg.local_media_paths):
+                    trimmed_path = path.strip()
+                    current_app.logger.debug(f"  Checking list path for gallery: '{trimmed_path}' (Msg ID: {msg.id})")
+                    is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False
+                    current_app.logger.debug(f"  List Path ends with valid extension? {is_image}")
+                    if trimmed_path and is_image:
+                        current_app.logger.debug(f"  >>> Adding image item from list: {trimmed_path}")
+                        image_items.append({
+                            "path": trimmed_path, "message_id": msg.id, "index": idx,
+                            "timestamp": msg.timestamp,
+                            "sender_info": msg.contact.get_display_name() if msg.contact else msg.phone_number
+                        })
+                    else:
+                         current_app.logger.debug(f"  --- Skipping list item non-image or empty path: '{trimmed_path}'")
+            elif msg.local_media_paths:
+                # Log if it's neither string nor list but exists
+                current_app.logger.warning(f"  local_media_paths for Msg ID {msg.id} is neither string nor list (Type: {type(msg.local_media_paths)}), Value: {msg.local_media_paths}")
+
+
         current_app.logger.debug(f"Prepared {len(image_items)} image items for gallery template")
 
     except Exception as e:
@@ -862,8 +882,6 @@ def gallery_for_property(property_id):
         flash(error_message, "danger") # Flash message to user
 
     # Render the template, passing the list of image item dictionaries
-    # Assuming template is named 'gallery_for_property.html' or similar, adjust if needed
-    # Using 'gallery.html' based on previous code, make sure it handles 'image_items' list
     return render_template("gallery.html",
                            image_items=image_items, # This list now contains image data
                            property=prop, # Pass property object for context
@@ -902,27 +920,47 @@ def unsorted_gallery():
 
         # Prepare the list for the template
         for message in unsorted_messages: # Start the loop
-            if message.local_media_paths:
-                for path in message.local_media_paths: # Path is like 'uploads/...'
-                    # --- START ADDED LOGGING ---
-                    current_app.logger.debug(f"  Checking path for unsorted: '{path}' (Msg ID: {message.id})") # Log the path
-                    is_image = path.lower().endswith(image_extensions) if path else False # Check if it's an image
-                    current_app.logger.debug(f"  Path ends with valid extension? {is_image}") # Log the check result
-                    # --- END ADDED LOGGING ---
+            # --- Check if local_media_paths is a string and split it ---
+            if message.local_media_paths and isinstance(message.local_media_paths, str):
+                paths = [p.strip() for p in message.local_media_paths.split(',') if p.strip()]
+                current_app.logger.debug(f"  Paths split from string: {paths} (Msg ID: {message.id})")
 
-                    if path and is_image: # Use the check result
-                        current_app.logger.debug(f"  >>> Adding unsorted item: {path}") # Log when adding
+                for path in paths: # Iterate the split list
+                    trimmed_path = path # Already stripped
+                    current_app.logger.debug(f"  Checking path for unsorted: '{trimmed_path}' (Msg ID: {message.id})")
+                    is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False
+                    current_app.logger.debug(f"  Path ends with valid extension? {is_image}")
+
+                    if trimmed_path and is_image:
+                        current_app.logger.debug(f"  >>> Adding unsorted item: {trimmed_path}")
                         item_data = {
-                            'path': path,
-                            'msg': message # Pass the whole Message object
+                            'path': trimmed_path, # Use the actual path
+                            'msg': message
                         }
                         unsorted_items_for_template.append(item_data)
-                    # --- ADDED ELSE LOGGING ---
                     else:
-                        current_app.logger.debug(f"  --- Skipping non-image or empty path: '{path}'") # Log when skipping
-                    # --- END ADDED ELSE LOGGING ---
+                        current_app.logger.debug(f"  --- Skipping non-image or empty path from split: '{trimmed_path}'")
 
-        current_app.logger.info(f"Prepared {len(unsorted_items_for_template)} image items for the template.") # Moved log outside inner loop
+            # --- Optional: Handle if it's already a list ---
+            elif message.local_media_paths and isinstance(message.local_media_paths, list):
+                current_app.logger.debug(f"  local_media_paths is already a list: {message.local_media_paths} (Msg ID: {message.id})")
+                for path in message.local_media_paths:
+                     trimmed_path = path.strip()
+                     current_app.logger.debug(f"  Checking list path for unsorted: '{trimmed_path}' (Msg ID: {message.id})")
+                     is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False
+                     current_app.logger.debug(f"  List Path ends with valid extension? {is_image}")
+                     if trimmed_path and is_image:
+                         current_app.logger.debug(f"  >>> Adding unsorted item from list: {trimmed_path}")
+                         item_data = {'path': trimmed_path, 'msg': message}
+                         unsorted_items_for_template.append(item_data)
+                     else:
+                         current_app.logger.debug(f"  --- Skipping list item non-image or empty path: '{trimmed_path}'")
+            elif message.local_media_paths:
+                 # Log if it's neither string nor list but exists
+                 current_app.logger.warning(f"  local_media_paths for Msg ID {message.id} is neither string nor list (Type: {type(message.local_media_paths)}), Value: {message.local_media_paths}")
+
+
+        current_app.logger.info(f"Prepared {len(unsorted_items_for_template)} image items for the template.") # Log final count
 
         # Query for all properties to populate the dropdown
         properties_list = Property.query.order_by(Property.name).all()
