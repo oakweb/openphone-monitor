@@ -87,12 +87,8 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 # --- Helper Function for Sending SMS via OpenPhone API ---
+# (Keep this function as is, including previous fix)
 def send_openphone_sms(recipient_phone, message_body):
-    """
-    Sends an SMS message using the OpenPhone v1 API.
-    Returns True on success, False on failure.
-    Requires OPENPHONE_API_TOKEN and OPENPHONE_SENDING_NUMBER/OPENPHONE_FROM env vars.
-    """
     api_token = os.getenv("OPENPHONE_API_TOKEN"); sending_number = os.getenv("OPENPHONE_FROM") or os.getenv("OPENPHONE_SENDING_NUMBER")
     log_func = getattr(current_app, "logger", logging.getLogger(__name__))
     if not api_token or not sending_number: log_func.error("OpenPhone API Token or Sending Number not configured."); return False
@@ -104,54 +100,64 @@ def send_openphone_sms(recipient_phone, message_body):
         log_func.info(f"Successfully sent SMS via OpenPhone to {recipient_phone}. Response ID: {message_id}, Status: {status}"); return True
     except requests.exceptions.HTTPError as http_err:
         log_func.error(f"HTTP Error sending OpenPhone SMS to {recipient_phone}: {http_err}")
-        # --- CORRECTED NESTED TRY/EXCEPT for error logging ---
-        try:
-            # First, try to log JSON details
-            error_details = http_err.response.json()
-            log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
-        except json.JSONDecodeError: # Catch error if response is not valid JSON
-            # If JSON decoding fails, then try to log the raw text body
-            try:
-                log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
-            except Exception:
-                # If even logging the text body fails, just pass silently
-                pass
-        # --- END CORRECTION ---
-        return False # Return False since the original HTTPError occurred
-    except requests.exceptions.RequestException as req_err:
-        log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}")
+        try: error_details = http_err.response.json(); log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
+        except json.JSONDecodeError:
+            try: log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
+            except Exception: pass
         return False
-    except Exception as e:
-        log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True)
-        return False
+    except requests.exceptions.RequestException as req_err: log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}"); return False
+    except Exception as e: log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True); return False
 
 # --- Database Initialization Helper ---
-# (Keep this function as is, including previous fix)
 def initialize_database(app_context):
+    """Initializes the database: creates tables, checks columns, resets sequences."""
     with app_context:
         app.logger.info("🔄 Initializing Database...")
         try: # Outer try for the whole function
             db.create_all()
             app.logger.info("✅ Tables created/verified.")
+
             # Ensure sid column exists
-            try: # Inner try for adding column
+            try:
+                # Actions on separate, indented lines
                 db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR"))
                 db.session.commit()
                 app.logger.info("✅ Ensured messages.sid column exists.")
-            except Exception as alter_err: # Except for inner try
+            except Exception as alter_err:
                 db.session.rollback()
                 err_str = str(alter_err).lower()
+                # Indented if/else block
                 if "already exists" in err_str or "duplicate column name" in err_str:
                     app.logger.info("✅ messages.sid column already exists.")
                 else:
                     app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
+
             # Reset sequence (PostgreSQL)
             if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
-                try: sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');"); result = db.session.execute(sequence_name_query).scalar();
-                if result: sequence_name = result; max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages"); max_id = db.session.execute(max_id_query).scalar(); next_val = max_id + 1; reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)"); db.session.execute(reset_seq_query, {'next_val': next_val}); db.session.commit(); app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
-                else: app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
-                except Exception as seq_err: db.session.rollback(); app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
-            else: app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
+                try: # Try resetting sequence
+                    sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');")
+                    result = db.session.execute(sequence_name_query).scalar()
+
+                    # --- CORRECTED if/else block structure ---
+                    if result:
+                        # Actions on separate, indented lines
+                        sequence_name = result
+                        max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages")
+                        max_id = db.session.execute(max_id_query).scalar()
+                        next_val = max_id + 1
+                        reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)")
+                        db.session.execute(reset_seq_query, {'next_val': next_val})
+                        db.session.commit()
+                        app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
+                    else:
+                        app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
+                    # --- END CORRECTION ---
+                except Exception as seq_err: # Except for resetting sequence try
+                    db.session.rollback()
+                    app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
+            else:
+                 app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
+
             app.logger.info("✅ Database initialization complete.")
         except Exception as e: # Outer except
             db.session.rollback()
@@ -296,7 +302,7 @@ def update_contact_name():
 # ──────────────────────────────────────────────────────────────────────────────
 #  Tenant Notifications Page
 # ──────────────────────────────────────────────────────────────────────────────
-# (Keep notifications_view as is, including previous fix)
+# (Keep notifications_view as is)
 @app.route("/notifications", methods=["GET", "POST"])
 def notifications_view():
     properties = []; history = []; error_message = None
