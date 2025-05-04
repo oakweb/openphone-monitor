@@ -87,86 +87,71 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 # --- End App Setup ---
 
 
-# --- Helper Function for Sending SMS via OpenPhone API (FIXED HEADER) ---
+# --- Helper Function for Sending SMS via OpenPhone API ---
+# (Keep this function as is, including previous fix)
 def send_openphone_sms(recipient_phone, message_body):
-    """
-    Sends an SMS message using the OpenPhone v1 API.
-    Returns True on success, False on failure.
-    Requires OPENPHONE_API_TOKEN and OPENPHONE_SENDING_NUMBER/OPENPHONE_FROM env vars.
-    """
-    api_token = os.getenv("OPENPHONE_API_TOKEN")
-    sending_number = os.getenv("OPENPHONE_FROM") or os.getenv("OPENPHONE_SENDING_NUMBER")
-
-    # Use current_app logger if available (preferred), otherwise basic logging
+    api_token = os.getenv("OPENPHONE_API_TOKEN"); sending_number = os.getenv("OPENPHONE_FROM") or os.getenv("OPENPHONE_SENDING_NUMBER")
     log_func = getattr(current_app, "logger", logging.getLogger(__name__))
-
-    if not api_token or not sending_number:
-        log_func.error("OpenPhone API Token or Sending Number not configured.")
-        return False
-
-    api_url = "https://api.openphone.com/v1/messages"
-    headers = {
-        "Authorization": api_token, # Corrected: No "Bearer " prefix
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "from": sending_number,
-        "to": [recipient_phone],  # Recipient MUST be in a list/array
-        "content": message_body,  # Use 'content' key
-    }
-
+    if not api_token or not sending_number: log_func.error("OpenPhone API Token or Sending Number not configured."); return False
+    api_url = "https://api.openphone.com/v1/messages"; headers = { "Authorization": api_token, "Content-Type": "application/json",}; payload = { "from": sending_number, "to": [recipient_phone], "content": message_body,}
     try:
-        log_func.debug(f"Sending OpenPhone SMS To: {payload['to']}, From: {payload['from']}")
-        log_func.debug(f"Authorization Header Type Sent: Direct Token") # Confirming no Bearer
-
-        response = requests.post(api_url, headers=headers, json=payload, timeout=20)
-        response.raise_for_status() # Raises HTTPError for 4xx/5xx responses
-
-        response_data = response.json()
-        message_id = response_data.get('id', 'N/A')
-        status = response_data.get('status', 'N/A') # e.g., 'queued', 'sent'
-        log_func.info(f"Successfully sent SMS via OpenPhone to {recipient_phone}. Response ID: {message_id}, Status: {status}")
-        return True
-
+        log_func.debug(f"Sending OpenPhone SMS To: {payload['to']}, From: {payload['from']}"); log_func.debug(f"Authorization Header Type Sent: Direct Token")
+        response = requests.post(api_url, headers=headers, json=payload, timeout=20); response.raise_for_status()
+        response_data = response.json(); message_id = response_data.get('id', 'N/A'); status = response_data.get('status', 'N/A')
+        log_func.info(f"Successfully sent SMS via OpenPhone to {recipient_phone}. Response ID: {message_id}, Status: {status}"); return True
     except requests.exceptions.HTTPError as http_err:
         log_func.error(f"HTTP Error sending OpenPhone SMS to {recipient_phone}: {http_err}")
-        try: # Try logging JSON details
-            error_details = http_err.response.json()
-            log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
-        except: # If JSON fails, try logging text details
-            try:
-                log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
-            # --- CORRECTED except: pass block ---
-            except Exception: # Catch any exception during text logging
-                 pass # Ignore silently if logging response body fails
-            # --- END CORRECTION ---
-        return False # Return False since the original HTTPError occurred
-    except requests.exceptions.RequestException as req_err:
-        log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}")
+        try: error_details = http_err.response.json(); log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
+        except:
+            try: log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
+            except Exception: pass # Corrected indentation
         return False
-    except Exception as e:
-         log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True)
-         return False
+    except requests.exceptions.RequestException as req_err: log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}"); return False
+    except Exception as e: log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True); return False
 
 # --- Database Initialization Helper ---
-# (Keep this function as is)
 def initialize_database(app_context):
+    """Initializes the database: creates tables, checks columns, resets sequences."""
     with app_context:
         app.logger.info("🔄 Initializing Database...")
         try:
-            db.create_all(); app.logger.info("✅ Tables created/verified.")
-            try: db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR")); db.session.commit(); app.logger.info("✅ Ensured messages.sid column exists.")
-            except Exception as alter_err: db.session.rollback(); err_str = str(alter_err).lower();
-            if "already exists" in err_str or "duplicate column name" in err_str: app.logger.info("✅ messages.sid column already exists.") else: app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
+            db.create_all()
+            app.logger.info("✅ Tables created/verified.")
+            # Ensure sid column exists
+            try:
+                db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR"))
+                db.session.commit()
+                app.logger.info("✅ Ensured messages.sid column exists.")
+            except Exception as alter_err:
+                db.session.rollback()
+                err_str = str(alter_err).lower()
+                # --- CORRECTED INDENTATION for if/else block ---
+                if "already exists" in err_str or "duplicate column name" in err_str:
+                    app.logger.info("✅ messages.sid column already exists.")
+                else:
+                    app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
+                # --- END CORRECTION ---
+
+            # Reset sequence (PostgreSQL)
             if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
                 try:
                     sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');"); result = db.session.execute(sequence_name_query).scalar()
-                    if result: sequence_name = result; max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages"); max_id = db.session.execute(max_id_query).scalar(); next_val = max_id + 1; reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)"); db.session.execute(reset_seq_query, {'next_val': next_val}); db.session.commit(); app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
-                    else: app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
-                except Exception as seq_err: db.session.rollback(); app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
-            else: app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
+                    if result:
+                        sequence_name = result; max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages"); max_id = db.session.execute(max_id_query).scalar(); next_val = max_id + 1
+                        reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)"); db.session.execute(reset_seq_query, {'next_val': next_val}); db.session.commit()
+                        app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
+                    else:
+                        app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
+                except Exception as seq_err:
+                    db.session.rollback()
+                    app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
+            else:
+                app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
+
             app.logger.info("✅ Database initialization complete.")
-        except Exception as e: db.session.rollback(); app.logger.critical(f"❌ FATAL STARTUP ERROR during database initialization: {e}", exc_info=True)
+        except Exception as e:
+            db.session.rollback()
+            app.logger.critical(f"❌ FATAL STARTUP ERROR during database initialization: {e}", exc_info=True)
 
 
 # --- URL Map Helper ---
@@ -189,8 +174,7 @@ if os.environ.get("FLASK_DEBUG", "false").lower() in ['true', '1', 't']:
 #  Jinja Context Processors & Custom Filters (Optional)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.context_processor
-def inject_now():
-    return {'current_year': datetime.now(timezone.utc).year}
+def inject_now(): return {'current_year': datetime.now(timezone.utc).year}
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  ROUTES
@@ -335,11 +319,13 @@ def notifications_view():
             if 'email' in channels and emails_to_send:
                 channels_attempted.append("Email"); current_app.logger.info(f"Attempting email to {len(emails_to_send)} addresses..."); email_subject = subject if subject else message_body[:50] + ("..." if len(message_body) > 50 else ""); html_body = f"<p>{message_body.replace(os.linesep, '<br>')}</p>"
                 for email in emails_to_send:
-                    # *** CORRECTED try/except block ***
+                    # *** CORRECTED try/except block (again) ***
                     try:
                         email_sent_successfully = send_email(to_emails=[email], subject=email_subject, html_content=wrap_email_html(html_body), attachments=attachments_data);
-                        if email_sent_successfully: email_success_count += 1
-                        else: email_errors.append(f"{email}: Failed")
+                        if email_sent_successfully:
+                            email_success_count += 1
+                        else:
+                            email_errors.append(f"{email}: Failed")
                     except Exception as e: # Catch exception for individual email
                         current_app.logger.error(f"Email Exception for {email}: {e}", exc_info=True)
                         email_errors.append(f"{email}: Exception")
