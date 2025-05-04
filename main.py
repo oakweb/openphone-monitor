@@ -829,10 +829,17 @@ def gallery_for_property(property_id):
         # Process the paths from the messages found
         for msg in messages_with_media:
             if msg.local_media_paths: # Check if the list/JSON is not empty
-                 for idx, path in enumerate(msg.local_media_paths):
+                 for idx, path in enumerate(msg.local_media_paths): # Path is like 'uploads/...'
                     trimmed_path = path.strip()
+                    # --- START ADDED LOGGING ---
+                    current_app.logger.debug(f"  Checking path for gallery: '{trimmed_path}' (Msg ID: {msg.id})") # Log the path
+                    is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False # Check if it's an image
+                    current_app.logger.debug(f"  Path ends with valid extension? {is_image}") # Log the check result
+                    # --- END ADDED LOGGING ---
+
                     # Check if path exists and is an image type we want to display
-                    if trimmed_path and trimmed_path.lower().endswith(image_extensions):
+                    if trimmed_path and is_image: # Use the check result
+                        current_app.logger.debug(f"  >>> Adding image item: {trimmed_path}") # Log when adding
                         image_items.append({
                             "path": trimmed_path,
                             "message_id": msg.id,
@@ -840,6 +847,10 @@ def gallery_for_property(property_id):
                             "timestamp": msg.timestamp,
                             "sender_info": msg.contact.get_display_name() if msg.contact else msg.phone_number # Add sender
                         })
+                    # --- ADDED ELSE LOGGING ---
+                    else:
+                       current_app.logger.debug(f"  --- Skipping non-image or empty path: '{trimmed_path}'") # Log when skipping
+                    # --- END ADDED ELSE LOGGING ---
 
         # Sort the collected images by message timestamp (newest first) - already ordered by query
         current_app.logger.debug(f"Prepared {len(image_items)} image items for gallery template")
@@ -874,6 +885,9 @@ def unsorted_gallery():
     unsorted_items_for_template = []
     properties_list = []
 
+    # --- Define image_extensions OUTSIDE the loop ---
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic') # Filter for images
+
     try:
         # Query for messages with media paths but no property_id
         unsorted_messages = Message.query.options(
@@ -887,21 +901,28 @@ def unsorted_gallery():
         current_app.logger.info(f"Found {len(unsorted_messages)} messages with unsorted media.")
 
         # Prepare the list for the template
-        image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic') # Filter for images
-
-        for message in unsorted_messages:
+        for message in unsorted_messages: # Start the loop
             if message.local_media_paths:
-                for path in message.local_media_paths:
-                    if path.lower().endswith(image_extensions):
-                        # The template expects item 'u' with 'u.path' and 'u.msg'
-                        # where 'u.msg' is the Message object itself.
+                for path in message.local_media_paths: # Path is like 'uploads/...'
+                    # --- START ADDED LOGGING ---
+                    current_app.logger.debug(f"  Checking path for unsorted: '{path}' (Msg ID: {message.id})") # Log the path
+                    is_image = path.lower().endswith(image_extensions) if path else False # Check if it's an image
+                    current_app.logger.debug(f"  Path ends with valid extension? {is_image}") # Log the check result
+                    # --- END ADDED LOGGING ---
+
+                    if path and is_image: # Use the check result
+                        current_app.logger.debug(f"  >>> Adding unsorted item: {path}") # Log when adding
                         item_data = {
                             'path': path,
                             'msg': message # Pass the whole Message object
                         }
                         unsorted_items_for_template.append(item_data)
+                    # --- ADDED ELSE LOGGING ---
+                    else:
+                        current_app.logger.debug(f"  --- Skipping non-image or empty path: '{path}'") # Log when skipping
+                    # --- END ADDED ELSE LOGGING ---
 
-        current_app.logger.info(f"Prepared {len(unsorted_items_for_template)} image items for the template.")
+        current_app.logger.info(f"Prepared {len(unsorted_items_for_template)} image items for the template.") # Moved log outside inner loop
 
         # Query for all properties to populate the dropdown
         properties_list = Property.query.order_by(Property.name).all()
