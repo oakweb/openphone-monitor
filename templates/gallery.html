@@ -2,7 +2,7 @@
 
 {% block title %}
   {# Use the gallery_title variable passed from Python, or fallback #}
-  {{ gallery_title | default('Image Gallery') }}
+  {{ gallery_title | default('Image Gallery') }} - SCR Property Manager {# Added Branding #}
 {% endblock %}
 
 {% block head_extra %}
@@ -13,7 +13,7 @@
       flex-wrap: wrap;
       gap: 1rem; /* Space between images */
       justify-content: flex-start; /* Align items to the start */
-      padding: 1rem; /* Add some padding around the gallery */
+      padding: 1rem 0; /* Remove horizontal padding, keep vertical */
     }
 
     /* each thumbnail box */
@@ -22,12 +22,13 @@
       width: 150px; /* Fixed width */
       height: 150px; /* Fixed height */
       overflow: hidden; /* Hide parts of image that don't fit */
-      border: 1px solid #ccc;
+      border: 1px solid #444; /* Match unsorted border */
       border-radius: 4px;
-      background-color: #f8f9fa; /* Light background for placeholders */
+      background-color: #212529; /* Darker background */
       display: flex;
       align-items: center;
       justify-content: center;
+      color: #ccc; /* Light text for potential errors */
     }
 
     /* image fills the box */
@@ -53,7 +54,7 @@
     }
      .image-wrapper:hover .delete-form {
         opacity: 1; /* Fully opaque on hover */
-     }
+      }
 
     .delete-form button {
         padding: 0.2rem 0.4rem; /* Smaller padding */
@@ -71,7 +72,7 @@
 {% endblock %}
 
 {% block content %}
-  <h2>
+  <h2 class="mb-3"> {# Added margin-bottom #}
     {# Use the gallery_title variable passed from Python #}
     {{ gallery_title | default('Image Gallery') }}
   </h2>
@@ -80,18 +81,18 @@
   {% if image_items %}
     <div class="gallery">
       {# Loop through the CORRECT variable image_items #}
-      {% for img_item in image_items %}
+      {% for img_item in image_items %} {# img_item is {'path': 'uploads/...', 'sender_info': ..., etc} #}
         <div class="image-wrapper">
-          {# Use img_item.path to get the relative path for the image #}
-          <a href="{{ url_for('static', filename=img_item.path) }}" target="_blank" title="View full image">
-            {# Also use img_item.path for the src attribute #}
-            <img src="{{ url_for('static', filename=img_item.path) }}"
-                 alt="Gallery image from message {{ img_item.message_id }}"
+          {# *** MODIFIED A HREF and IMG SRC *** #}
+          {# Use url_for('serve_upload') and extract filename for BOTH #}
+          <a href="{{ url_for('serve_upload', filename=img_item.path.split('/')[-1]) }}" target="_blank" title="View full image (from {{ img_item.sender_info }})">
+            <img src="{{ url_for('serve_upload', filename=img_item.path.split('/')[-1]) }}"
+                 alt="Gallery image from {{ img_item.sender_info }}" {# Updated Alt Text #}
                  {# Add basic error handling for missing images client-side #}
                  onerror="this.onerror=null; this.parentElement.style.display='none'; console.error('Failed to load image: {{ img_item.path }}');">
           </a>
 
-          {# --- EDITED: Commented out the delete form --- #}
+          {# --- Delete form remains commented out --- #}
           {#
           <form class="delete-form"
                 action="{{ url_for('delete_media_for_message', message_id=img_item.message_id, file_index=img_item.index) }}"
@@ -109,7 +110,7 @@
     </div>
   {% else %}
     {# This message shows if image_items is empty or not passed #}
-    <p>No images found for this gallery.</p>
+    <p class="text-muted">No images found for this gallery.</p> {# Added text-muted class #}
     {% if error %}
        <div class="alert alert-warning" role="alert">
          Error loading gallery: {{ error }}
@@ -119,13 +120,15 @@
 
   {# Optional: Link back to property detail or gallery overview if applicable #}
   {% if property %} {# Check if the property object was passed #}
-      <div class="text-center mt-4">
-          <a href="{{ url_for('property_detail_view', property_id=property.id) }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Property Details</a>
-          <a href="{{ url_for('properties_list_view') }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Properties Overview</a>
-      </div>
+     <div class="mt-4"> {# Removed text-center #}
+         <a href="{{ url_for('property_detail_view', property_id=property.id) }}" class="btn btn-outline-secondary btn-sm me-2">&laquo; Back to Property Details</a>
+         <a href="{{ url_for('galleries_overview') }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Galleries Overview</a> {# Changed link target #}
+     </div>
   {% else %}
-       {# Maybe add a link back to a general gallery overview if this template is used elsewhere #}
+      {# Maybe add a link back to a general gallery overview if this template is used elsewhere #}
+      <div class="mt-4">
+          <a href="{{ url_for('galleries_overview') }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Galleries Overview</a>
+      </div>
   {% endif %}
-
 
 {% endblock %}

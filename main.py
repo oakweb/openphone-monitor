@@ -215,6 +215,34 @@ def index():
     except Exception as ex: db.session.rollback(); db_status = f"Error: {ex}"; app.logger.error(f"❌ DB Error index: {ex}")
     return render_template("index.html", db_status=db_status, summary_today=summary_today, summary_week=summary_week) # current_year injected by context processor
 
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    """Serves files from the UPLOAD_FOLDER."""
+    # Use the UPLOAD_FOLDER path configured for the app
+    upload_dir = current_app.config.get('UPLOAD_FOLDER')
+    if not upload_dir:
+        current_app.logger.error("UPLOAD_FOLDER not configured in app config!")
+        abort(500) # Internal Server Error
+
+    current_app.logger.debug(f"Attempting to serve file: {filename} from {upload_dir}")
+    try:
+        # Basic security check to prevent path traversal
+        if '..' in filename or filename.startswith('/'):
+             current_app.logger.warning(f"Aborting potentially insecure request for filename: {filename}")
+             abort(404)
+
+        return send_from_directory(
+             upload_dir,
+             filename,
+             as_attachment=False # Serve inline (display image in browser)
+        )
+    except FileNotFoundError:
+         current_app.logger.error(f"File not found via send_from_directory: {os.path.join(upload_dir, filename)}")
+         abort(404)
+    except Exception as e:
+         current_app.logger.error(f"Error serving file {filename}: {e}", exc_info=True)
+         abort(500) # Internal Server Error if something else goes wrong
+
 # --- PROPERTY ROUTES ---
 @app.route('/properties')
 def properties_list_view():
@@ -1080,49 +1108,6 @@ def clear_contacts_debug():
          db.session.rollback(); current_app.logger.error(f"❌ Error clear_contacts_debug: {e}", exc_info=True); flash(f"Error clearing contacts: {e}", "danger")
 
      return redirect(url_for('contacts_view')) # Redirect to contacts view after clearing
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  TEMPORARY DEBUG ROUTE - REMOVE AFTER USE!
-# ──────────────────────────────────────────────────────────────────────────────
-@app.route("/debug-list-uploads-a9b3x") # Use a unique path
-def debug_list_uploads():
-    """ TEMPORARY: Lists contents of the UPLOAD_FOLDER. REMOVE AFTER DEBUGGING! """
-    upload_folder_path = current_app.config.get('UPLOAD_FOLDER', '/app/static/uploads') # Get path from config
-    results = []
-    error_msg = None
-
-    results.append(f"<h2>Listing for: {upload_folder_path}</h2>")
-    results.append("<hr>")
-
-    try:
-        if os.path.exists(upload_folder_path):
-            results.append(f"<p>Directory exists.</p>")
-            items = os.listdir(upload_folder_path)
-            results.append(f"<p>Found {len(items)} items:</p>")
-            results.append("<ul>")
-            for item_name in items:
-                item_path = os.path.join(upload_folder_path, item_name)
-                try:
-                    stat_info = os.stat(item_path)
-                    is_dir = os.path.isdir(item_path)
-                    # Convert permissions to octal string (e.g., 0o755)
-                    permissions = oct(stat_info.st_mode & 0o777)
-                    size = stat_info.st_size
-                    results.append(f"<li>{'[DIR] ' if is_dir else ''}{item_name} (Size: {size}, Perms: {permissions})</li>")
-                except Exception as stat_e:
-                    results.append(f"<li>{item_name} (Error getting stats: {stat_e})</li>")
-            results.append("</ul>")
-        else:
-            results.append(f"<p><strong>ERROR: Directory does NOT exist.</strong></p>")
-
-    except Exception as e:
-        current_app.logger.error(f"Error in debug_list_uploads: {e}", exc_info=True)
-        error_msg = f"Error listing directory: {e}"
-        results.append(f"<p><strong>EXCEPTION: {error_msg}</strong></p>")
-
-    return "<br>".join(results) # Simple HTML output
-# --- END TEMPORARY DEBUG ROUTE ---
 
 # --- Keep __main__ block ---
 if __name__ == "__main__":
