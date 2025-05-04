@@ -110,65 +110,38 @@ def send_openphone_sms(recipient_phone, message_body):
     except Exception as e: log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True); return False
 
 # --- Database Initialization Helper ---
+# (Keep this function as is, including previous fix)
 def initialize_database(app_context):
-    """Initializes the database: creates tables, checks columns, resets sequences."""
     with app_context:
         app.logger.info("🔄 Initializing Database...")
-        try:
-            db.create_all()
-            app.logger.info("✅ Tables created/verified.")
-            # Ensure sid column exists
-            try:
-                db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR"))
-                db.session.commit()
-                app.logger.info("✅ Ensured messages.sid column exists.")
-            except Exception as alter_err:
-                db.session.rollback()
-                err_str = str(alter_err).lower()
-                # --- CORRECTED INDENTATION for if/else block ---
-                if "already exists" in err_str or "duplicate column name" in err_str:
-                    app.logger.info("✅ messages.sid column already exists.")
-                else:
-                    app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
-                # --- END CORRECTION ---
-
-            # Reset sequence (PostgreSQL)
-            if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
-                try:
-                    sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');"); result = db.session.execute(sequence_name_query).scalar()
-                    if result:
-                        sequence_name = result; max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages"); max_id = db.session.execute(max_id_query).scalar(); next_val = max_id + 1
-                        reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)"); db.session.execute(reset_seq_query, {'next_val': next_val}); db.session.commit()
-                        app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
-                    else:
-                        app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
-                except Exception as seq_err:
-                    db.session.rollback()
-                    app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
-            else:
-                app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
-
-            app.logger.info("✅ Database initialization complete.")
-        except Exception as e:
-            db.session.rollback()
-            app.logger.critical(f"❌ FATAL STARTUP ERROR during database initialization: {e}", exc_info=True)
+        try: db.create_all(); app.logger.info("✅ Tables created/verified.")
+        try: db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR")); db.session.commit(); app.logger.info("✅ Ensured messages.sid column exists.")
+        except Exception as alter_err: db.session.rollback(); err_str = str(alter_err).lower();
+        # Corrected indentation for if/else
+        if "already exists" in err_str or "duplicate column name" in err_str: app.logger.info("✅ messages.sid column already exists.")
+        else: app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
+        if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+            try: sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');"); result = db.session.execute(sequence_name_query).scalar();
+            if result: sequence_name = result; max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages"); max_id = db.session.execute(max_id_query).scalar(); next_val = max_id + 1; reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)"); db.session.execute(reset_seq_query, {'next_val': next_val}); db.session.commit(); app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
+            else: app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
+            except Exception as seq_err: db.session.rollback(); app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
+        else: app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
+        app.logger.info("✅ Database initialization complete.")
+        except Exception as e: db.session.rollback(); app.logger.critical(f"❌ FATAL STARTUP ERROR during database initialization: {e}", exc_info=True)
 
 
 # --- URL Map Helper ---
 # (Keep this function as is)
 def print_url_map(app_instance):
-     with app_instance.app_context():
-        app.logger.info("\n--- URL MAP ---"); rules = sorted(app_instance.url_map.iter_rules(), key=lambda r: r.endpoint);
-        for rule in rules: methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"})); app.logger.info(f"{rule.endpoint:30} {methods:<15} {rule.rule}")
-        app.logger.info("--- END URL MAP ---\n")
+     with app_instance.app_context(): app.logger.info("\n--- URL MAP ---"); rules = sorted(app_instance.url_map.iter_rules(), key=lambda r: r.endpoint);
+     for rule in rules: methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"})); app.logger.info(f"{rule.endpoint:30} {methods:<15} {rule.rule}")
+     app.logger.info("--- END URL MAP ---\n")
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  INITIALIZE DATABASE & PRINT URL MAP
 # ──────────────────────────────────────────────────────────────────────────────
-with app.app_context():
-    initialize_database(app.app_context())
-if os.environ.get("FLASK_DEBUG", "false").lower() in ['true', '1', 't']:
-    print_url_map(app)
+with app.app_context(): initialize_database(app.app_context())
+if os.environ.get("FLASK_DEBUG", "false").lower() in ['true', '1', 't']: print_url_map(app)
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Jinja Context Processors & Custom Filters (Optional)
@@ -196,13 +169,44 @@ def properties_list_view(): properties = Property.query.order_by(Property.name).
 
 @app.route('/property/<int:property_id>')
 def property_detail_view(property_id):
-    current_app.logger.info(f"--- /property/{property_id} route accessed ---");
-    try: prop = db.session.get(Property, property_id);
-    if not prop: abort(404, description="Property not found")
-    current_app.logger.debug(f" Found property: {prop.name}"); tenants = Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
-    current_app.logger.debug(f" Found {len(tenants)} tenants for property {prop.id}"); property_identifier_string = f'(ID:{property_id})'; relevant_history = NotificationHistory.query.filter(NotificationHistory.properties_targeted.like(f'%{property_identifier_string}%')).order_by(NotificationHistory.timestamp.desc()).limit(50).all()
-    current_app.logger.debug(f" Found {len(relevant_history)} relevant history entries for property {prop.id}"); return render_template('property_detail.html', prop=prop, tenants=tenants, history=relevant_history)
-    except Exception as e: current_app.logger.error(f"❌ Error loading property detail page for ID {property_id}: {e}", exc_info=True); flash(f"An error occurred while loading property details: {e}", "danger"); return redirect(url_for('properties_list_view'))
+    """Displays details for a specific property, its tenants, and communication history."""
+    current_app.logger.info(f"--- /property/{property_id} route accessed ---")
+    try:
+        # 1. Fetch the specific property by its ID
+        prop = db.session.get(Property, property_id) # Use db.session.get
+
+        # --- CORRECTED INDENTATION for if not prop ---
+        # Check immediately after fetching if the property exists
+        if not prop:
+            abort(404, description="Property not found")
+        # --- END CORRECTION ---
+
+        current_app.logger.debug(f" Found property: {prop.name}")
+
+        # 2. Fetch tenants associated with this property
+        tenants = Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
+        current_app.logger.debug(f" Found {len(tenants)} tenants for property {prop.id}")
+
+        # 3. Fetch recent communication history relevant to this property
+        property_identifier_string = f'(ID:{property_id})'
+        relevant_history = NotificationHistory.query.filter(
+            NotificationHistory.properties_targeted.like(f'%{property_identifier_string}%')
+        ).order_by(
+            NotificationHistory.timestamp.desc()
+        ).limit(50).all()
+        current_app.logger.debug(f" Found {len(relevant_history)} relevant history entries for property {prop.id}")
+
+        # 4. Render the detail template, passing the data
+        return render_template('property_detail.html',
+                               prop=prop,
+                               tenants=tenants,
+                               history=relevant_history)
+
+    except Exception as e:
+        current_app.logger.error(f"❌ Error loading property detail page for ID {property_id}: {e}", exc_info=True)
+        flash(f"An error occurred while loading property details: {e}", "danger")
+        return redirect(url_for('properties_list_view')) # Redirect on error
+
 
 # --- MESSAGES, CONTACTS, ASSIGNMENT ROUTES ---
 # (Keep as is)
@@ -295,6 +299,7 @@ def update_contact_name():
 # ──────────────────────────────────────────────────────────────────────────────
 #  Tenant Notifications Page
 # ──────────────────────────────────────────────────────────────────────────────
+# (Keep notifications_view as is, including previous fix)
 @app.route("/notifications", methods=["GET", "POST"])
 def notifications_view():
     properties = []; history = []; error_message = None
@@ -319,17 +324,10 @@ def notifications_view():
             if 'email' in channels and emails_to_send:
                 channels_attempted.append("Email"); current_app.logger.info(f"Attempting email to {len(emails_to_send)} addresses..."); email_subject = subject if subject else message_body[:50] + ("..." if len(message_body) > 50 else ""); html_body = f"<p>{message_body.replace(os.linesep, '<br>')}</p>"
                 for email in emails_to_send:
-                    # *** CORRECTED try/except block (again) ***
-                    try:
-                        email_sent_successfully = send_email(to_emails=[email], subject=email_subject, html_content=wrap_email_html(html_body), attachments=attachments_data);
-                        if email_sent_successfully:
-                            email_success_count += 1
-                        else:
-                            email_errors.append(f"{email}: Failed")
-                    except Exception as e: # Catch exception for individual email
-                        current_app.logger.error(f"Email Exception for {email}: {e}", exc_info=True)
-                        email_errors.append(f"{email}: Exception")
-                    # *** END CORRECTION ***
+                    try: email_sent_successfully = send_email(to_emails=[email], subject=email_subject, html_content=wrap_email_html(html_body), attachments=attachments_data);
+                    if email_sent_successfully: email_success_count += 1
+                    else: email_errors.append(f"{email}: Failed")
+                    except Exception as e: current_app.logger.error(f"Email Exception for {email}: {e}", exc_info=True); email_errors.append(f"{email}: Exception")
             elif 'email' in channels: current_app.logger.info("Email channel selected, but no valid tenant emails found.")
             if 'sms' in channels and phones_to_send:
                 channels_attempted.append("SMS"); current_app.logger.info(f"Attempting SMS to {len(phones_to_send)} numbers...")
