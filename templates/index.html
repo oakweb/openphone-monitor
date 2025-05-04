@@ -6,11 +6,7 @@
   {# Page-specific styles #}
   <style>
     /* Styles specific to the index page content */
-    body {
-        /* Ensure background settings don't conflict with base.html */
-        /* Base background color should come from base.html */
-    }
-     /* Background image wrapper - Position relative to body */
+    /* Background image wrapper - Applied via CSS in base or here */
      .bg-wrapper {
          position: fixed;
          top: 0;
@@ -23,6 +19,9 @@
          background-position: center;
          background-repeat: no-repeat;
      }
+     /* Ensure body has proper background if wrapper isn't used globally */
+     body { background-color: #121416; } /* Fallback if needed */
+
 
     /* Main Content Area within the content block */
     .main-content-index { /* Use a specific class to avoid conflicts */
@@ -31,9 +30,8 @@
         align-items: center; /* Center vertically */
         justify-content: center;
         padding: 40px 20px; /* Reduced top/bottom padding */
-        /* Ensure it works within the base template's structure */
-         width: 100%; /* Take full width within content block */
-         box-sizing: border-box;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .content-container-index { /* Use a specific class */
@@ -70,11 +68,17 @@
     .btn-outline-light:hover { background-color: #6cb9d3; border-color: #6cb9d3; color: #121416; }
 
     /* Summary Cards Styling */
-    .summary-card { height: 100%; background-color: rgba(33, 37, 41, 0.8) !important; border: 1px solid rgba(108, 185, 211, 0.15); box-shadow: 0 3px 10px rgba(0,0,0,0.4); border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; }
+    .summary-card { height: 100%; background-color: rgba(33, 37, 41, 0.8) !important; border: 1px solid rgba(108, 185, 211, 0.15); box-shadow: 0 3px 10px rgba(0,0,0,0.4); border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; }
     .summary-card .card-body { padding: 20px; }
     .summary-card h5 { color: #6cb9d3; margin-bottom: 10px; font-weight: 600; font-size: 1.1rem; }
     .summary-card p { color: #e9ecef; font-size: 0.95rem; margin-bottom: 15px; }
     .summary-card .btn { width: auto; padding: 8px 15px; font-size: 0.9rem; align-self: center; margin-top: auto; margin-bottom: 0;}
+    /* Add hover effect to linked cards */
+    a > .summary-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 15px rgba(0,0,0,0.5);
+    }
+
 
     /* Responsive */
     @media (max-width: 768px) {
@@ -86,13 +90,11 @@
 {% endblock %}
 
 {% block content %}
-  {# Background image wrapper should be outside main content if possible, or styled differently #}
-  {# If base.html controls overall background, remove this wrapper #}
+  {# Background image wrapper - place within content block if base.html doesn't handle body background #}
   <div class="bg-wrapper"></div>
 
-  {# Main Content uses block from base.html #}
-  <div class="main-content-index"> {# Use specific class #}
-      <div class="content-container-index"> {# Use specific class #}
+  <div class="main-content-index">
+      <div class="content-container-index">
           <h1 class="welcome-title">Welcome to OpenPhone System</h1>
           <div class="tech-divider"></div>
           <p class="welcome-subtitle">Manage communications and properties efficiently.</p>
@@ -122,23 +124,32 @@
 
           <div class="row text-white">
               <div class="col-md-4 mb-3 d-flex">
-                  <div class="card summary-card w-100">
-                      <div class="card-body">
-                          <h5><i class="fas fa-calendar-day me-2"></i>Today's Summary</h5>
-                          <p>{{ summary_today | default('N/A') }}</p>
+                  {# --- EDITED: Wrap card in link --- #}
+                  <a href="{{ url_for('messages_view') }}" class="text-decoration-none text-white d-block w-100" title="View messages from today">
+                      <div class="card summary-card w-100 h-100">
+                          <div class="card-body">
+                              <h5><i class="fas fa-calendar-day me-2"></i>Today's Summary</h5>
+                              <p>{{ summary_today | default('N/A') }}</p>
+                          </div>
                       </div>
-                  </div>
+                  </a>
+                  {# --- End Link --- #}
               </div>
               <div class="col-md-4 mb-3 d-flex">
-                  <div class="card summary-card w-100">
-                       <div class="card-body">
-                          <h5><i class="fas fa-calendar-week me-2"></i>This Week</h5>
-                          <p>{{ summary_week | default('N/A') }}</p>
+                   {# --- EDITED: Wrap card in link --- #}
+                   <a href="{{ url_for('messages_view') }}" class="text-decoration-none text-white d-block w-100" title="View messages from this week">
+                      <div class="card summary-card w-100 h-100">
+                           <div class="card-body">
+                              <h5><i class="fas fa-calendar-week me-2"></i>This Week</h5>
+                              <p>{{ summary_week | default('N/A') }}</p>
+                          </div>
                       </div>
-                  </div>
+                   </a>
+                   {# --- End Link --- #}
               </div>
               <div class="col-md-4 mb-3 d-flex">
-                  <div class="card summary-card w-100">
+                  {# --- DB Status Card (Link is inside) --- #}
+                  <div class="card summary-card w-100 h-100">
                       <div class="card-body">
                           <h5><i class="fas fa-database me-2"></i>DB Status</h5>
                           <p>{{ db_status | default('Unknown') }}</p>
@@ -150,5 +161,3 @@
       </div>
   </div>
 {% endblock %}
-
-{# No need for {% block scripts %} unless adding index-specific JS #}

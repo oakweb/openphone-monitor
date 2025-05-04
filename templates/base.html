@@ -1,96 +1,16 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Sin City Rentals{% endblock %}</title>
-
-  <!-- Bootstrap CSS (or your own) -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-    integrity="sha384-…"
-    crossorigin="anonymous"
-  >
-
-  <!-- FontAwesome, etc. -->
-  <link
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-    rel="stylesheet"
-    integrity="sha384-…"
-    crossorigin="anonymous"
-  >
-
-  <style>
-    body {
-      background: url('{{ url_for("static", filename="server-visualization.jpg") }}') no-repeat center center fixed;
-      background-size: cover;
-      color: #e9ecef;
-    }
-
-    /* Constrain any message‐embedded img to 200×200px max */
-    .message-media img {
-      max-width: 200px !important;
-      max-height: 200px !important;
-      width: auto !important;
-      height: auto !important;
-      display: block;
-      margin-bottom: .5rem;
-    }
-
-    /* Global tweaks for dark theme */
-    .card {
-      background-color: rgba(30, 34, 38, 0.85);
-      border-color: rgba(108, 185, 211, 0.3);
-    }
-    .navbar, .footer {
-      background-color: rgba(0,0,0,0.7);
-    }
-  </style>
-
-  {% block head_extra %}{% endblock %}
-</head>
-<body>
-
-  <nav class="navbar navbar-expand-lg navbar-dark">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="{{ url_for('index') }}">Sin City Rentals</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-              data-bs-target="#navbarNav" aria-controls="navbarNav"
-              aria-expanded="false" aria-label="Toggle navigation">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item"><a class="nav-link {% if request.endpoint=='index' %}active{% endif %}" href="{{ url_for('index') }}"><i class="fas fa-home"></i> Home</a></li>
-          <li class="nav-item"><a class="nav-link {% if request.endpoint=='galleries_overview' %}active{% endif %}" href="{{ url_for('galleries_overview') }}"><i class="fas fa-images"></i> All Galleries</a></li>
-          <li class="nav-item"><a class="nav-link {% if request.endpoint=='messages_view' %}active{% endif %}" href="{{ url_for('messages_view') }}"><i class="fas fa-envelope"></i> Messages</a></li>
-          <li class="nav-item"><a class="nav-link {% if request.endpoint=='contacts_view' %}active{% endif %}" href="{{ url_for('contacts_view') }}"><i class="fas fa-address-book"></i> Contacts</a></li>
-          <li class="nav-item"><a class="nav-link {% if request.endpoint=='ask_view' %}active{% endif %}" href="{{ url_for('ask_view') }}"><i class="fas fa-robot"></i> Ask AI</a></li>
-          <li class="nav-item"><a class="nav-link {% if request.endpoint=='gallery_view' %}active{% endif %}" href="{{ url_for('gallery_view') }}"><i class="fas fa-photo-video"></i> Gallery</a></li>
-          <li class="nav-item"><a class="nav-link {% if request.endpoint=='unsorted_gallery' %}active{% endif %}" href="{{ url_for('unsorted_gallery') }}"><i class="fas fa-random"></i> Unsorted</a></li>
-        </ul>
-      </div>
-    </div>
-  </nav>
-
-  <main class="container my-4">
-    {% block content %}{% endblock %}
-  </main>
-
-  <footer class="footer py-3 text-center text-muted">
-    <div class="container">
-      &copy; {{ current_year }} Sin City Rentals
-    </div>
-  </footer>
-
-  <!-- Bootstrap JS bundle (Popper + Bootstrap) -->
-  <script
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
-    integrity="sha384-…"
-    crossorigin="anonymous"
-  ></script>
-
-  {% block scripts %}{% endblock %}
-</body>
-</html>
+<ul class="navbar-nav ms-auto">
+  {# --- Standard Links --- #}
+  <li class="nav-item"><a class="nav-link {% if request.endpoint=='index' %}active{% endif %}" href="{{ url_for('index') }}"><i class="fas fa-home me-1"></i> Dashboard</a></li>
+  <li class="nav-item"><a class="nav-link {% if request.endpoint=='messages_view' %}active{% endif %}" href="{{ url_for('messages_view') }}"><i class="fas fa-envelope me-1"></i> Messages</a></li>
+  <li class="nav-item"><a class="nav-link {% if request.endpoint=='contacts_view' %}active{% endif %}" href="{{ url_for('contacts_view') }}"><i class="fas fa-address-book me-1"></i> Contacts</a></li>
+  {# --- ADDED Notifications Link --- #}
+  <li class="nav-item"><a class="nav-link {% if request.endpoint=='notifications_view' %}active{% endif %}" href="{{ url_for('notifications_view') }}"><i class="fas fa-bell me-1"></i> Notifications</a></li>
+  {# --- ADDED Properties Link --- #}
+  <li class="nav-item"><a class="nav-link {% if request.endpoint in ['properties_list_view', 'property_detail_view'] %}active{% endif %}" href="{{ url_for('properties_list_view') }}"><i class="fas fa-building me-1"></i> Properties</a></li>
+  {# --- Corrected Galleries Link - points to overview --- #}
+  <li class="nav-item"><a class="nav-link {% if request.endpoint in ['galleries_overview', 'gallery_for_property', 'unsorted_gallery'] %}active{% endif %}" href="{{ url_for('galleries_overview') }}"><i class="fas fa-images me-1"></i> Galleries</a></li>
+  <li class="nav-item"><a class="nav-link {% if request.endpoint=='ask_view' %}active{% endif %}" href="{{ url_for('ask_view') }}"><i class="fas fa-robot me-1"></i> Ask AI</a></li>
+  {# --- Removed/Commented Out Non-Functional Links --- #}
+  {# <li class="nav-item"><a class="nav-link {% if request.endpoint=='gallery_view' %}active{% endif %}" href="{{ url_for('gallery_view') }}"><i class="fas fa-photo-video"></i> Gallery</a></li> #}
+  {# <li class="nav-item"><a class="nav-link {% if request.endpoint=='unsorted_gallery' %}active{% endif %}" href="{{ url_for('unsorted_gallery') }}"><i class="fas fa-random"></i> Unsorted</a></li> #}
+</ul>
