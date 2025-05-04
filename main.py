@@ -1081,6 +1081,49 @@ def clear_contacts_debug():
 
      return redirect(url_for('contacts_view')) # Redirect to contacts view after clearing
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEMPORARY DEBUG ROUTE - REMOVE AFTER USE!
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route("/debug-list-uploads-a9b3x") # Use a unique path
+def debug_list_uploads():
+    """ TEMPORARY: Lists contents of the UPLOAD_FOLDER. REMOVE AFTER DEBUGGING! """
+    upload_folder_path = current_app.config.get('UPLOAD_FOLDER', '/app/static/uploads') # Get path from config
+    results = []
+    error_msg = None
+
+    results.append(f"<h2>Listing for: {upload_folder_path}</h2>")
+    results.append("<hr>")
+
+    try:
+        if os.path.exists(upload_folder_path):
+            results.append(f"<p>Directory exists.</p>")
+            items = os.listdir(upload_folder_path)
+            results.append(f"<p>Found {len(items)} items:</p>")
+            results.append("<ul>")
+            for item_name in items:
+                item_path = os.path.join(upload_folder_path, item_name)
+                try:
+                    stat_info = os.stat(item_path)
+                    is_dir = os.path.isdir(item_path)
+                    # Convert permissions to octal string (e.g., 0o755)
+                    permissions = oct(stat_info.st_mode & 0o777)
+                    size = stat_info.st_size
+                    results.append(f"<li>{'[DIR] ' if is_dir else ''}{item_name} (Size: {size}, Perms: {permissions})</li>")
+                except Exception as stat_e:
+                    results.append(f"<li>{item_name} (Error getting stats: {stat_e})</li>")
+            results.append("</ul>")
+        else:
+            results.append(f"<p><strong>ERROR: Directory does NOT exist.</strong></p>")
+
+    except Exception as e:
+        current_app.logger.error(f"Error in debug_list_uploads: {e}", exc_info=True)
+        error_msg = f"Error listing directory: {e}"
+        results.append(f"<p><strong>EXCEPTION: {error_msg}</strong></p>")
+
+    return "<br>".join(results) # Simple HTML output
+# --- END TEMPORARY DEBUG ROUTE ---
+
 # --- Keep __main__ block ---
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
