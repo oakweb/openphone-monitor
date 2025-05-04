@@ -1,0 +1,44 @@
+{# templates/_header.html - Standard Navigation Header #}
+<header class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top border-bottom border-secondary">
+    <div class="container-fluid">
+        {# Logo/Brand Link #}
+        <a class="navbar-brand" href="{{ url_for('index') }}">
+            <div>
+                <span class="fw-bold fs-5">Sin City Rentals</span><br>
+                <small class="text-info">OpenPhone System</small>
+            </div>
+        </a>
+        {# Mobile Nav Toggle Button #}
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        {# Main Navigation Links #}
+        <div class="collapse navbar-collapse" id="mainNavbar">
+            <nav class="navbar-nav ms-auto mb-2 mb-lg-0 header-nav">
+                {# Add 'active' class based on the current page's endpoint #}
+                <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}"
+                   href="{{ url_for('index') }}">Dashboard</a>
+
+                <a class="nav-link {% if request.endpoint == 'messages_view' %}active{% endif %}"
+                   href="{{ url_for('messages_view') }}">Messages</a>
+
+                <a class="nav-link {% if request.endpoint == 'contacts_view' %}active{% endif %}"
+                   href="{{ url_for('contacts_view') }}">Contacts</a>
+
+                <a class="nav-link {% if request.endpoint == 'notifications_view' %}active{% endif %}"
+                   href="{{ url_for('notifications_view') }}">Notifications</a>
+
+                {# Link to Properties Overview #}
+                <a class="nav-link {% if request.endpoint in ['properties_list_view', 'property_detail_view'] %}active{% endif %}"
+                    href="{{ url_for('properties_list_view') }}">Properties</a>
+
+                {# Link to Galleries Overview - Also highlight if on a specific gallery #}
+                <a class="nav-link {% if request.endpoint in ['galleries_overview', 'gallery_for_property', 'unsorted_gallery', 'gallery_view'] %}active{% endif %}"
+                   href="{{ url_for('galleries_overview') }}">Galleries</a>
+
+                <a class="nav-link {% if request.endpoint == 'ask_view' %}active{% endif %}"
+                   href="{{ url_for('ask_view') }}">Ask</a>
+            </nav>
+        </div>
+    </div>
+</header>
