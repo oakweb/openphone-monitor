@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-import json
+import json # Ensure json is imported for JSONDecodeError
 import logging # Import logging
 from pathlib import Path
 from datetime import datetime, timedelta, timezone # Added timezone for now()
@@ -87,48 +87,64 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 # --- Helper Function for Sending SMS via OpenPhone API ---
-# (Keep this function as is)
 def send_openphone_sms(recipient_phone, message_body):
+    """
+    Sends an SMS message using the OpenPhone v1 API.
+    Returns True on success, False on failure.
+    Requires OPENPHONE_API_TOKEN and OPENPHONE_SENDING_NUMBER/OPENPHONE_FROM env vars.
+    """
     api_token = os.getenv("OPENPHONE_API_TOKEN"); sending_number = os.getenv("OPENPHONE_FROM") or os.getenv("OPENPHONE_SENDING_NUMBER")
     log_func = getattr(current_app, "logger", logging.getLogger(__name__))
     if not api_token or not sending_number: log_func.error("OpenPhone API Token or Sending Number not configured."); return False
     api_url = "https://api.openphone.com/v1/messages"; headers = { "Authorization": api_token, "Content-Type": "application/json",}; payload = { "from": sending_number, "to": [recipient_phone], "content": message_body,}
-    try: log_func.debug(f"Sending OpenPhone SMS To: {payload['to']}, From: {payload['from']}"); log_func.debug(f"Authorization Header Type Sent: Direct Token"); response = requests.post(api_url, headers=headers, json=payload, timeout=20); response.raise_for_status(); response_data = response.json(); message_id = response_data.get('id', 'N/A'); status = response_data.get('status', 'N/A'); log_func.info(f"Successfully sent SMS via OpenPhone to {recipient_phone}. Response ID: {message_id}, Status: {status}"); return True
+    try:
+        log_func.debug(f"Sending OpenPhone SMS To: {payload['to']}, From: {payload['from']}"); log_func.debug(f"Authorization Header Type Sent: Direct Token")
+        response = requests.post(api_url, headers=headers, json=payload, timeout=20); response.raise_for_status()
+        response_data = response.json(); message_id = response_data.get('id', 'N/A'); status = response_data.get('status', 'N/A')
+        log_func.info(f"Successfully sent SMS via OpenPhone to {recipient_phone}. Response ID: {message_id}, Status: {status}"); return True
     except requests.exceptions.HTTPError as http_err:
         log_func.error(f"HTTP Error sending OpenPhone SMS to {recipient_phone}: {http_err}")
-        try: error_details = http_err.response.json(); log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
-        except: try: log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
-        except Exception: pass
+        # --- CORRECTED NESTED TRY/EXCEPT for error logging ---
+        try:
+            # First, try to log JSON details
+            error_details = http_err.response.json()
+            log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
+        except json.JSONDecodeError: # Catch error if response is not valid JSON
+            # If JSON decoding fails, then try to log the raw text body
+            try:
+                log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
+            except Exception:
+                # If even logging the text body fails, just pass silently
+                pass
+        # --- END CORRECTION ---
+        return False # Return False since the original HTTPError occurred
+    except requests.exceptions.RequestException as req_err:
+        log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}")
         return False
-    except requests.exceptions.RequestException as req_err: log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}"); return False
-    except Exception as e: log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True); return False
+    except Exception as e:
+        log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True)
+        return False
 
 # --- Database Initialization Helper ---
+# (Keep this function as is, including previous fix)
 def initialize_database(app_context):
-    """Initializes the database: creates tables, checks columns, resets sequences."""
     with app_context:
         app.logger.info("🔄 Initializing Database...")
         try: # Outer try for the whole function
             db.create_all()
             app.logger.info("✅ Tables created/verified.")
-
             # Ensure sid column exists
-            # --- CORRECTED try/except block structure ---
-            try:
-                # Actions on separate, indented lines
+            try: # Inner try for adding column
                 db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR"))
                 db.session.commit()
                 app.logger.info("✅ Ensured messages.sid column exists.")
-            except Exception as alter_err:
+            except Exception as alter_err: # Except for inner try
                 db.session.rollback()
                 err_str = str(alter_err).lower()
-                # Indented if/else block (already fixed)
                 if "already exists" in err_str or "duplicate column name" in err_str:
                     app.logger.info("✅ messages.sid column already exists.")
                 else:
                     app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
-            # --- END CORRECTION ---
-
             # Reset sequence (PostgreSQL)
             if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
                 try: sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');"); result = db.session.execute(sequence_name_query).scalar();
@@ -136,7 +152,6 @@ def initialize_database(app_context):
                 else: app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
                 except Exception as seq_err: db.session.rollback(); app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
             else: app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
-
             app.logger.info("✅ Database initialization complete.")
         except Exception as e: # Outer except
             db.session.rollback()
@@ -176,7 +191,7 @@ def index():
     return render_template("index.html", db_status=db_status, summary_today=summary_today, summary_week=summary_week)
 
 # --- PROPERTY ROUTES ---
-# (Keep as is, including previous indentation fix)
+# (Keep as is)
 @app.route('/properties')
 def properties_list_view(): properties = Property.query.order_by(Property.name).all(); return render_template('properties_list.html', properties=properties)
 
@@ -184,7 +199,6 @@ def properties_list_view(): properties = Property.query.order_by(Property.name).
 def property_detail_view(property_id):
     current_app.logger.info(f"--- /property/{property_id} route accessed ---");
     try: prop = db.session.get(Property, property_id);
-    # Correctly indented check
     if not prop: abort(404, description="Property not found")
     current_app.logger.debug(f" Found property: {prop.name}"); tenants = Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
     current_app.logger.debug(f" Found {len(tenants)} tenants for property {prop.id}"); property_identifier_string = f'(ID:{property_id})'; relevant_history = NotificationHistory.query.filter(NotificationHistory.properties_targeted.like(f'%{property_identifier_string}%')).order_by(NotificationHistory.timestamp.desc()).limit(50).all()
