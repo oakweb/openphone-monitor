@@ -10,39 +10,45 @@
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
+      margin-bottom: 2rem; /* Add space below property galleries */
     }
 
     /* each property‐tile is exactly 150×150 */
     .gallery-summary {
       position: relative;
-      flex: 0 0 auto;
+      flex: 0 0 auto; /* Prevent stretching */
       width: 150px;
       height: 150px;
       overflow: hidden;
       border: 1px solid #3a8bab;
       border-radius: 4px;
       background: #1e2226;
+      display: block; /* Make the whole div the link area */
+      text-decoration: none; /* Remove underline from link */
+      color: inherit; /* Inherit text color */
     }
+     .gallery-summary:hover {
+         border-color: #6cb9d3; /* Highlight border on hover */
+     }
 
-    /* thumbnail covers the tile */
-    .gallery-summary img {
-      display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
 
     /* placeholder when no thumbnail */
     .gallery-summary .placeholder {
       width: 100%;
       height: 100%;
       display: flex;
+      flex-direction: column; /* Stack icon and text */
       align-items: center;
       justify-content: center;
       color: #888;
-      font-size: 0.9rem;
+      font-size: 1.5rem; /* Make icon larger */
       background: #2c3035;
     }
+    .gallery-summary .placeholder span {
+        font-size: 0.8rem; /* Smaller text below icon */
+        margin-top: 0.5rem;
+    }
+
 
     /* caption bar at the bottom */
     .gallery-summary .caption {
@@ -50,33 +56,70 @@
       bottom: 0;
       left: 0;
       right: 0;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.7); /* Darker caption background */
       color: #fff;
-      font-size: 0.75rem;
-      padding: 0.25rem;
+      font-size: 0.8rem; /* Slightly larger caption */
+      padding: 0.35rem;
       text-align: center;
       box-sizing: border-box;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis; /* Add ellipsis if name is too long */
     }
+
+    /* Unsorted section styling */
+     .unsorted-link-section {
+         padding: 1rem;
+         border: 1px dashed #495057;
+         border-radius: 4px;
+         background-color: #212529;
+     }
+
   </style>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 {% endblock %}
 
 {% block content %}
-  <h2>All Galleries</h2>
+  <h2>All Galleries by Property</h2>
 
-  <div class="gallery-summaries">
-    {% for g in gallery_summaries %}
-      <div class="gallery-summary">
-        <a href="{{ url_for('gallery_for_property', property_id=g.property.id) }}">
-          {% if g.thumb %}
-            <img src="{{ url_for('static', filename=g.thumb) }}" alt="Thumbnail for {{ g.property.name }}">
-          {% else %}
-            <div class="placeholder">No Image</div>
-          {% endif %}
-          <div class="caption">
-            {{ g.property.name }} ({{ g.count }})
-          </div>
+  {% if gallery_summaries %}
+    <div class="gallery-summaries">
+      {# Loop through the list of Property objects passed as gallery_summaries #}
+      {% for prop in gallery_summaries %}
+        {# Make the whole tile clickable #}
+        <a href="{{ url_for('gallery_for_property', property_id=prop.id) }}" class="gallery-summary" title="View gallery for {{ prop.name }}">
+            {# Always show placeholder for now, as we didn't fetch a thumbnail #}
+            <div class="placeholder">
+                <i class="fas fa-images"></i> {# FontAwesome image icon #}
+                <span>View Gallery</span>
+            </div>
+            <div class="caption">
+              {{ prop.name }} {# Display property name (g IS the property object) #}
+              {# Count is not calculated by current Python code #}
+            </div>
         </a>
-      </div>
-    {% endfor %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>No properties currently have associated image galleries.</p>
+  {% endif %}
+
+  {# Add section for unsorted images #}
+  <hr>
+  <div class="unsorted-link-section">
+      <h4>Unsorted Media</h4>
+      {% if unsorted_count > 0 %}
+          <p>There are {{ unsorted_count }} message(s) with media that have not been assigned to a property.</p>
+          {# Link to the unsorted gallery page - NOTE: unsorted_gallery route needs implementation #}
+          <a href="{{ url_for('unsorted_gallery') }}" class="btn btn-outline-secondary">View Unsorted Media</a>
+      {% else %}
+          <p class="text-muted">There are currently no unsorted messages with media.</p>
+      {% endif %}
+      {% if error %}
+         <div class="alert alert-warning mt-3" role="alert">
+           Error loading overview: {{ error }}
+         </div>
+      {% endif %}
   </div>
+
 {% endblock %}
