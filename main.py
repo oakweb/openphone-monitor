@@ -746,10 +746,60 @@ def gallery_for_property(property_id):
                            current_year=current_year)
 # *** END REPLACEMENT ***
 
+# --- Replace the existing galleries_overview function with this ---
 @app.route("/galleries")
 def galleries_overview():
-    # ... (Keep previous version - NEEDS IMPLEMENTATION) ...
-    current_year=datetime.utcnow().year; return render_template("galleries_overview.html", gallery_summaries=[], unsorted_count=0, current_year=current_year)
+    """Displays a list of properties that have associated media galleries."""
+    current_year = datetime.utcnow().year
+    properties_with_galleries = []
+    unsorted_count = 0
+    error_message = None
+
+    try:
+        # Find distinct property IDs that are linked to messages WITH local_media_paths
+        # We query the Message table first to find property IDs that actually have media
+        property_ids_with_media = db.session.query(
+            Message.property_id  # Select the property ID column
+        ).filter(
+            Message.property_id.isnot(None),         # Ensure property_id is not NULL
+            Message.local_media_paths.isnot(None),  # Ensure media path exists
+            Message.local_media_paths != ''         # Ensure media path is not empty string
+        ).distinct().all() # Get unique property IDs
+
+        # Extract the IDs from the result tuples [(12,), (20,), ...] -> [12, 20, ...]
+        prop_ids = [pid for (pid,) in property_ids_with_media]
+        app.logger.debug(f"Found {len(prop_ids)} property IDs with media: {prop_ids}")
+
+        if prop_ids:
+            # Fetch the actual Property objects for these IDs, order by name
+            properties_with_galleries = Property.query.filter(
+                Property.id.in_(prop_ids)
+            ).order_by(Property.name).all()
+            app.logger.debug(f"Fetched {len(properties_with_galleries)} property objects for gallery overview.")
+
+        # Count messages with media that are NOT assigned to any property
+        unsorted_count = db.session.query(func.count(Message.id)).filter(
+            Message.property_id.is_(None), # Where property_id IS NULL
+            Message.local_media_paths.isnot(None),
+            Message.local_media_paths != ''
+        ).scalar() or 0 # Get the count, default to 0 if query returns None
+        app.logger.debug(f"Found {unsorted_count} unsorted messages with media.")
+
+    except Exception as e:
+        db.session.rollback() # Rollback on error during query
+        app.logger.error(f"❌ Error loading galleries overview: {e}", exc_info=True)
+        error_message = f"Error loading galleries overview: {e}"
+        flash(error_message, "danger") # Show error to user
+
+    # Render the overview template, passing the list of properties that have galleries
+    # Note: We pass the Property objects themselves in gallery_summaries now
+    return render_template("galleries_overview.html",
+                           gallery_summaries=properties_with_galleries, # Pass list of Property objects
+                           unsorted_count=unsorted_count,
+                           error=error_message,
+                           current_year=current_year)
+
+# --- End of corrected galleries_overview function ---
 
 @app.route("/gallery", endpoint="gallery_view")
 def gallery_view():
