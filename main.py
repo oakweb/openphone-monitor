@@ -11,7 +11,7 @@ import mimetypes # Added for notifications uploads
 # Import necessary Flask components
 from werkzeug.utils import secure_filename
 from flask import (
-    Flask, render_template, request, jsonify, url_for, redirect, flash, current_app, abort
+    Flask, render_template, request, jsonify, url_for, redirect, flash, current_app, abort, send_from_directory
 ) # Added abort
 from dotenv import load_dotenv
 load_dotenv()
