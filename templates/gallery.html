@@ -52,7 +52,7 @@
       transition: opacity 0.2s ease-in-out;
     }
      .image-wrapper:hover .delete-form {
-         opacity: 1; /* Fully opaque on hover */
+        opacity: 1; /* Fully opaque on hover */
      }
 
     .delete-form button {
@@ -90,17 +90,20 @@
                  {# Add basic error handling for missing images client-side #}
                  onerror="this.onerror=null; this.parentElement.style.display='none'; console.error('Failed to load image: {{ img_item.path }}');">
           </a>
-          {# Correct the form action and add necessary hidden fields #}
+
+          {# --- EDITED: Commented out the delete form --- #}
+          {#
           <form class="delete-form"
                 action="{{ url_for('delete_media_for_message', message_id=img_item.message_id, file_index=img_item.index) }}"
                 method="POST"
                 onsubmit="return confirm('Are you sure you want to delete this image? This cannot be undone.');">
-            {# No need to send file_path, the route uses message_id and index #}
             <button type="submit" class="btn btn-danger btn-sm" title="Delete this image">
-                {# Use a simple 'X' or trash icon if using FontAwesome etc. #}
                 &times;
             </button>
           </form>
+          #}
+          {# --- End commented out delete form --- #}
+
         </div>
       {% endfor %}
     </div>
@@ -113,5 +116,16 @@
        </div>
     {% endif %}
   {% endif %}
+
+  {# Optional: Link back to property detail or gallery overview if applicable #}
+  {% if property %} {# Check if the property object was passed #}
+      <div class="text-center mt-4">
+          <a href="{{ url_for('property_detail_view', property_id=property.id) }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Property Details</a>
+          <a href="{{ url_for('properties_list_view') }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Properties Overview</a>
+      </div>
+  {% else %}
+       {# Maybe add a link back to a general gallery overview if this template is used elsewhere #}
+  {% endif %}
+
 
 {% endblock %}
