@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone # Added timezone for now()
 import traceback
 import requests # For OpenPhone API calls
+import mimetypes # Added for notifications uploads
 
 # Import necessary Flask components
 from werkzeug.utils import secure_filename
@@ -15,8 +16,10 @@ from flask import (
 from dotenv import load_dotenv
 load_dotenv()
 # Import SQLAlchemy components
-from sqlalchemy import text, func, exc as sqlalchemy_exc, select, over, String, cast
+# Added func, is_, isnot_ for new queries
+from sqlalchemy import text, func, exc as sqlalchemy_exc, select, over, String, cast, or_, not_, and_
 from sqlalchemy.orm import attributes, joinedload
+from sqlalchemy.sql.expression import null # For setting NULL explicitly if needed
 
 # Import Flask-Migrate
 from flask_migrate import Migrate
@@ -26,6 +29,7 @@ import openai
 # Import local modules
 from extensions import db
 # Import ALL your models needed here
+# Ensure Property is imported for the gallery and assignment logic
 from models import Contact, Message, Property, Tenant, NotificationHistory
 from webhook_route import webhook_bp # Assuming webhook_bp is correctly defined elsewhere
 # Assuming send_email and wrap_email_html are in email_utils.py:
@@ -184,6 +188,14 @@ if os.environ.get("FLASK_DEBUG", "false").lower() in ['true', '1', 't']:
     print_url_map(app)
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Jinja Context Processors & Custom Filters (Optional)
+# ──────────────────────────────────────────────────────────────────────────────
+@app.context_processor
+def inject_now():
+    """Inject current year into all templates."""
+    return {'current_year': datetime.now(timezone.utc).year}
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  ROUTES
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -192,7 +204,7 @@ if os.environ.get("FLASK_DEBUG", "false").lower() in ['true', '1', 't']:
 def index():
     """Displays the main dashboard."""
     # ... (Keep simple count version for now) ...
-    current_year = datetime.utcnow().year; db_status = "?"; summary_today = "?"; summary_week = "?"
+    db_status = "?"; summary_today = "?"; summary_week = "?"
     try:
         db.session.execute(text("SELECT 1")); db_status = "Connected"
         now_utc = datetime.now(timezone.utc); start_today_utc = datetime.combine(now_utc.date(), datetime.min.time(), tzinfo=timezone.utc) # Use timezone aware
@@ -201,7 +213,7 @@ def index():
         count_week = (db.session.query(func.count(Message.id)).filter(Message.timestamp >= start_week_utc).scalar() or 0)
         summary_today = f"{count_today} messages today."; summary_week  = f"{count_week} messages this week."
     except Exception as ex: db.session.rollback(); db_status = f"Error: {ex}"; app.logger.error(f"❌ DB Error index: {ex}")
-    return render_template("index.html", db_status=db_status, summary_today=summary_today, summary_week=summary_week, current_year=current_year)
+    return render_template("index.html", db_status=db_status, summary_today=summary_today, summary_week=summary_week) # current_year injected by context processor
 
 # --- PROPERTY ROUTES ---
 @app.route('/properties')
@@ -209,10 +221,7 @@ def properties_list_view():
     """Displays a list of all properties."""
     # Fetch all properties from the database, ordered by name perhaps
     properties = Property.query.order_by(Property.name).all()
-    current_year = datetime.utcnow().year # For footer
-    return render_template('properties_list.html',
-                           properties=properties,
-                           current_year=current_year)
+    return render_template('properties_list.html', properties=properties) # current_year injected
 
 @app.route('/property/<int:property_id>')
 def property_detail_view(property_id):
@@ -220,97 +229,170 @@ def property_detail_view(property_id):
     current_app.logger.info(f"--- /property/{property_id} route accessed ---")
     try:
         # 1. Fetch the specific property by its ID
-        prop = Property.query.get_or_404(property_id)
+        prop = db.session.get(Property, property_id) # Use db.session.get
+        if not prop:
+            abort(404, description="Property not found")
         current_app.logger.debug(f" Found property: {prop.name}")
 
         # 2. Fetch tenants associated with this property
         tenants = Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
         current_app.logger.debug(f" Found {len(tenants)} tenants for property {prop.id}")
 
-        # 3. Fetch recent communication history
-        recent_history_all = NotificationHistory.query.order_by(NotificationHistory.timestamp.desc()).limit(50).all()
-        current_app.logger.debug(f" Fetched {len(recent_history_all)} recent history entries for filtering")
-
-        # 4. Filter history for relevance to this property
+        # 3. Fetch recent communication history relevant to this property
+        # Filter directly in the query for efficiency
         property_identifier_string = f'(ID:{property_id})'
-        relevant_history = [
-            item for item in recent_history_all
-            if item.properties_targeted and property_identifier_string in item.properties_targeted
-        ]
-        current_app.logger.debug(f" Filtered down to {len(relevant_history)} history entries relevant to property {prop.id}")
+        relevant_history = NotificationHistory.query.filter(
+            # Use LIKE for substring matching in properties_targeted
+            NotificationHistory.properties_targeted.like(f'%{property_identifier_string}%')
+        ).order_by(
+            NotificationHistory.timestamp.desc()
+        ).limit(50).all() # Limit the number of history items fetched
+        current_app.logger.debug(f" Found {len(relevant_history)} relevant history entries for property {prop.id}")
 
-        # 5. Get current year for the footer
-        current_year = datetime.utcnow().year
-
-        # 6. Render the detail template, passing the data
+        # 4. Render the detail template, passing the data
         return render_template('property_detail.html',
                                prop=prop,
                                tenants=tenants,
-                               history=relevant_history,
-                               current_year=current_year)
+                               history=relevant_history) # current_year injected
 
     except Exception as e:
-        current_app.logger.error(f"❌ Error loading property detail page for ID {property_id}: {e}")
-        traceback.print_exc()
-        return "An error occurred while loading property details.", 500
+        current_app.logger.error(f"❌ Error loading property detail page for ID {property_id}: {e}", exc_info=True)
+        # traceback.print_exc() # Logging already captures this with exc_info=True
+        flash(f"An error occurred while loading property details: {e}", "danger")
+        return redirect(url_for('properties_list_view')) # Redirect on error
+
 
 # --- MESSAGES, CONTACTS, ASSIGNMENT ROUTES ---
 @app.route("/messages")
 def messages_view():
      """Displays message overview or detail for a specific number."""
-     current_year=datetime.utcnow().year; target_phone_number=request.args.get("phone_number")
+     target_phone_number=request.args.get("phone_number")
      app.logger.debug(f"Accessing messages_view. Target phone: {target_phone_number}")
      try:
         if target_phone_number:
             app.logger.debug(f"--- Loading DETAIL view for {target_phone_number} ---")
-            msgs_for_number = Message.query.filter_by(phone_number=target_phone_number).order_by(Message.timestamp.desc()).all()
+            # Eager load property and contact data related to the messages
+            msgs_for_number = Message.query.options(
+                joinedload(Message.property),
+                joinedload(Message.contact)
+            ).filter(
+                Message.phone_number==target_phone_number
+            ).order_by(Message.timestamp.desc()).all()
             app.logger.debug(f"Query for {target_phone_number} returned {len(msgs_for_number)} message objects.")
-            contact = Contact.query.get(target_phone_number); is_known = contact is not None; contact_name = contact.contact_name if is_known else None
+
+            # Determine contact info (using the first message's contact if available)
+            is_known = False
+            contact_name = None
+            if msgs_for_number and msgs_for_number[0].contact:
+                contact = msgs_for_number[0].contact
+                is_known = True
+                contact_name = contact.get_display_name() # Use helper if it exists
+
+            # Fallback if no messages or no contact linked to first message
+            if not is_known:
+                 contact = db.session.get(Contact, target_phone_number)
+                 if contact:
+                      is_known = True
+                      contact_name = contact.get_display_name()
+
             app.logger.debug(f"Contact lookup {target_phone_number}: known={is_known}, name='{contact_name}'")
             # Ensure messages_detail.html exists
-            return render_template("messages_detail.html", phone_number=target_phone_number, messages=msgs_for_number, is_known=is_known, contact_name=contact_name, current_year=current_year)
+            return render_template("messages_detail.html", phone_number=target_phone_number, messages=msgs_for_number, is_known=is_known, contact_name=contact_name) # current_year injected
         else:
             app.logger.debug("--- Loading OVERVIEW view ---")
-            # Eager load related property object using joinedload to avoid N+1 query issues in template
-            msgs_overview = Message.query.options(joinedload(Message.property)).order_by(Message.timestamp.desc()).limit(100).all()
+            # Eager load related property and contact objects using joinedload to avoid N+1 query issues
+            msgs_overview = Message.query.options(
+                joinedload(Message.property),
+                joinedload(Message.contact) # Eager load contact info
+            ).order_by(Message.timestamp.desc()).limit(100).all()
             app.logger.debug(f"Query overview returned {len(msgs_overview)} messages.")
-            # Fetch set of known phone numbers efficiently
-            known_phones_query = db.session.query(Contact.phone_number).distinct().all(); known_contact_phones_set = {p for (p,) in known_phones_query}
+
             # Fetch properties needed for the dropdowns in the overview
             properties_list = Property.query.order_by(Property.name).all()
             # Ensure messages_overview.html exists
-            return render_template("messages_overview.html", messages=msgs_overview, known_contact_phones=known_contact_phones_set, properties=properties_list, current_year=current_year)
+            return render_template("messages_overview.html", messages=msgs_overview, properties=properties_list) # current_year injected
+                                     # removed known_contact_phones as it's less efficient than joinedload
+
      except Exception as ex:
         db.session.rollback(); app.logger.error(f"❌ Error messages_view: {ex}", exc_info=True); error_msg = f"Error: {ex}"; flash(error_msg, "danger")
         template_name = "messages_detail.html" if target_phone_number else "messages_overview.html"
-        try: return render_template(template_name, messages=[], properties=[], known_contact_phones=set(), phone_number=target_phone_number, is_known=False, contact_name=None, error=error_msg, current_year=current_year)
+        try: return render_template(template_name, messages=[], properties=[], phone_number=target_phone_number, is_known=False, contact_name=None, error=error_msg) # current_year injected
         except: return redirect(url_for('index')) # Fallback redirect
 
+# !!! REPLACED with the more robust version for unsorted gallery assignment !!!
 @app.route("/assign_property", methods=["POST"])
+# @login_required # Add if you have authentication
 def assign_property():
-     """Assigns or unassigns a property to a message."""
-     message_id_str = request.form.get("message_id"); property_id_str = request.form.get("property_id", ""); redirect_url = request.referrer or url_for("messages_view")
-     if not message_id_str: flash("No message ID provided.", "error"); return redirect(redirect_url)
-     try:
-        message_id = int(message_id_str); message = Message.query.get(message_id)
-        if not message: flash(f"Message ID {message_id} not found.", "error"); return redirect(redirect_url)
-        # Assign property if a valid ID is given, otherwise unassign
-        if property_id_str and property_id_str.lower() not in ["none", ""]:
-            property_id = int(property_id_str); prop = Property.query.get(property_id)
-            if not prop: flash(f"Property ID {property_id} not found.", "error"); return redirect(redirect_url)
-            message.property_id = property_id; flash(f"Message assigned to: {prop.name}", "success")
-        else: message.property_id = None; flash(f"Message unassigned.", "info")
+    """ Handles the form submission from various places (like unsorted gallery or message overview)
+        to assign a message to a property.
+    """
+    message_id_str = request.form.get('message_id')
+    property_id_str = request.form.get('property_id') # Get property_id as string first
+    # Determine where to redirect back to
+    redirect_url = request.referrer or url_for('index') # Default redirect if referrer is missing
+
+    current_app.logger.info(f"Received assignment request via POST: message_id='{message_id_str}', property_id='{property_id_str}', referrer='{request.referrer}'")
+
+    # --- Validation ---
+    message_id = None
+    if message_id_str and message_id_str.isdigit():
+        message_id = int(message_id_str)
+    else:
+        flash('Invalid or missing Message ID provided.', 'danger')
+        current_app.logger.warning("Assign property failed: Invalid or missing message_id")
+        return redirect(redirect_url)
+
+    # Use db.session.get for fetching by primary key
+    message = db.session.get(Message, message_id)
+
+    if not message:
+        flash(f'Message with ID {message_id} not found.', 'warning')
+        current_app.logger.warning(f"Assign property failed: Message ID {message_id} not found.")
+        return redirect(redirect_url)
+
+    # --- Determine target property_id (could be None to unassign) ---
+    target_property_id = None
+    prop_name_for_flash = "Unassigned"
+    if property_id_str and property_id_str.isdigit() and int(property_id_str) > 0:
+        target_property_id = int(property_id_str)
+        # Verify the property actually exists
+        property_obj = db.session.get(Property, target_property_id)
+        if not property_obj:
+             flash(f'Selected Property (ID: {target_property_id}) not found.', 'warning')
+             current_app.logger.warning(f"Assign property failed: Target Property ID {target_property_id} not found.")
+             return redirect(redirect_url)
+        prop_name_for_flash = property_obj.name # Get name for flash message
+    elif property_id_str is None or property_id_str == "" or property_id_str.lower() == "none":
+        target_property_id = None # Explicitly unassigning
+        current_app.logger.info(f"Request to unassign property from message {message_id}")
+    else:
+        # Invalid property_id format submitted (not digit, not empty/None)
+        flash(f'Invalid Property ID format: {property_id_str}. Please select a valid property or leave blank to unassign.', 'warning')
+        current_app.logger.warning(f"Assign property failed: Invalid property_id format '{property_id_str}' for message {message_id}.")
+        return redirect(redirect_url)
+
+    # --- Perform Update ---
+    try:
+        message.property_id = target_property_id # Assign the integer ID or None
         db.session.commit()
-     except ValueError: flash("Invalid ID.", "error"); db.session.rollback()
-     except Exception as e: flash(f"Error assigning: {e}", "danger"); db.session.rollback(); app.logger.error(f"Error assign_property: {e}", exc_info=True)
-     # Add fragment to scroll back to the message
-     if "#" not in redirect_url and 'message_id' in locals() and isinstance(message_id, int): redirect_url += f"#msg-{message_id}"
-     return redirect(redirect_url)
+        flash(f'Message #{message_id} assigned to property "{prop_name_for_flash}" successfully.', 'success')
+        current_app.logger.info(f"Successfully updated Message ID {message_id} property_id to {target_property_id} ('{prop_name_for_flash}')")
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Database error assigning property: {str(e)}', 'danger')
+        current_app.logger.error(f"Error committing property assignment for message {message_id} to property {target_property_id}: {e}", exc_info=True)
+
+    # Add fragment identifier if redirecting back to a page that uses it
+    if "#" not in redirect_url and 'msg-' in redirect_url: # Avoid adding if already has fragment
+         redirect_url += f"#msg-{message_id}"
+         current_app.logger.debug(f"Appending fragment, redirecting to: {redirect_url}")
+
+    return redirect(redirect_url)
+
 
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
     """Manages contacts: add, list/delete named, list/rename auto-added."""
-    current_year = datetime.utcnow().year
     error_message = None
     dummy_phone_key = '0000000000' # Define dummy key constant
 
@@ -325,7 +407,7 @@ def contacts_view():
                 if name and phone_key:
                     if len(phone_key) != 10 or not phone_key.isdigit(): flash("Invalid phone key format (10 digits).", "error")
                     else:
-                        existing = Contact.query.get(phone_key)
+                        existing = db.session.get(Contact, phone_key) # Use db.session.get
                         if existing:
                             # If contact exists and was auto-named, update it
                             is_default_name = (existing.contact_name.startswith('+') and len(existing.contact_name) > 1 and existing.contact_name[1:].isdigit()) or \
@@ -346,50 +428,43 @@ def contacts_view():
                 contact_key_to_delete = request.form.get("contact_id")
                 if not contact_key_to_delete: flash("No Contact ID provided.", "error")
                 else:
-                    contact_to_delete = Contact.query.get(contact_key_to_delete)
+                    contact_to_delete = db.session.get(Contact, contact_key_to_delete) # Use db.session.get
                     if not contact_to_delete: flash("Contact not found.", "error")
                     elif contact_key_to_delete == dummy_phone_key: flash("Cannot delete default reference.", "warning")
                     else:
                         # Ensure dummy contact exists before attempting re-assignment
                         dummy_contact = db.session.get(Contact, dummy_phone_key) # Use db.session.get for PK lookup
                         if not dummy_contact:
-                             current_app.logger.error(f"CRITICAL: Dummy contact '{dummy_phone_key}' missing.")
-                             flash("Internal error: Default reference missing.", "danger"); contact_to_delete = None # Prevent deletion
+                            current_app.logger.error(f"CRITICAL: Dummy contact '{dummy_phone_key}' missing.")
+                            flash("Internal error: Default reference missing.", "danger"); contact_to_delete = None # Prevent deletion
                         else:
                             # Re-assign associated messages BEFORE deleting the contact
-                            messages_to_update = Message.query.filter_by(phone_number=contact_key_to_delete).all()
-                            if messages_to_update:
-                                current_app.logger.info(f"Updating {len(messages_to_update)} messages for contact delete...")
-                                for msg in messages_to_update:
-                                    msg.phone_number = dummy_phone_key # Re-assign to dummy contact
-                                    db.session.add(msg) # Add to session to track changes
-                                try:
-                                    current_app.logger.info("Flushing message updates..."); db.session.flush(); current_app.logger.info("Flush successful.")
-                                except Exception as flush_err:
-                                    current_app.logger.error(f"Flush Error: {flush_err}", exc_info=True); db.session.rollback(); flash(f"DB error updating refs: {flush_err}", "danger"); return redirect(url_for('contacts_view'))
+                            # Use update() for potentially better performance on many messages
+                            update_stmt = Message.__table__.update().where(
+                                Message.phone_number == contact_key_to_delete
+                            ).values(
+                                phone_number = dummy_phone_key
+                            )
+                            result = db.session.execute(update_stmt)
+                            updated_count = result.rowcount
+                            current_app.logger.info(f"Re-assigned {updated_count} messages from contact {contact_key_to_delete} to dummy contact.")
 
                             # Now safe to delete the contact
-                            current_app.logger.info(f"Marking Contact '{contact_to_delete.contact_name}' for deletion.")
+                            current_app.logger.info(f"Marking Contact '{contact_to_delete.contact_name}' ({contact_key_to_delete}) for deletion.")
                             db.session.delete(contact_to_delete)
-                            flash(f"Contact '{contact_to_delete.contact_name}' deleted.", "success") # Flash on delete success
+                            flash(f"Contact '{contact_to_delete.contact_name}' deleted (Messages reassigned).", "success") # Flash on delete success
 
             # --- Commit Add/Delete Operations ---
-            # Commit only if no flash error occurred before this point might be safer,
-            # but let's commit and handle potential errors.
-            current_app.logger.info("Attempting final db.session.commit()...")
+            current_app.logger.info("Attempting final db.session.commit() for contacts POST...")
             db.session.commit()
             current_app.logger.info("✅ Final db.session.commit() successful.")
-            # Flashing moved to within add/delete blocks
 
         except Exception as ex:
             db.session.rollback(); app.logger.error(f"❌ Error contacts POST: {ex}", exc_info=True); flash(f"Error processing contact: {ex}", "danger")
 
         # Redirect after POST handled (or error occurred)
-        redirect_target = request.form.get('message_sid') # Check if redirecting from message page
-        if redirect_target and 'message_id' in request.form: # Check if message_id exists in form too
-             return redirect(url_for('messages_view') + f"#msg-{request.form.get('message_id')}")
-        else:
-             return redirect(url_for("contacts_view"))
+        redirect_target = request.referrer or url_for("contacts_view") # Default back to contacts view
+        return redirect(redirect_target)
 
 
     # --- GET Request Handling ---
@@ -414,23 +489,19 @@ def contacts_view():
         # Sort known contacts by name
         properly_known_contacts.sort(key=lambda x: x.contact_name.lower() if x.contact_name else "")
 
-        # Find recent distinct phone numbers that have interacted
-        # Using SQLAlchemy Core directly for window function might be cleaner
+        # Find recent distinct phone numbers that have interacted (using window function)
         message_alias = Message.__table__.alias('m')
         row_num_col = func.row_number().over(
              partition_by=message_alias.c.phone_number,
              order_by=message_alias.c.timestamp.desc()
          ).label('rn')
 
-        # Select phone_number and timestamp from messages, rank them
         ranked_messages_subq = select(
             message_alias.c.phone_number,
             message_alias.c.timestamp,
             row_num_col
         ).select_from(message_alias).subquery('ranked_messages')
 
-        # Select the phone numbers where rank is 1 (most recent message per number)
-        # Order by most recent timestamp overall, limit to 50
         latest_distinct_numbers_query = select(
             ranked_messages_subq.c.phone_number
         ).where(
@@ -457,9 +528,9 @@ def contacts_view():
         db.session.rollback(); app.logger.error(f"❌ Error loading contacts GET: {ex}", exc_info=True); error_message = f"Error: {ex}"; flash(error_message, "danger")
 
     return render_template("contacts.html",
-                            properly_known_contacts=properly_known_contacts,
-                            recent_auto_named_contacts=recent_auto_named_contacts,
-                            error=error_message, current_year=current_year)
+                           properly_known_contacts=properly_known_contacts,
+                           recent_auto_named_contacts=recent_auto_named_contacts,
+                           error=error_message) # current_year injected
 
 
 @app.route("/update_contact_name", methods=["POST"])
@@ -468,19 +539,18 @@ def update_contact_name():
     phone_key = request.form.get("phone_key"); new_name = request.form.get("new_name", "").strip()
     if not phone_key or not new_name: flash("Missing key or name.", "error"); return redirect(url_for('contacts_view'))
     try:
-        contact_to_update = Contact.query.get(phone_key)
+        contact_to_update = db.session.get(Contact, phone_key) # Use db.session.get
         if contact_to_update:
             # Check if new name looks like a phone number (prevent setting name to number)
-            # Allow updating TO an existing name, just prevent setting it TO a phone number format
             is_reverting = ( (new_name.startswith('+') and len(new_name) > 1 and new_name[1:].isdigit()) or \
                              (len(new_name) == 10 and new_name.isdigit()) ) # Simplified check
 
             if is_reverting:
                 flash("Cannot set name to just a phone number.", "warning")
             else:
-                 old_name = contact_to_update.contact_name; contact_to_update.contact_name = new_name; db.session.commit()
-                 app.logger.info(f"✅ Updated contact name {phone_key}: '{old_name}' -> '{new_name}'.")
-                 flash(f"Contact {phone_key} updated to '{new_name}'.", "success")
+                old_name = contact_to_update.contact_name; contact_to_update.contact_name = new_name; db.session.commit()
+                app.logger.info(f"✅ Updated contact name {phone_key}: '{old_name}' -> '{new_name}'.")
+                flash(f"Contact {phone_key} updated to '{new_name}'.", "success")
         else: flash(f"Contact key '{phone_key}' not found.", "error")
     except Exception as e: db.session.rollback(); app.logger.error(f"❌ Error update_contact_name {phone_key}: {e}", exc_info=True); flash(f"Error: {e}", "danger")
     return redirect(url_for('contacts_view'))
@@ -491,7 +561,6 @@ def update_contact_name():
 @app.route("/notifications", methods=["GET", "POST"])
 def notifications_view():
     """Displays notification form and history, handles sending."""
-    current_year = datetime.utcnow().year
     properties = []
     history = []
     error_message = None
@@ -576,7 +645,6 @@ def notifications_view():
 
                 for email in emails_to_send:
                     try:
-                        # *** CORRECTED SUCCESS COUNTING ***
                         # Capture the return value (True/False) from send_email
                         email_sent_successfully = send_email(
                             to_emails=[email],
@@ -588,9 +656,7 @@ def notifications_view():
                         if email_sent_successfully:
                             email_success_count += 1
                         else:
-                             # send_email returned False, likely logged internally in email_utils
-                             email_errors.append(f"{email}: Failed") # Record failure
-                        # *** END CORRECTION ***
+                            email_errors.append(f"{email}: Failed") # Record failure
                     except Exception as e:
                         current_app.logger.error(f"Email Exception for {email}: {e}", exc_info=True)
                         email_errors.append(f"{email}: Exception")
@@ -613,7 +679,6 @@ def notifications_view():
             # --- Determine Overall Status & Log History ---
             total_email_attempts = len(emails_to_send) if 'Email' in channels_attempted else 0
             total_sms_attempts = len(phones_to_send) if 'SMS' in channels_attempted else 0
-            # Use the success counts we actually tracked now
             total_successes = email_success_count + sms_success_count
             total_attempts = total_email_attempts + total_sms_attempts
 
@@ -634,13 +699,13 @@ def notifications_view():
                  current_app.logger.error("!!! Reached 'total_attempts == 0' unexpectedly in status calc !!!")
             elif email_errors or sms_errors: # If there were ANY errors/failures
                  if total_successes > 0: # But at least one success
-                     final_status = "Partial Failure"
-                     current_app.logger.warning(f"Setting final status to 'Partial Failure'. Successes ({total_successes}) < Attempts ({total_attempts}).")
-                     flash(f"Notifications sent with some failures. ({recipients_summary})", "warning")
+                      final_status = "Partial Failure"
+                      current_app.logger.warning(f"Setting final status to 'Partial Failure'. Successes ({total_successes}) < Attempts ({total_attempts}).")
+                      flash(f"Notifications sent with some failures. ({recipients_summary})", "warning")
                  else: # No successes, only errors/failures
-                     final_status = "Failed"
-                     current_app.logger.error(f"Setting final status to 'Failed'. Successes ({total_successes}), Attempts ({total_attempts}).")
-                     flash(f"All notifications failed to send. Check logs.", "danger")
+                      final_status = "Failed"
+                      current_app.logger.error(f"Setting final status to 'Failed'. Successes ({total_successes}), Attempts ({total_attempts}).")
+                      flash(f"All notifications failed to send. Check logs.", "danger")
             else: # No errors/failures and total_attempts > 0 implies all succeeded
                  final_status = "Sent"
                  current_app.logger.info(f"Setting final status to 'Sent'. Successes ({total_successes}) == Attempts ({total_attempts}).")
@@ -672,101 +737,35 @@ def notifications_view():
         error_message = f"Error loading page data: {ex}"; flash(error_message, "danger")
 
     return render_template(
-        "notifications.html", properties=properties, history=history, error=error_message, current_year=current_year
-    )
+        "notifications.html", properties=properties, history=history, error=error_message
+    ) # current_year injected
 
-# --- GALLERY ROUTES (Placeholders replaced for /gallery/<id>) ---
-@app.route("/ask", methods=["GET", "POST"])
-def ask_view():
-    # ... (Keep previous version, but NOTE it uses incorrect Message fields currently) ...
-    current_year=datetime.utcnow().year; return render_template("ask.html", current_year=current_year)
+# ──────────────────────────────────────────────────────────────────────────────
+#  GALLERY ROUTES
+# ──────────────────────────────────────────────────────────────────────────────
 
-@app.route("/gallery_static")
-def gallery_static():
-    # ... (Keep previous version) ...
-    current_year=datetime.utcnow().year; return render_template("gallery.html", image_items=[], gallery_title="Static Uploads Gallery", current_year=current_year)
-
-@app.route("/unsorted")
-def unsorted_gallery():
-    # ... (Keep previous version - NEEDS IMPLEMENTATION) ...
-    current_year=datetime.utcnow().year; return render_template("unsorted.html", unsorted_items=[], properties=[], current_year=current_year)
-
-# *** THIS FUNCTION WAS REPLACED WITH FULL IMPLEMENTATION ***
-@app.route("/gallery/<int:property_id>")
-def gallery_for_property(property_id):
-    """Displays media gallery for messages assigned to a specific property."""
-    current_year = datetime.utcnow().year
-    prop = Property.query.get_or_404(property_id) # Get property or 404
-    gallery_title = f"Gallery for {prop.name}"
-    image_items = []
-    error_message = None
-
-    try:
-        # Query messages linked to this property that HAVE local media paths stored
-        messages_with_media = Message.query.filter(
-            Message.property_id == property_id,
-            Message.local_media_paths.isnot(None),
-            Message.local_media_paths != ''  # Ensure it's not an empty string either
-        ).order_by(Message.timestamp.desc()).all()
-
-        current_app.logger.debug(f"Found {len(messages_with_media)} messages with media for property {property_id}")
-
-        # Process the paths from the messages found
-        for msg in messages_with_media:
-            # Split the comma-separated string of paths
-            paths = msg.local_media_paths.split(',')
-            for idx, path in enumerate(paths):
-                trimmed_path = path.strip()
-                # Ensure the path isn't empty after stripping whitespace
-                if trimmed_path:
-                    # Create a dictionary for each image item, matching gallery.html needs
-                    image_items.append({
-                        "path": trimmed_path,       # e.g., "uploads/msg538_1_03e0c835.jpg"
-                        "message_id": msg.id,       # ID of the message this image belongs to
-                        "index": idx,               # Index (0, 1, etc.) if multiple images per message
-                        "timestamp": msg.timestamp  # Add timestamp for potential sorting later
-                    })
-
-        # Sort the collected images by message timestamp (newest first)
-        image_items.sort(key=lambda x: x.get('timestamp'), reverse=True)
-        current_app.logger.debug(f"Prepared {len(image_items)} image items for gallery template")
-
-    except Exception as e:
-        db.session.rollback() # Rollback on error
-        current_app.logger.error(f"❌ Error loading gallery for property {property_id}: {e}", exc_info=True)
-        error_message = f"Error loading gallery: {e}"
-        flash(error_message, "danger") # Flash message to user
-
-    # Render the template, passing the list of image item dictionaries
-    return render_template("gallery.html",
-                           image_items=image_items, # This list now contains image data
-                           property=prop, # Pass property object if template uses it
-                           gallery_title=gallery_title,
-                           error=error_message,
-                           current_year=current_year)
-# *** END REPLACEMENT ***
-
-# --- Replace the existing galleries_overview function with this ---
 @app.route("/galleries")
 def galleries_overview():
-    """Displays a list of properties that have associated media galleries."""
-    current_year = datetime.utcnow().year
+    """Displays a list of properties that have associated media galleries and unsorted media."""
     properties_with_galleries = []
     unsorted_count = 0
     error_message = None
 
     try:
-        # Find distinct property IDs that are linked to messages WITH local_media_paths
-        # We query the Message table first to find property IDs that actually have media
+        # Find distinct property IDs that are linked to messages WITH valid local_media_paths
+        # Assuming local_media_paths is a list/JSON type, check if it's not NULL
+        # For string type (legacy?), check not NULL and not empty string. Adapt query if needed.
         property_ids_with_media = db.session.query(
-            Message.property_id  # Select the property ID column
+            Message.property_id
         ).filter(
-            Message.property_id.isnot(None),         # Ensure property_id is not NULL
-            Message.local_media_paths.isnot(None),  # Ensure media path exists
-            Message.local_media_paths != ''         # Ensure media path is not empty string
-        ).distinct().all() # Get unique property IDs
+            Message.property_id.isnot(None),
+            Message.local_media_paths.isnot(None)
+            # Add filter for non-empty list/array if needed and using specific DB type functions:
+            # e.g., func.array_length(Message.local_media_paths, 1) > 0
+            # e.g., func.jsonb_array_length(Message.local_media_paths) > 0
+            # If it's text and might be empty string: and_(Message.local_media_paths != '')
+        ).distinct().all()
 
-        # Extract the IDs from the result tuples [(12,), (20,), ...] -> [12, 20, ...]
         prop_ids = [pid for (pid,) in property_ids_with_media]
         app.logger.debug(f"Found {len(prop_ids)} property IDs with media: {prop_ids}")
 
@@ -777,12 +776,14 @@ def galleries_overview():
             ).order_by(Property.name).all()
             app.logger.debug(f"Fetched {len(properties_with_galleries)} property objects for gallery overview.")
 
-        # Count messages with media that are NOT assigned to any property
-        unsorted_count = db.session.query(func.count(Message.id)).filter(
-            Message.property_id.is_(None), # Where property_id IS NULL
-            Message.local_media_paths.isnot(None),
-            Message.local_media_paths != ''
-        ).scalar() or 0 # Get the count, default to 0 if query returns None
+        # Count distinct messages with media that are NOT assigned to any property
+        # NOTE: This counts MESSAGES, not individual image files within them.
+        unsorted_message_count_query = db.session.query(func.count(Message.id)).filter(
+            Message.property_id.is_(None),
+            Message.local_media_paths.isnot(None)
+            # Add non-empty list/array filter here too if needed
+        )
+        unsorted_count = unsorted_message_count_query.scalar() or 0
         app.logger.debug(f"Found {unsorted_count} unsorted messages with media.")
 
     except Exception as e:
@@ -791,23 +792,159 @@ def galleries_overview():
         error_message = f"Error loading galleries overview: {e}"
         flash(error_message, "danger") # Show error to user
 
-    # Render the overview template, passing the list of properties that have galleries
-    # Note: We pass the Property objects themselves in gallery_summaries now
     return render_template("galleries_overview.html",
                            gallery_summaries=properties_with_galleries, # Pass list of Property objects
-                           unsorted_count=unsorted_count,
-                           error=error_message,
-                           current_year=current_year)
-
-# --- End of corrected galleries_overview function ---
-
-@app.route("/gallery", endpoint="gallery_view")
-def gallery_view():
-    # ... (Keep previous version - NEEDS IMPLEMENTATION) ...
-    current_year=datetime.utcnow().year; return render_template("gallery.html", image_items=[], gallery_title="All Media Gallery", current_year=current_year)
+                           unsorted_count=unsorted_count, # Pass the count of messages
+                           error=error_message) # current_year injected
 
 
-# --- OTHER ROUTES ---
+# !!! REPLACED previous gallery_for_property logic !!!
+# Assuming local_media_paths is stored as list/JSON in DB now (consistent with webhook)
+@app.route("/gallery/<int:property_id>")
+def gallery_for_property(property_id):
+    """Displays media gallery for messages assigned to a specific property."""
+    prop = db.session.get(Property, property_id)
+    if not prop:
+        abort(404, description="Property not found")
+
+    gallery_title = f"Gallery for {prop.name}"
+    image_items = []
+    error_message = None
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic') # Define image types
+
+    try:
+        # Query messages linked to this property that HAVE local media paths stored
+        # Eager load contact for displaying sender info potentially
+        messages_with_media = Message.query.options(
+            joinedload(Message.contact)
+        ).filter(
+            Message.property_id == property_id,
+            Message.local_media_paths.isnot(None)
+             # Add filter for non-empty list/array if needed
+             # func.array_length(Message.local_media_paths, 1) > 0 # Example for PostgreSQL ARRAY
+        ).order_by(Message.timestamp.desc()).all()
+
+        current_app.logger.debug(f"Found {len(messages_with_media)} messages with media for property {property_id}")
+
+        # Process the paths from the messages found
+        for msg in messages_with_media:
+            if msg.local_media_paths: # Check if the list/JSON is not empty
+                 for idx, path in enumerate(msg.local_media_paths):
+                    trimmed_path = path.strip()
+                    # Check if path exists and is an image type we want to display
+                    if trimmed_path and trimmed_path.lower().endswith(image_extensions):
+                        image_items.append({
+                            "path": trimmed_path,
+                            "message_id": msg.id,
+                            "index": idx, # Index within the message's media list
+                            "timestamp": msg.timestamp,
+                            "sender_info": msg.contact.get_display_name() if msg.contact else msg.phone_number # Add sender
+                        })
+
+        # Sort the collected images by message timestamp (newest first) - already ordered by query
+        current_app.logger.debug(f"Prepared {len(image_items)} image items for gallery template")
+
+    except Exception as e:
+        db.session.rollback() # Rollback on error
+        current_app.logger.error(f"❌ Error loading gallery for property {property_id}: {e}", exc_info=True)
+        error_message = f"Error loading gallery: {e}"
+        flash(error_message, "danger") # Flash message to user
+
+    # Render the template, passing the list of image item dictionaries
+    # Assuming template is named 'gallery_for_property.html' or similar, adjust if needed
+    # Using 'gallery.html' based on previous code, make sure it handles 'image_items' list
+    return render_template("gallery.html",
+                           image_items=image_items, # This list now contains image data
+                           property=prop, # Pass property object for context
+                           gallery_title=gallery_title,
+                           error=error_message) # current_year injected
+
+
+# !!! REPLACED placeholder unsorted_gallery function !!!
+@app.route('/unsorted')
+# @login_required # Add if you have authentication
+def unsorted_gallery():
+    """
+    Displays media from messages that have associated local_media_paths
+    but are not yet assigned to a property (property_id is NULL).
+    Provides data structure expected by the existing unsorted.html template.
+    """
+    current_app.logger.info("Accessing /unsorted route") # Add logging
+    error_message = None
+    unsorted_items_for_template = []
+    properties_list = []
+
+    try:
+        # Query for messages with media paths but no property_id
+        unsorted_messages = Message.query.options(
+            joinedload(Message.contact) # Eager load contact
+        ).filter(
+            Message.property_id.is_(None),
+            Message.local_media_paths.isnot(None)
+            # Add check for non-empty list if needed/robustness desired
+            # func.array_length(Message.local_media_paths, 1) > 0 # Example for PostgreSQL ARRAY
+        ).order_by(Message.timestamp.desc()).all()
+        current_app.logger.info(f"Found {len(unsorted_messages)} messages with unsorted media.")
+
+        # Prepare the list for the template
+        image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic') # Filter for images
+
+        for message in unsorted_messages:
+            if message.local_media_paths:
+                for path in message.local_media_paths:
+                    if path.lower().endswith(image_extensions):
+                        # The template expects item 'u' with 'u.path' and 'u.msg'
+                        # where 'u.msg' is the Message object itself.
+                        item_data = {
+                            'path': path,
+                            'msg': message # Pass the whole Message object
+                        }
+                        unsorted_items_for_template.append(item_data)
+
+        current_app.logger.info(f"Prepared {len(unsorted_items_for_template)} image items for the template.")
+
+        # Query for all properties to populate the dropdown
+        properties_list = Property.query.order_by(Property.name).all()
+        current_app.logger.info(f"Found {len(properties_list)} properties for the dropdown.")
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error in unsorted_gallery: {e}", exc_info=True)
+        error_message = f"An error occurred while loading unsorted media: {e}"
+        flash(error_message, "danger")
+
+    # Pass data to the template
+    return render_template(
+        'unsorted.html',
+        unsorted=unsorted_items_for_template, # Pass the structured list
+        properties=properties_list,          # Pass the properties list
+        error=error_message                  # Pass error message if any
+    ) # current_year injected
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  OTHER / LEGACY / DEBUG ROUTES
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.route("/ask", methods=["GET", "POST"])
+def ask_view():
+    # ... (Keep previous version, but NOTE potential issues if Message fields changed) ...
+    return render_template("ask.html") # current_year injected
+
+@app.route("/gallery_static")
+def gallery_static():
+    # ... (Keep previous version) ...
+    return render_template("gallery.html", image_items=[], gallery_title="Static Uploads Gallery") # current_year injected
+
+
+# This route seems redundant if gallery_for_property covers specific galleries
+# and unsorted_gallery covers unsorted. Consider removing or defining its purpose.
+# @app.route("/gallery", endpoint="gallery_view")
+# def gallery_view():
+#     # ... (Keep previous version - NEEDS IMPLEMENTATION or removal) ...
+#     return render_template("gallery.html", image_items=[], gallery_title="All Media Gallery") # current_year injected
+
+
 @app.route("/ping")
 def ping_route():
      # ... (Keep previous version) ...
@@ -817,47 +954,54 @@ def ping_route():
 @app.route("/list-uploads")
 def list_uploads():
      # ... (Keep previous version) ...
-     return jsonify({"error": "Not fully implemented"}), 500
+     # Basic implementation to list files in the upload directory
+     upload_path = app.config['UPLOAD_FOLDER']
+     try:
+         files = [f for f in os.listdir(upload_path) if os.path.isfile(os.path.join(upload_path, f))]
+         return jsonify({"uploads": files})
+     except Exception as e:
+         app.logger.error(f"Error listing uploads in {upload_path}: {e}", exc_info=True)
+         return jsonify({"error": "Failed to list uploads", "details": str(e)}), 500
+
 
 @app.route("/clear-contacts-debug", methods=['POST'])
 def clear_contacts_debug():
-     # ... (Keep the SAFER version with expire_all) ...
-     # (Abbreviated for clarity - ensure full safe logic is here)
+     # ... (Keep the SAFER version with explicit dummy contact handling) ...
      current_app.logger.warning("--- [clear-contacts-debug] Route accessed ---"); dummy_phone_key='0000000000'
      try:
          # Find or create dummy contact
          dummy_contact = db.session.get(Contact, dummy_phone_key)
          if not dummy_contact:
+             current_app.logger.info(f"Creating dummy contact: {dummy_phone_key}")
              dummy_contact = Contact(phone_number=dummy_phone_key, contact_name="Deleted Contact Ref")
              db.session.add(dummy_contact)
-             db.session.flush() # Ensure dummy exists before re-assigning
+             db.session.flush() # Ensure dummy exists with PK before re-assigning
 
-         # Update messages pointing to contacts *other than* the dummy contact
-         messages_to_update = Message.query.filter(Message.phone_number != dummy_phone_key).all()
-         updated_count = 0
-         for msg in messages_to_update:
-             msg.phone_number = dummy_phone_key
-             db.session.add(msg)
-             updated_count += 1
-         current_app.logger.info(f"Re-assigned {updated_count} messages to dummy contact.")
+         # Update messages pointing to contacts *other than* the dummy contact using UPDATE statement
+         update_stmt = Message.__table__.update().where(
+             Message.phone_number != dummy_phone_key
+         ).values(
+             phone_number = dummy_phone_key
+         )
+         result = db.session.execute(update_stmt)
+         updated_count = result.rowcount
+         current_app.logger.info(f"Re-assigned {updated_count} messages to dummy contact ({dummy_phone_key}).")
 
-         # Delete all contacts except the dummy one
-         contacts_to_delete = Contact.query.filter(Contact.phone_number != dummy_phone_key).all()
-         deleted_count = 0
-         for contact in contacts_to_delete:
-             db.session.delete(contact)
-             deleted_count += 1
-         current_app.logger.info(f"Deleted {deleted_count} contacts.")
+         # Delete all contacts except the dummy one using DELETE statement
+         delete_stmt = Contact.__table__.delete().where(
+             Contact.phone_number != dummy_phone_key
+         )
+         result = db.session.execute(delete_stmt)
+         deleted_count = result.rowcount
+         current_app.logger.info(f"Deleted {deleted_count} non-dummy contacts.")
 
-         # Expire all to force reload, then commit
-         db.session.expire_all()
+         # Commit the changes
          db.session.commit()
-         flash("Debug: Contacts cleared and messages reassigned.", "info")
+         flash(f"Debug: Contacts cleared ({deleted_count} deleted, {updated_count} messages reassigned).", "info")
      except Exception as e:
-         db.session.rollback(); current_app.logger.error(f"❌ Error clear_contacts_debug: {e}", exc_info=True); flash(f"Error: {e}", "danger")
+         db.session.rollback(); current_app.logger.error(f"❌ Error clear_contacts_debug: {e}", exc_info=True); flash(f"Error clearing contacts: {e}", "danger")
 
-     return redirect(url_for('messages_view'))
-
+     return redirect(url_for('contacts_view')) # Redirect to contacts view after clearing
 
 # --- Keep __main__ block ---
 if __name__ == "__main__":
