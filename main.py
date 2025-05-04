@@ -286,14 +286,16 @@ def messages_view():
             if msgs_for_number and msgs_for_number[0].contact:
                 contact = msgs_for_number[0].contact
                 is_known = True
-                contact_name = contact.get_display_name() # Use helper if it exists
+                # Use contact.contact_name or fallback to contact.phone_number
+                contact_name = contact.contact_name if contact.contact_name else contact.phone_number
+
 
             # Fallback if no messages or no contact linked to first message
             if not is_known:
                  contact = db.session.get(Contact, target_phone_number)
                  if contact:
                       is_known = True
-                      contact_name = contact.get_display_name()
+                      contact_name = contact.contact_name if contact.contact_name else contact.phone_number
 
             app.logger.debug(f"Contact lookup {target_phone_number}: known={is_known}, name='{contact_name}'")
             # Ensure messages_detail.html exists
@@ -841,12 +843,24 @@ def gallery_for_property(property_id):
 
                     if trimmed_path and is_image:
                         current_app.logger.debug(f"  >>> Adding image item: {trimmed_path}")
+
+                        # --- Determine sender info using actual attributes ---
+                        sender_name = msg.phone_number # Default to message's phone number as fallback
+                        if msg.contact:
+                            # Use contact_name if it exists and isn't empty/None
+                            if msg.contact.contact_name:
+                                sender_name = msg.contact.contact_name
+                            # Optional: Fallback to contact's number if name is missing but contact exists
+                            # elif msg.contact.phone_number:
+                            #    sender_name = msg.contact.phone_number
+
                         image_items.append({
                             "path": trimmed_path,
                             "message_id": msg.id,
                             "index": idx,
                             "timestamp": msg.timestamp,
-                            "sender_info": msg.contact.get_display_name() if msg.contact else msg.phone_number
+                            # Use the determined sender_name
+                            "sender_info": sender_name
                         })
                     else:
                         current_app.logger.debug(f"  --- Skipping non-image or empty path from split: '{trimmed_path}'")
@@ -855,18 +869,23 @@ def gallery_for_property(property_id):
             elif msg.local_media_paths and isinstance(msg.local_media_paths, list):
                 current_app.logger.debug(f"  local_media_paths is already a list: {msg.local_media_paths} (Msg ID: {msg.id})")
                 for idx, path in enumerate(msg.local_media_paths):
-                    trimmed_path = path.strip()
-                    current_app.logger.debug(f"  Checking list path for gallery: '{trimmed_path}' (Msg ID: {msg.id})")
-                    is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False
-                    current_app.logger.debug(f"  List Path ends with valid extension? {is_image}")
-                    if trimmed_path and is_image:
-                        current_app.logger.debug(f"  >>> Adding image item from list: {trimmed_path}")
-                        image_items.append({
-                            "path": trimmed_path, "message_id": msg.id, "index": idx,
-                            "timestamp": msg.timestamp,
-                            "sender_info": msg.contact.get_display_name() if msg.contact else msg.phone_number
-                        })
-                    else:
+                     trimmed_path = path.strip()
+                     current_app.logger.debug(f"  Checking list path for gallery: '{trimmed_path}' (Msg ID: {msg.id})")
+                     is_image = trimmed_path.lower().endswith(image_extensions) if trimmed_path else False
+                     current_app.logger.debug(f"  List Path ends with valid extension? {is_image}")
+                     if trimmed_path and is_image:
+                         current_app.logger.debug(f"  >>> Adding image item from list: {trimmed_path}")
+                         # --- Determine sender info (repeated logic for consistency) ---
+                         sender_name = msg.phone_number
+                         if msg.contact and msg.contact.contact_name:
+                             sender_name = msg.contact.contact_name
+
+                         image_items.append({
+                             "path": trimmed_path, "message_id": msg.id, "index": idx,
+                             "timestamp": msg.timestamp,
+                             "sender_info": sender_name
+                         })
+                     else:
                          current_app.logger.debug(f"  --- Skipping list item non-image or empty path: '{trimmed_path}'")
             elif msg.local_media_paths:
                 # Log if it's neither string nor list but exists
