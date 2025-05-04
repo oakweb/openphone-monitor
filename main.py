@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
 import os
-import json # Ensure json is imported for JSONDecodeError
+import json
 import logging # Import logging
 from pathlib import Path
 from datetime import datetime, timedelta, timezone # Added timezone for now()
 import traceback
 import requests # For OpenPhone API calls
 import mimetypes # Added for notifications uploads
-import werkzeug # Keep if abort uses it
+# import werkzeug # Not needed if only using abort
 
-# --- WhiteNoise Import ---
-from whitenoise import WhiteNoise
+# --- WhiteNoise Import REMOVED ---
+# from whitenoise import WhiteNoise
 
 # Import necessary Flask components
+# ADDED back send_from_directory
 from flask import (
     Flask, render_template, request, jsonify, url_for, redirect, flash,
-    current_app, abort
+    current_app, abort, send_from_directory
 )
 from dotenv import load_dotenv
 load_dotenv()
@@ -43,17 +44,13 @@ from email_utils import send_email, wrap_email_html
 
 app = Flask(__name__)
 
-# --- WhiteNoise Middleware ---
-STATIC_ROOT_FOR_WHITENOISE = os.path.join(app.root_path, 'static')
-app.wsgi_app = WhiteNoise(app.wsgi_app, root=STATIC_ROOT_FOR_WHITENOISE, prefix='/static/')
-# Add log to confirm path (moved after logger config)
+# --- WhiteNoise Middleware REMOVED ---
 
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s : %(message)s')
 app.logger.setLevel(logging.DEBUG)
-# Log WhiteNoise config after logger is set up
-app.logger.info(f"ℹ️ WhiteNoise configured with root: {STATIC_ROOT_FOR_WHITENOISE}")
+# Log WhiteNoise config REMOVED
 
 
 # --- Flask App Configuration ---
@@ -70,11 +67,11 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
 # --- Static and Upload Folder Setup ---
-app.static_folder = os.path.join(app.root_path, 'static') # Still needed for url_for
+app.static_folder = os.path.join(app.root_path, 'static') # Flask uses this for url_for('static', ...)
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.logger.info(f"ℹ️ Configured UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}") # Keep this log
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER # Store path for our own use
+app.logger.info(f"ℹ️ Configured UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}")
 
 # --- Initialize Extensions ---
 db.init_app(app)
@@ -87,7 +84,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 # --- Helper Function for Sending SMS via OpenPhone API ---
-# (Keep this function as is, including previous fix)
+# (Using version before last SyntaxError fix attempt - should be okay)
 def send_openphone_sms(recipient_phone, message_body):
     api_token = os.getenv("OPENPHONE_API_TOKEN"); sending_number = os.getenv("OPENPHONE_FROM") or os.getenv("OPENPHONE_SENDING_NUMBER")
     log_func = getattr(current_app, "logger", logging.getLogger(__name__))
@@ -100,68 +97,42 @@ def send_openphone_sms(recipient_phone, message_body):
         log_func.info(f"Successfully sent SMS via OpenPhone to {recipient_phone}. Response ID: {message_id}, Status: {status}"); return True
     except requests.exceptions.HTTPError as http_err:
         log_func.error(f"HTTP Error sending OpenPhone SMS to {recipient_phone}: {http_err}")
-        try: error_details = http_err.response.json(); log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
-        except json.JSONDecodeError:
+        try: # Try logging JSON details
+            error_details = http_err.response.json()
+            log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Details={error_details}")
+        except: # If JSON fails, try logging text details (original potentially problematic single line)
             try: log_func.error(f"OpenPhone API Error Response: Status={http_err.response.status_code}, Body={http_err.response.text}")
-            except Exception: pass
-        return False
+            except: pass # If logging text also fails for some reason... ignore it.
+        return False # Return False since the original HTTPError occurred
     except requests.exceptions.RequestException as req_err: log_func.error(f"Request Exception sending OpenPhone SMS to {recipient_phone}: {req_err}"); return False
     except Exception as e: log_func.error(f"Unexpected error in send_openphone_sms to {recipient_phone}: {e}", exc_info=True); return False
 
+
 # --- Database Initialization Helper ---
+# (Using version before last SyntaxError fix attempts - should be okay)
 def initialize_database(app_context):
-    """Initializes the database: creates tables, checks columns, resets sequences."""
     with app_context:
-        app.logger.info("🔄 Initializing Database...")
-        try: # Outer try for the whole function
-            db.create_all()
-            app.logger.info("✅ Tables created/verified.")
-
-            # Ensure sid column exists
-            try:
-                # Actions on separate, indented lines
-                db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR"))
-                db.session.commit()
-                app.logger.info("✅ Ensured messages.sid column exists.")
-            except Exception as alter_err:
-                db.session.rollback()
-                err_str = str(alter_err).lower()
-                # Indented if/else block
-                if "already exists" in err_str or "duplicate column name" in err_str:
-                    app.logger.info("✅ messages.sid column already exists.")
-                else:
-                    app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
-
-            # Reset sequence (PostgreSQL)
+        app.logger.info("🔄 Initializing Database...");
+        try: # Outer try
+            db.create_all(); app.logger.info("✅ Tables created/verified.")
+            try: # Inner try for adding column
+                 db.session.execute(text("ALTER TABLE messages ADD COLUMN sid VARCHAR"))
+                 db.session.commit(); app.logger.info("✅ Ensured messages.sid column exists.")
+            except Exception as alter_err: # Inner except
+                 db.session.rollback(); err_str = str(alter_err).lower()
+                 if "already exists" in err_str or "duplicate column name" in err_str: app.logger.info("✅ messages.sid column already exists.")
+                 else: app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
             if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
-                try: # Try resetting sequence
-                    sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');")
-                    result = db.session.execute(sequence_name_query).scalar()
-
-                    # --- CORRECTED if/else block structure ---
-                    if result:
-                        # Actions on separate, indented lines
-                        sequence_name = result
-                        max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages")
-                        max_id = db.session.execute(max_id_query).scalar()
-                        next_val = max_id + 1
-                        reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)")
-                        db.session.execute(reset_seq_query, {'next_val': next_val})
-                        db.session.commit()
-                        app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
-                    else:
-                        app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
-                    # --- END CORRECTION ---
-                except Exception as seq_err: # Except for resetting sequence try
-                    db.session.rollback()
-                    app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
-            else:
-                 app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
-
+                 try: # Inner try for sequence
+                     sequence_name_query = text("SELECT pg_get_serial_sequence('messages', 'id');"); result = db.session.execute(sequence_name_query).scalar()
+                     if result: sequence_name = result; max_id_query = text("SELECT COALESCE(MAX(id), 0) FROM messages"); max_id = db.session.execute(max_id_query).scalar(); next_val = max_id + 1; reset_seq_query = text(f"SELECT setval('{sequence_name}', :next_val, false)"); db.session.execute(reset_seq_query, {'next_val': next_val}); db.session.commit(); app.logger.info(f"🔁 messages.id sequence ('{sequence_name}') reset to {next_val}.")
+                     else: app.logger.warning("⚠️ Could not determine sequence name for messages.id.")
+                 except Exception as seq_err: # Inner except for sequence
+                     db.session.rollback(); app.logger.error(f"❌ Error resetting PostgreSQL sequence: {seq_err}", exc_info=True)
+            else: app.logger.info("ℹ️ Skipping sequence reset (not PostgreSQL).")
             app.logger.info("✅ Database initialization complete.")
         except Exception as e: # Outer except
-            db.session.rollback()
-            app.logger.critical(f"❌ FATAL STARTUP ERROR during database initialization: {e}", exc_info=True)
+             db.session.rollback(); app.logger.critical(f"❌ FATAL STARTUP ERROR during database initialization: {e}", exc_info=True)
 
 
 # --- URL Map Helper ---
@@ -197,22 +168,24 @@ def index():
     return render_template("index.html", db_status=db_status, summary_today=summary_today, summary_week=summary_week)
 
 # --- PROPERTY ROUTES ---
-# (Keep as is)
+# (Keep as is - assuming indentation was correct in this version)
 @app.route('/properties')
 def properties_list_view(): properties = Property.query.order_by(Property.name).all(); return render_template('properties_list.html', properties=properties)
 
 @app.route('/property/<int:property_id>')
 def property_detail_view(property_id):
     current_app.logger.info(f"--- /property/{property_id} route accessed ---");
-    try: prop = db.session.get(Property, property_id);
-    if not prop: abort(404, description="Property not found")
-    current_app.logger.debug(f" Found property: {prop.name}"); tenants = Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
-    current_app.logger.debug(f" Found {len(tenants)} tenants for property {prop.id}"); property_identifier_string = f'(ID:{property_id})'; relevant_history = NotificationHistory.query.filter(NotificationHistory.properties_targeted.like(f'%{property_identifier_string}%')).order_by(NotificationHistory.timestamp.desc()).limit(50).all()
-    current_app.logger.debug(f" Found {len(relevant_history)} relevant history entries for property {prop.id}"); return render_template('property_detail.html', prop=prop, tenants=tenants, history=relevant_history)
+    try:
+        prop = db.session.get(Property, property_id);
+        if not prop: # Check indentation here was correct previously
+             abort(404, description="Property not found")
+        current_app.logger.debug(f" Found property: {prop.name}"); tenants = Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
+        current_app.logger.debug(f" Found {len(tenants)} tenants for property {prop.id}"); property_identifier_string = f'(ID:{property_id})'; relevant_history = NotificationHistory.query.filter(NotificationHistory.properties_targeted.like(f'%{property_identifier_string}%')).order_by(NotificationHistory.timestamp.desc()).limit(50).all()
+        current_app.logger.debug(f" Found {len(relevant_history)} relevant history entries for property {prop.id}"); return render_template('property_detail.html', prop=prop, tenants=tenants, history=relevant_history)
     except Exception as e: current_app.logger.error(f"❌ Error loading property detail page for ID {property_id}: {e}", exc_info=True); flash(f"An error occurred while loading property details: {e}", "danger"); return redirect(url_for('properties_list_view'))
 
 # --- MESSAGES, CONTACTS, ASSIGNMENT ROUTES ---
-# (Keep as is)
+# (Keep as is - assuming single line else was acceptable syntax in this version, or check carefully)
 @app.route("/messages")
 def messages_view():
      target_phone_number=request.args.get("phone_number"); app.logger.debug(f"Accessing messages_view. Target phone: {target_phone_number}")
@@ -222,12 +195,12 @@ def messages_view():
         if not is_known: contact = db.session.get(Contact, target_phone_number);
         if contact: is_known = True; contact_name = contact.contact_name if contact.contact_name else contact.phone_number
         app.logger.debug(f"Contact lookup {target_phone_number}: known={is_known}, name='{contact_name}'"); return render_template("messages_detail.html", phone_number=target_phone_number, messages=msgs_for_number, is_known=is_known, contact_name=contact_name)
-        else: app.logger.debug("--- Loading OVERVIEW view ---"); msgs_overview = Message.query.options(joinedload(Message.property), joinedload(Message.contact)).order_by(Message.timestamp.desc()).limit(100).all(); app.logger.debug(f"Query overview returned {len(msgs_overview)} messages."); properties_list = Property.query.order_by(Property.name).all(); return render_template("messages_overview.html", messages=msgs_overview, properties=properties_list)
+        else: app.logger.debug("--- Loading OVERVIEW view ---"); msgs_overview = Message.query.options(joinedload(Message.property), joinedload(Message.contact)).order_by(Message.timestamp.desc()).limit(100).all(); app.logger.debug(f"Query overview returned {len(msgs_overview)} messages."); properties_list = Property.query.order_by(Property.name).all(); return render_template("messages_overview.html", messages=msgs_overview, properties=properties_list) # Single line else
      except Exception as ex: db.session.rollback(); app.logger.error(f"❌ Error messages_view: {ex}", exc_info=True); error_msg = f"Error: {ex}"; flash(error_msg, "danger"); template_name = "messages_detail.html" if target_phone_number else "messages_overview.html";
      try: return render_template(template_name, messages=[], properties=[], phone_number=target_phone_number, is_known=False, contact_name=None, error=error_msg)
      except: return redirect(url_for('index'))
 
-# (Keep assign_property as is)
+# (Keep assign_property as is - assuming single line elif was okay syntax or check carefully)
 @app.route("/assign_property", methods=["POST"])
 def assign_property():
     message_id_str = request.form.get('message_id'); property_id_str = request.form.get('property_id'); redirect_url = request.referrer or url_for('index'); current_app.logger.info(f"Received assignment request via POST: message_id='{message_id_str}', property_id='{property_id_str}', referrer='{request.referrer}'"); message_id = None
@@ -239,14 +212,14 @@ def assign_property():
     if property_id_str and property_id_str.isdigit() and int(property_id_str) > 0: target_property_id = int(property_id_str); property_obj = db.session.get(Property, target_property_id);
     if not property_obj: flash(f'Selected Property (ID: {target_property_id}) not found.', 'warning'); current_app.logger.warning(f"Assign property failed: Target Property ID {target_property_id} not found."); return redirect(redirect_url)
     prop_name_for_flash = property_obj.name
-    elif property_id_str is None or property_id_str == "" or property_id_str.lower() == "none": target_property_id = None; current_app.logger.info(f"Request to unassign property from message {message_id}")
-    else: flash(f'Invalid Property ID format: {property_id_str}. Please select a valid property or leave blank to unassign.', 'warning'); current_app.logger.warning(f"Assign property failed: Invalid property_id format '{property_id_str}' for message {message_id}."); return redirect(redirect_url)
+    elif property_id_str is None or property_id_str == "" or property_id_str.lower() == "none": target_property_id = None; current_app.logger.info(f"Request to unassign property from message {message_id}") # Single line elif
+    else: flash(f'Invalid Property ID format: {property_id_str}. Please select a valid property or leave blank to unassign.', 'warning'); current_app.logger.warning(f"Assign property failed: Invalid property_id format '{property_id_str}' for message {message_id}."); return redirect(redirect_url) # Single line else
     try: message.property_id = target_property_id; db.session.commit(); flash(f'Message #{message_id} assigned to property "{prop_name_for_flash}" successfully.', 'success'); current_app.logger.info(f"Successfully updated Message ID {message_id} property_id to {target_property_id} ('{prop_name_for_flash}')")
     except Exception as e: db.session.rollback(); flash(f'Database error assigning property: {str(e)}', 'danger'); current_app.logger.error(f"Error committing property assignment for message {message_id} to property {target_property_id}: {e}", exc_info=True)
     if "#" not in redirect_url and 'msg-' in redirect_url: redirect_url += f"#msg-{message_id}"; current_app.logger.debug(f"Appending fragment, redirecting to: {redirect_url}")
     return redirect(redirect_url)
 
-# (Keep contacts_view as is)
+# (Keep contacts_view as is - check single lines if needed)
 @app.route("/contacts", methods=["GET", "POST"])
 def contacts_view():
     error_message = None; dummy_phone_key = '0000000000'
@@ -286,7 +259,7 @@ def contacts_view():
     except Exception as ex: db.session.rollback(); app.logger.error(f"❌ Error loading contacts GET: {ex}", exc_info=True); error_message = f"Error: {ex}"; flash(error_message, "danger")
     return render_template("contacts.html", properly_known_contacts=properly_known_contacts, recent_auto_named_contacts=recent_auto_named_contacts, error=error_message)
 
-# (Keep update_contact_name as is)
+# (Keep update_contact_name as is - check single lines if needed)
 @app.route("/update_contact_name", methods=["POST"])
 def update_contact_name():
     phone_key = request.form.get("phone_key"); new_name = request.form.get("new_name", "").strip()
@@ -302,7 +275,7 @@ def update_contact_name():
 # ──────────────────────────────────────────────────────────────────────────────
 #  Tenant Notifications Page
 # ──────────────────────────────────────────────────────────────────────────────
-# (Keep notifications_view as is)
+# (Keep notifications_view as is - assumes single line try/except ok or check carefully)
 @app.route("/notifications", methods=["GET", "POST"])
 def notifications_view():
     properties = []; history = []; error_message = None
@@ -327,18 +300,18 @@ def notifications_view():
             if 'email' in channels and emails_to_send:
                 channels_attempted.append("Email"); current_app.logger.info(f"Attempting email to {len(emails_to_send)} addresses..."); email_subject = subject if subject else message_body[:50] + ("..." if len(message_body) > 50 else ""); html_body = f"<p>{message_body.replace(os.linesep, '<br>')}</p>"
                 for email in emails_to_send:
-                    try: email_sent_successfully = send_email(to_emails=[email], subject=email_subject, html_content=wrap_email_html(html_body), attachments=attachments_data);
+                    try: email_sent_successfully = send_email(to_emails=[email], subject=email_subject, html_content=wrap_email_html(html_body), attachments=attachments_data); # Single line try
                     if email_sent_successfully: email_success_count += 1
                     else: email_errors.append(f"{email}: Failed")
-                    except Exception as e: current_app.logger.error(f"Email Exception for {email}: {e}", exc_info=True); email_errors.append(f"{email}: Exception")
+                    except Exception as e: current_app.logger.error(f"Email Exception for {email}: {e}", exc_info=True); email_errors.append(f"{email}: Exception") # Single line except
             elif 'email' in channels: current_app.logger.info("Email channel selected, but no valid tenant emails found.")
             if 'sms' in channels and phones_to_send:
                 channels_attempted.append("SMS"); current_app.logger.info(f"Attempting SMS to {len(phones_to_send)} numbers...")
                 for phone in phones_to_send:
-                    try: sms_sent = send_openphone_sms(recipient_phone=phone, message_body=message_body);
+                    try: sms_sent = send_openphone_sms(recipient_phone=phone, message_body=message_body); # Single line try
                     if sms_sent: sms_success_count += 1
                     else: sms_errors.append(f"{phone}: Failed")
-                    except Exception as e: current_app.logger.error(f"SMS Exception for {phone}: {e}", exc_info=True); sms_errors.append(f"{phone}: Exception")
+                    except Exception as e: current_app.logger.error(f"SMS Exception for {phone}: {e}", exc_info=True); sms_errors.append(f"{phone}: Exception") # Single line except
             elif 'sms' in channels: current_app.logger.info("SMS channel selected, but no valid tenant phone numbers found.")
             total_email_attempts = len(emails_to_send) if 'Email' in channels_attempted else 0; total_sms_attempts = len(phones_to_send) if 'SMS' in channels_attempted else 0; total_successes = email_success_count + sms_success_count; total_attempts = total_email_attempts + total_sms_attempts; current_app.logger.warning(f"Status Calc: Channels Attempted={channels_attempted}"); current_app.logger.warning(f"Status Calc: Email Success={email_success_count}, Email Attempts={total_email_attempts}"); current_app.logger.warning(f"Status Calc: SMS Success={sms_success_count}, SMS Attempts={total_sms_attempts}"); current_app.logger.warning(f"Status Calc: Total Successes={total_successes}, Total Attempts={total_attempts}"); recipients_summary = f"Email: {email_success_count}/{total_email_attempts}. SMS: {sms_success_count}/{total_sms_attempts}."; error_details = [];
             if email_errors: error_details.append(f"{len(email_errors)} Email failure(s)")
