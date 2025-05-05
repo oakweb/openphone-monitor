@@ -70,13 +70,6 @@ from email_utils import send_email, wrap_email_html
 
 app = Flask(__name__)
 
-# --- WhiteNoise Middleware ---
-STATIC_ROOT_FOR_WHITENOISE = os.path.join(app.root_path, "static")
-# Ensure prefix matches the URL path used by url_for('static', ...)
-app.wsgi_app = WhiteNoise(
-    app.wsgi_app, root=STATIC_ROOT_FOR_WHITENOISE, prefix="/static/"
-)
-
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -112,11 +105,6 @@ UPLOAD_FOLDER = os.path.join(app.static_folder, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.logger.info(f"ℹ️ Configured UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}")
-
-# --- Initialize Extensions ---
-db.init_app(app)
-app.register_blueprint(webhook_bp)
-migrate = Migrate(app, db)
 
 # --- Configure OpenAI ---
 openai.api_key = os.getenv("OPENAI_API_KEY")
