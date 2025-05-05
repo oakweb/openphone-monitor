@@ -11,6 +11,7 @@ import werkzeug  # Keep if abort uses it
 import csv  # For reading CSV file
 import re   # For cleaning phone numbers using regular expressions
 import click # For creating the command line command argument
+from werkzeug.utils import secure_filename
 
 # --- WhiteNoise Import ---
 from whitenoise import WhiteNoise
@@ -1384,7 +1385,8 @@ def clear_contacts_debug():
 
 def clean_phone_number(raw_phone_str):
     """
-    Cleans a raw phone number string from the CSV into a 10-digit format.
+    Cleans a raw phone number string (e.g., from CSV) into a 10-digit format.
+    Handles formats like (XXX) XXX-XXXX, +1XXXXXXXXXX, XXXXXXXXXX etc.
     Returns 10-digit string or None if cleaning fails.
     """
     if not raw_phone_str or not isinstance(raw_phone_str, str):
@@ -1401,37 +1403,16 @@ def clean_phone_number(raw_phone_str):
         return digits
     else:
         # Failed to clean to 10 digits
+        # Log the failure for diagnosis if needed:
+        # current_app.logger.warning(f"Could not parse phone '{raw_phone_str}' into 10 digits. Got: '{digits}'")
         return None
 
-def clean_contact_name(raw_name_str):
-    """ Cleans the contact name from common prefixes/patterns found in the CSV. """
+def clean_contact_name_revised(raw_name_str):
+    """ Cleans the contact name by simply stripping whitespace. """
     if not raw_name_str or not isinstance(raw_name_str, str):
-        return "Unknown Contact" # Return a default if empty
+        return "Unnamed Contact" # Return a default if empty
 
     name = raw_name_str.strip()
-
-    # Remove known prefixes (add more if needed)
-    prefixes_to_remove = [
-        "© hit Biancett Contacts",
-        "©. PhitBiancett Contacts",
-        "©. PhitBiancett",
-        "— @ ",
-        "©) @ ",
-        "& Mobile ",
-        "& ",
-        "- % Mobile ",
-        "a e@ Phone ",
-        "Mobile ", # Remove generic 'Mobile ' if it appears at start
-        "Phone ",  # Remove generic 'Phone ' if it appears at start
-    ]
-    for prefix in prefixes_to_remove:
-        if name.startswith(prefix):
-            name = name[len(prefix):].strip()
-            break # Assume only one prefix matches
-
-    # Further cleanup - remove things like "(old tenant)"? Optional.
-    # name = re.sub(r'\s*\(.*\)$', '', name).strip() # Removes anything in parentheses at the end
-
     # If cleaning results in an empty string, use a default
     return name if name else "Unnamed Contact"
 
@@ -1439,7 +1420,7 @@ def clean_contact_name(raw_name_str):
 @app.cli.command("import-contacts")
 @click.argument("filename")
 def import_contacts_command(filename):
-    """Imports contacts from a specified CSV file."""
+    """Imports contacts from a specified CSV file (expects 'Name' and 'Phone' columns)."""
     processed_count = 0
     added_count = 0
     updated_count = 0
@@ -1449,58 +1430,79 @@ def import_contacts_command(filename):
     # Default name check function (checks if name is just digits or looks like +E164)
     def is_default_name(name_str, phone_str):
         if not name_str: return True
-        looks_like_plus_e164 = (name_str.startswith('+') and len(name_str) > 1 and name_str[1:].isdigit())
-        looks_like_key = (len(name_str) == 10 and name_str.isdigit() and name_str == phone_str)
-        return looks_like_plus_e164 or looks_like_key
+        # Check if name is just the phone number (10 digits or +1 version)
+        name_digits = re.sub(r'\D', '', name_str)
+        phone_digits_10 = phone_str
+        phone_digits_11 = '+1' + phone_str
+        if name_str == phone_digits_10 or name_str == phone_digits_11:
+             return True
+        # Check if name ONLY contains digits (flexible length check)
+        if name_digits == name_str and len(name_digits)>0:
+             return True
+
+        return False
 
     click.echo(f"Starting contact import from: {filename}")
 
     try:
-        with open(filename, mode='r', encoding='utf-8') as csvfile:
-            # Ensure correct headers based on your file: Filename,Contact Name,Phone Number
+        with open(filename, mode='r', encoding='utf-8-sig') as csvfile: # Use utf-8-sig to handle potential BOM
             reader = csv.DictReader(csvfile)
-            if "Contact Name" not in reader.fieldnames or "Phone Number" not in reader.fieldnames:
-                 click.echo("Error: CSV file must contain 'Contact Name' and 'Phone Number' columns.")
+            # *** Check for NEW column names ***
+            if "Name" not in reader.fieldnames or "Phone" not in reader.fieldnames:
+                 click.echo("Error: CSV file must contain 'Name' and 'Phone' columns.")
                  return
 
             for row in reader:
                 processed_count += 1
-                raw_name = row.get("Contact Name")
-                raw_phone = row.get("Phone Number")
+                # *** Use NEW column names ***
+                raw_name = row.get("Name")
+                raw_phone = row.get("Phone")
+                # We are ignoring "Notes", "Tags", etc. for now
 
                 cleaned_phone = clean_phone_number(raw_phone)
                 if not cleaned_phone:
-                    click.echo(f"WARN: Skipping row {processed_count}. Could not clean phone: '{raw_phone}'")
+                    # Make warning clearer
+                    click.echo(f"WARN: Skipping row {processed_count+1}. Failed to extract 10-digit phone from: '{raw_phone}'")
                     skipped_count += 1
                     continue
 
-                cleaned_name = clean_contact_name(raw_name)
+                # Use the revised (simpler) name cleaning
+                cleaned_name = clean_contact_name_revised(raw_name)
+
+                # Skip if cleaned name is empty after stripping (should use default now)
+                # if not cleaned_name:
+                #    click.echo(f"WARN: Skipping row {processed_count+1}. Cleaned name is empty for phone: '{cleaned_phone}'")
+                #    skipped_count += 1
+                #    continue
 
                 try:
                     existing_contact = db.session.get(Contact, cleaned_phone)
 
                     if existing_contact:
-                        # Contact exists - check if we should update name
-                        if is_default_name(existing_contact.contact_name, cleaned_phone) and not is_default_name(cleaned_name, cleaned_phone):
+                        # Contact exists - update name ONLY if existing name is a default/placeholder
+                        # and the new name is not a default/placeholder
+                        if is_default_name(existing_contact.contact_name, cleaned_phone) and \
+                           not is_default_name(cleaned_name, cleaned_phone) and \
+                           cleaned_name != "Unnamed Contact": # Don't update if new name is also bad
                             click.echo(f"INFO: Updating contact {cleaned_phone}: '{existing_contact.contact_name}' -> '{cleaned_name}'")
                             existing_contact.contact_name = cleaned_name
-                            db.session.add(existing_contact) # Add to session to track update
+                            db.session.add(existing_contact)
                             updated_count += 1
                         else:
-                             # Exists with a potentially good name already, skip update
-                             # click.echo(f"INFO: Skipping existing contact {cleaned_phone} ('{existing_contact.contact_name}') - CSV name: '{cleaned_name}'")
+                             # Skip update if existing name is already good or new name is bad
                              skipped_count += 1
                     else:
                         # Contact does not exist - add new one
+                        # Only add if the cleaned name isn't empty (handled by clean_contact_name_revised now)
                         click.echo(f"INFO: Adding new contact {cleaned_phone}: '{cleaned_name}'")
                         new_contact = Contact(phone_number=cleaned_phone, contact_name=cleaned_name)
                         db.session.add(new_contact)
                         added_count += 1
 
                 except Exception as db_err:
-                    click.echo(f"ERROR: Database error processing row {processed_count} (Phone: {cleaned_phone}): {db_err}")
+                    click.echo(f"ERROR: Database error processing row {processed_count+1} (Phone: {cleaned_phone}): {db_err}")
                     error_count += 1
-                    db.session.rollback() # Rollback this row's potential changes
+                    db.session.rollback()
 
         # Commit all changes after processing the file
         if added_count > 0 or updated_count > 0:
@@ -1521,13 +1523,13 @@ def import_contacts_command(filename):
     except Exception as e:
         click.echo(f"An unexpected error occurred: {e}")
         error_count += 1
-        db.session.rollback() # Rollback any potential partial changes
+        db.session.rollback()
 
     click.echo("\n--- Import Summary ---")
     click.echo(f"Rows Processed: {processed_count}")
     click.echo(f"Contacts Added: {added_count}")
     click.echo(f"Contacts Updated: {updated_count}")
-    click.echo(f"Rows Skipped: {skipped_count}")
+    click.echo(f"Rows Skipped/Not Updated: {skipped_count}")
     click.echo(f"Errors: {error_count}")
     click.echo("----------------------")
 
