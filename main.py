@@ -13,7 +13,7 @@ import re   # For cleaning phone numbers using regular expressions
 import click # For creating the command line command argument
 from werkzeug.utils import secure_filename
 
-# --- WhiteNoise Import ---
+# --- WhiteNoise Import ------
 from whitenoise import WhiteNoise
 
 # Import necessary Flask components
