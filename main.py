@@ -12,7 +12,6 @@ import csv  # For reading CSV file
 import re   # For cleaning phone numbers using regular expressions
 import click # For creating the command line command argument
 from werkzeug.utils import secure_filename
-import send_from_directory
 
 
 # Import necessary Flask components
