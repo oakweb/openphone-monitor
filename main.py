@@ -69,6 +69,7 @@ from email_utils import send_email, wrap_email_html
 # ──────────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
+STATIC_ROOT_FOR_WHITENOISE
 
 
 # --- Logging Setup ---
@@ -1418,6 +1419,10 @@ def import_contacts_command(filename):
 
 # --- End Custom Flask CLI Commands ---
 
+app.wsgi_app = WhiteNoise(...)
+db.init_app(app)
+migrate.init_app(app, db)
+app.register_blueprint(webhook_bp)
 
 # --- Keep __main__ block ---
 if __name__ == "__main__":
