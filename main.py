@@ -428,6 +428,16 @@ def index():
         error=error_message
     )
 
+# --- PROPERTY ROUTES ---
+
+@app.route('/properties')
+def properties_list_view():
+    """Displays a list of all properties."""
+    # Fetch all properties from the database, ordered by name perhaps
+    properties = Property.query.order_by(Property.name).all()
+    return render_template('properties_list.html', properties=properties)
+
+# (The @app.route('/property/<int:property_id>') function should come after this)
 
 @app.route("/assign_property", methods=["POST"])
 def assign_property():
