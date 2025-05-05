@@ -8,6 +8,9 @@ import traceback
 import requests  # For OpenPhone API calls
 import mimetypes  # Added for notifications uploads
 import werkzeug  # Keep if abort uses it
+import csv  # For reading CSV file
+import re   # For cleaning phone numbers using regular expressions
+import click # For creating the command line command argument
 
 # --- WhiteNoise Import ---
 from whitenoise import WhiteNoise
@@ -1373,6 +1376,171 @@ def clear_contacts_debug():
         current_app.logger.error(f"❌ Error clear_contacts_debug: {e}", exc_info=True)
         flash(f"Error clearing contacts: {e}", "danger")  # Indented
     return redirect(url_for("contacts_view"))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Custom Flask CLI Commands
+# ──────────────────────────────────────────────────────────────────────────────
+
+def clean_phone_number(raw_phone_str):
+    """
+    Cleans a raw phone number string from the CSV into a 10-digit format.
+    Returns 10-digit string or None if cleaning fails.
+    """
+    if not raw_phone_str or not isinstance(raw_phone_str, str):
+        return None
+
+    # Remove all non-digit characters
+    digits = re.sub(r'\D', '', raw_phone_str)
+
+    # Check if it starts with '1' (common country code) and is 11 digits
+    if len(digits) == 11 and digits.startswith('1'):
+        return digits[1:] # Return the last 10 digits
+    # Check if it's exactly 10 digits
+    elif len(digits) == 10:
+        return digits
+    else:
+        # Failed to clean to 10 digits
+        return None
+
+def clean_contact_name(raw_name_str):
+    """ Cleans the contact name from common prefixes/patterns found in the CSV. """
+    if not raw_name_str or not isinstance(raw_name_str, str):
+        return "Unknown Contact" # Return a default if empty
+
+    name = raw_name_str.strip()
+
+    # Remove known prefixes (add more if needed)
+    prefixes_to_remove = [
+        "© hit Biancett Contacts",
+        "©. PhitBiancett Contacts",
+        "©. PhitBiancett",
+        "— @ ",
+        "©) @ ",
+        "& Mobile ",
+        "& ",
+        "- % Mobile ",
+        "a e@ Phone ",
+        "Mobile ", # Remove generic 'Mobile ' if it appears at start
+        "Phone ",  # Remove generic 'Phone ' if it appears at start
+    ]
+    for prefix in prefixes_to_remove:
+        if name.startswith(prefix):
+            name = name[len(prefix):].strip()
+            break # Assume only one prefix matches
+
+    # Further cleanup - remove things like "(old tenant)"? Optional.
+    # name = re.sub(r'\s*\(.*\)$', '', name).strip() # Removes anything in parentheses at the end
+
+    # If cleaning results in an empty string, use a default
+    return name if name else "Unnamed Contact"
+
+
+@app.cli.command("import-contacts")
+@click.argument("filename")
+def import_contacts_command(filename):
+    """Imports contacts from a specified CSV file."""
+    processed_count = 0
+    added_count = 0
+    updated_count = 0
+    skipped_count = 0
+    error_count = 0
+
+    # Default name check function (checks if name is just digits or looks like +E164)
+    def is_default_name(name_str, phone_str):
+        if not name_str: return True
+        looks_like_plus_e164 = (name_str.startswith('+') and len(name_str) > 1 and name_str[1:].isdigit())
+        looks_like_key = (len(name_str) == 10 and name_str.isdigit() and name_str == phone_str)
+        return looks_like_plus_e164 or looks_like_key
+
+    click.echo(f"Starting contact import from: {filename}")
+
+    try:
+        with open(filename, mode='r', encoding='utf-8') as csvfile:
+            # Ensure correct headers based on your file: Filename,Contact Name,Phone Number
+            reader = csv.DictReader(csvfile)
+            if "Contact Name" not in reader.fieldnames or "Phone Number" not in reader.fieldnames:
+                 click.echo("Error: CSV file must contain 'Contact Name' and 'Phone Number' columns.")
+                 return
+
+            for row in reader:
+                processed_count += 1
+                raw_name = row.get("Contact Name")
+                raw_phone = row.get("Phone Number")
+
+                cleaned_phone = clean_phone_number(raw_phone)
+                if not cleaned_phone:
+                    click.echo(f"WARN: Skipping row {processed_count}. Could not clean phone: '{raw_phone}'")
+                    skipped_count += 1
+                    continue
+
+                cleaned_name = clean_contact_name(raw_name)
+
+                try:
+                    existing_contact = db.session.get(Contact, cleaned_phone)
+
+                    if existing_contact:
+                        # Contact exists - check if we should update name
+                        if is_default_name(existing_contact.contact_name, cleaned_phone) and not is_default_name(cleaned_name, cleaned_phone):
+                            click.echo(f"INFO: Updating contact {cleaned_phone}: '{existing_contact.contact_name}' -> '{cleaned_name}'")
+                            existing_contact.contact_name = cleaned_name
+                            db.session.add(existing_contact) # Add to session to track update
+                            updated_count += 1
+                        else:
+                             # Exists with a potentially good name already, skip update
+                             # click.echo(f"INFO: Skipping existing contact {cleaned_phone} ('{existing_contact.contact_name}') - CSV name: '{cleaned_name}'")
+                             skipped_count += 1
+                    else:
+                        # Contact does not exist - add new one
+                        click.echo(f"INFO: Adding new contact {cleaned_phone}: '{cleaned_name}'")
+                        new_contact = Contact(phone_number=cleaned_phone, contact_name=cleaned_name)
+                        db.session.add(new_contact)
+                        added_count += 1
+
+                except Exception as db_err:
+                    click.echo(f"ERROR: Database error processing row {processed_count} (Phone: {cleaned_phone}): {db_err}")
+                    error_count += 1
+                    db.session.rollback() # Rollback this row's potential changes
+
+        # Commit all changes after processing the file
+        if added_count > 0 or updated_count > 0:
+             click.echo("Committing changes to database...")
+             try:
+                 db.session.commit()
+                 click.echo("Commit successful.")
+             except Exception as commit_err:
+                 click.echo(f"ERROR: Failed to commit changes to database: {commit_err}")
+                 db.session.rollback()
+                 error_count += 1 # Count commit error
+        else:
+             click.echo("No new contacts added or updated.")
+
+    except FileNotFoundError:
+        click.echo(f"Error: File not found at {filename}")
+        error_count += 1
+    except Exception as e:
+        click.echo(f"An unexpected error occurred: {e}")
+        error_count += 1
+        db.session.rollback() # Rollback any potential partial changes
+
+    click.echo("\n--- Import Summary ---")
+    click.echo(f"Rows Processed: {processed_count}")
+    click.echo(f"Contacts Added: {added_count}")
+    click.echo(f"Contacts Updated: {updated_count}")
+    click.echo(f"Rows Skipped: {skipped_count}")
+    click.echo(f"Errors: {error_count}")
+    click.echo("----------------------")
+
+# --- End Custom Flask CLI Commands ---
+
+
+# --- Keep __main__ block ---
+if __name__ == "__main__":
+    # ... (rest of __main__ unchanged) ...
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 8080))
+    debug_mode = os.getenv("FLASK_DEBUG", "false").lower() in ['true', '1', 't']
+    app.run(host=host, port=port, debug=debug_mode)
 
 
 # --- Keep __main__ block ---
