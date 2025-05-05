@@ -399,7 +399,21 @@ def index():
                 try:
                     recent_messages = (Message.query.filter(Message.phone_number == phone_number).order_by(Message.timestamp.desc()).limit(3).all())
                     recent_messages.reverse()
-
+# --- START DEBUGGING BLOCK ---
+                    if recent_messages: # Check if list is not empty
+                        m_debug = recent_messages[0] # Get one message object to inspect
+                        current_app.logger.debug(f"--- Inspecting Message Object (ID: {getattr(m_debug, 'id', 'N/A')}) ---")
+                        current_app.logger.debug(f"Type of m_debug: {type(m_debug)}")
+                        try:
+                            # Use vars() or dir() to see attributes
+                            current_app.logger.debug(f"vars(m_debug): {vars(m_debug)}")
+                        except TypeError: # Handle potential errors if vars() doesn't work
+                             try:
+                                 current_app.logger.debug(f"dir(m_debug): {dir(m_debug)}")
+                             except Exception as inspect_err:
+                                  current_app.logger.error(f"Could not inspect attributes: {inspect_err}")
+                        current_app.logger.debug(f"--- End Inspecting Message Object ---")
+                    # --- END DEBUGGING BLOCK ---
                     # *** Use m.message instead of m.text or m.body ***
                     message_texts = "\n".join([f"- {m.message}" for m in recent_messages if m.message]) # CORRECTED LINE
 
