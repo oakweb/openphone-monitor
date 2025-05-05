@@ -277,6 +277,77 @@ def inject_now():
 #  ROUTES
 # ──────────────────────────────────────────────────────────────────────────────
 
+# --- MESSAGES, CONTACTS, ASSIGNMENT ROUTES ---
+@app.route("/messages")
+def messages_view():
+     """Displays message overview or detail for a specific number."""
+     target_phone_number=request.args.get("phone_number")
+     app.logger.debug(f"Accessing messages_view. Target phone: {target_phone_number}")
+     try:
+        if target_phone_number:
+            app.logger.debug(f"--- Loading DETAIL view for {target_phone_number} ---")
+            # Eager load property and contact data related to the messages
+            msgs_for_number = Message.query.options(
+                joinedload(Message.property),
+                joinedload(Message.contact)
+            ).filter(
+                Message.phone_number==target_phone_number
+            ).order_by(Message.timestamp.desc()).all()
+            app.logger.debug(f"Query for {target_phone_number} returned {len(msgs_for_number)} message objects.")
+
+            # Determine contact info
+            is_known = False
+            contact_name = None
+            if msgs_for_number and msgs_for_number[0].contact:
+                contact = msgs_for_number[0].contact
+                is_known = True
+                contact_name = contact.contact_name if contact.contact_name else contact.phone_number
+            # Corrected fallback logic
+            if not is_known:
+                 contact = db.session.get(Contact, target_phone_number)
+                 if contact:
+                      is_known = True
+                      contact_name = contact.contact_name if contact.contact_name else contact.phone_number
+
+            app.logger.debug(f"Contact lookup {target_phone_number}: known={is_known}, name='{contact_name}'")
+            # Render detail view
+            return render_template("messages_detail.html", phone_number=target_phone_number, messages=msgs_for_number, is_known=is_known, contact_name=contact_name)
+
+        # --- CORRECTED else block structure ---
+        else:
+            # This block now starts on a new line and is indented
+            app.logger.debug("--- Loading OVERVIEW view ---")
+            msgs_overview = (
+                Message.query.options(
+                    joinedload(Message.property), joinedload(Message.contact)
+                )
+                .order_by(Message.timestamp.desc())
+                .limit(100)
+                .all()
+            )
+            app.logger.debug(f"Query overview returned {len(msgs_overview)} messages.")
+            properties_list = Property.query.order_by(Property.name).all()
+            return render_template(
+                "messages_overview.html",
+                messages=msgs_overview,
+                properties=properties_list,
+            )
+        # --- END CORRECTION ---
+     except Exception as ex:
+        db.session.rollback()
+        app.logger.error(f"❌ Error messages_view: {ex}", exc_info=True)
+        error_msg = f"Error: {ex}"
+        flash(error_msg, "danger")
+        template_name = (
+            "messages_detail.html" if target_phone_number else "messages_overview.html"
+        )
+        try:
+            # Render template even on error, passing the error message
+            return render_template(template_name, messages=[], properties=[], phone_number=target_phone_number, is_known=False, contact_name=None, error=error_msg)
+        except:
+            # Ultimate fallback if rendering error template fails
+            return redirect(url_for('index'))
+
 
 # --- INDEX ROUTE ---
 @app.route("/")
