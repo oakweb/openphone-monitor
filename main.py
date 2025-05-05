@@ -389,7 +389,7 @@ def index():
                     recent_messages.reverse()
 
                     # *** Use m.text instead of m.body ***
-                    message_texts = "\n".join([f"- {m.text}" for m in recent_messages if m.text])
+                    message_texts = "\n".join([f"- {m.message}" for m in recent_messages if m.message])
 
                     if not message_texts:
                         summary_info['summary'] = "No recent message text found."
