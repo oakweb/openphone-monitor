@@ -261,8 +261,20 @@ def print_url_map(app_instance):
 # ──────────────────────────────────────────────────────────────────────────────
 with app.app_context():
     initialize_database(app.app_context())
+
+# --- ADD THIS LINE TO ALWAYS PRINT THE MAP ON STARTUP ---
+print_url_map(app)
+# --- END ADDED LINE ---
+
+# This conditional block below is now optional, can be kept or removed
 if os.environ.get("FLASK_DEBUG", "false").lower() in ["true", "1", "t"]:
-    print_url_map(app)
+    # print_url_map(app) # Already called unconditionally above
+    pass # Or just leave the conditional block out completely
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Jinja Context Processors & Custom Filters (Optional)
+# ──────────────────────────────────────────────────────────────────────────────
+# ... rest of file ..
 
 
 # ──────────────────────────────────────────────────────────────────────────────
