@@ -281,178 +281,132 @@ def inject_now():
 # --- INDEX ROUTE ---
 @app.route("/")
 def index():
-    db_status = "?"
-    summary_today = "?"
-    summary_week = "?"
+    """Displays the main dashboard including AI summaries for last 5 contacts."""
+    db_status = "?"; summary_today = "?"; summary_week = "?"
+    ai_summaries = [] # List to hold AI summary results
+    error_message = None # For general page errors
+
     try:
+        # --- Basic Stats (Existing Logic) ---
         db.session.execute(text("SELECT 1"))
         db_status = "Connected"
         now_utc = datetime.now(timezone.utc)
-        start_today_utc = datetime.combine(
-            now_utc.date(), datetime.min.time(), tzinfo=timezone.utc
-        )
-        start_week_utc = start_today_utc - timedelta(days=start_today_utc.weekday())
-        count_today = (
-            db.session.query(func.count(Message.id))
-            .filter(Message.timestamp >= start_today_utc)
-            .scalar()
-            or 0
-        )
-        count_week = (
-            db.session.query(func.count(Message.id))
-            .filter(Message.timestamp >= start_week_utc)
-            .scalar()
-            or 0
-        )
+        start_today_utc = datetime.combine(now_utc.date(), datetime.min.time(), tzinfo=timezone.utc)
+        start_week_utc  = start_today_utc - timedelta(days=start_today_utc.weekday())
+        count_today = (db.session.query(func.count(Message.id)).filter(Message.timestamp >= start_today_utc).scalar() or 0)
+        count_week = (db.session.query(func.count(Message.id)).filter(Message.timestamp >= start_week_utc).scalar() or 0)
         summary_today = f"{count_today} messages today."
-        summary_week = f"{count_week} messages this week."
+        summary_week  = f"{count_week} messages this week."
+
+        # --- AI Summaries Logic ---
+        current_app.logger.info("Starting AI summary generation for dashboard...")
+
+        # Query to get the 5 most recent distinct incoming phone numbers
+        # Using a subquery with ROW_NUMBER()
+        message_alias = aliased(Message)
+        contact_alias = aliased(Contact)
+
+        subq = (
+            select(
+                message_alias.phone_number,
+                message_alias.timestamp,
+                contact_alias.contact_name,
+                func.row_number().over(
+                    partition_by=message_alias.phone_number,
+                    order_by=message_alias.timestamp.desc()
+                ).label('rn')
+            )
+            .outerjoin(contact_alias, message_alias.phone_number == contact_alias.phone_number) # Use outerjoin to include numbers not in contacts table
+            .where(message_alias.direction == 'incoming')
+            .subquery('ranked_messages')
+        )
+
+        latest_contacts_query = (
+            select(subq.c.phone_number, subq.c.contact_name)
+            .where(subq.c.rn == 1)
+            .order_by(subq.c.timestamp.desc())
+            .limit(5)
+        )
+
+        latest_contacts_result = db.session.execute(latest_contacts_query).all()
+        current_app.logger.info(f"Found {len(latest_contacts_result)} recent contacts for AI summary.")
+
+        if not openai.api_key:
+             current_app.logger.error("OpenAI API key not configured. Skipping AI summaries.")
+             error_message = "AI Summaries disabled: OpenAI API key not set."
+        elif latest_contacts_result:
+            # For each contact, get last ~3 messages and call OpenAI
+            for phone_number, contact_name in latest_contacts_result:
+                summary_info = {'phone': phone_number, 'name': contact_name or phone_number, 'summary': 'Could not generate summary.', 'error': None}
+                try:
+                    # Get last 3 messages (body only) for context
+                    recent_messages = (
+                        Message.query
+                        .filter(Message.phone_number == phone_number)
+                        .order_by(Message.timestamp.desc())
+                        .limit(3)
+                        .all()
+                    )
+                    # Reverse to get chronological order for the prompt
+                    recent_messages.reverse()
+                    message_texts = "\n".join([f"- {m.body}" for m in recent_messages if m.body])
+
+                    if not message_texts:
+                        summary_info['summary'] = "No recent message text found."
+                        ai_summaries.append(summary_info)
+                        continue
+
+                    display_name = contact_name if contact_name and not contact_name.isdigit() else phone_number
+
+                    prompt = (
+                        f"You are an assistant for Sin City Rentals property management. "
+                        f"Summarize the main point, request, or topic from these recent SMS messages from '{display_name}'. "
+                        f"Be very concise (ideally one short sentence like 'Requested info about XYZ property' or 'Sent quote for $ABC'). "
+                        f"Focus on the *latest* message if applicable. Mention specific properties or dollar amounts if present.\n\n"
+                        f"Recent Messages (oldest first):\n{message_texts}"
+                    )
+
+                    current_app.logger.debug(f"Calling OpenAI for {display_name}...")
+                    # Make sure OPENAI_API_KEY is set in your environment
+                    response = openai.chat.completions.create(
+                        model="gpt-3.5-turbo", # Or use "gpt-4" if preferred/available
+                        messages=[
+                            {"role": "system", "content": "Provide a concise one-sentence summary."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.2, # Lower temperature for more focused summaries
+                        max_tokens=60
+                    )
+                    ai_summary = response.choices[0].message.content.strip()
+                    summary_info['summary'] = ai_summary
+                    current_app.logger.debug(f"OpenAI summary for {display_name}: {ai_summary}")
+
+                except Exception as ai_err:
+                    current_app.logger.error(f"OpenAI API call failed for {phone_number}: {ai_err}", exc_info=True)
+                    summary_info['error'] = f"AI analysis failed: {ai_err}"
+                    summary_info['summary'] = "AI analysis failed." # Overwrite default msg
+
+                ai_summaries.append(summary_info)
+        else:
+             current_app.logger.info("No recent incoming messages found to summarize.")
+
+
     except Exception as ex:
-        db.session.rollback()
-        db_status = f"Error: {ex}"
-        app.logger.error(f"❌ DB Error index: {ex}")
+        db.session.rollback() # Rollback general errors
+        app.logger.error(f"❌ Error loading index page: {ex}", exc_info=True)
+        error_message = f"Error loading page data: {ex}"
+        # Fallback for basic stats if they also failed
+        if db_status != "Connected": db_status = f"Error: {ex}"
+
+
     return render_template(
         "index.html",
         db_status=db_status,
         summary_today=summary_today,
         summary_week=summary_week,
+        ai_summaries=ai_summaries, # Pass summaries to template
+        error=error_message        # Pass general errors
     )
-
-
-# --- PROPERTY ROUTES ---
-@app.route("/properties")
-def properties_list_view():
-    properties = Property.query.order_by(Property.name).all()
-    return render_template("properties_list.html", properties=properties)
-
-
-@app.route("/property/<int:property_id>")
-def property_detail_view(property_id):
-    current_app.logger.info(f"--- /property/{property_id} route accessed ---")
-    try:
-        prop = db.session.get(Property, property_id)
-        if not prop:
-            abort(404, description="Property not found")  # Correctly indented
-        current_app.logger.debug(f" Found property: {prop.name}")
-        tenants = (
-            Tenant.query.filter_by(property_id=property_id).order_by(Tenant.name).all()
-        )
-        current_app.logger.debug(
-            f" Found {len(tenants)} tenants for property {prop.id}"
-        )
-        property_identifier_string = f"(ID:{property_id})"
-        relevant_history = (
-            NotificationHistory.query.filter(
-                NotificationHistory.properties_targeted.like(
-                    f"%{property_identifier_string}%"
-                )
-            )
-            .order_by(NotificationHistory.timestamp.desc())
-            .limit(50)
-            .all()
-        )
-        current_app.logger.debug(
-            f" Found {len(relevant_history)} relevant history entries for property {prop.id}"
-        )
-        return render_template(
-            "property_detail.html", prop=prop, tenants=tenants, history=relevant_history
-        )
-    except Exception as e:
-        current_app.logger.error(
-            f"❌ Error loading property detail page for ID {property_id}: {e}",
-            exc_info=True,
-        )
-        flash(f"An error occurred while loading property details: {e}", "danger")
-        return redirect(url_for("properties_list_view"))
-
-
-# --- MESSAGES, CONTACTS, ASSIGNMENT ROUTES ---
-@app.route("/messages")
-def messages_view():
-    """Displays message overview or detail for a specific number."""
-    target_phone_number = request.args.get("phone_number")
-    app.logger.debug(f"Accessing messages_view. Target phone: {target_phone_number}")
-    try:
-        if target_phone_number:
-            app.logger.debug(f"--- Loading DETAIL view for {target_phone_number} ---")
-            msgs_for_number = (
-                Message.query.options(
-                    joinedload(Message.property), joinedload(Message.contact)
-                )
-                .filter(Message.phone_number == target_phone_number)
-                .order_by(Message.timestamp.desc())
-                .all()
-            )
-            app.logger.debug(
-                f"Query for {target_phone_number} returned {len(msgs_for_number)} message objects."
-            )
-            is_known = False
-            contact_name = None
-            if msgs_for_number and msgs_for_number[0].contact:
-                contact = msgs_for_number[0].contact
-                is_known = True
-                contact_name = (
-                    contact.contact_name
-                    if contact.contact_name
-                    else contact.phone_number
-                )
-            if not is_known:
-                contact = db.session.get(Contact, target_phone_number)
-                if contact:
-                    is_known = True
-                    contact_name = (
-                        contact.contact_name
-                        if contact.contact_name
-                        else contact.phone_number
-                    )
-            app.logger.debug(
-                f"Contact lookup {target_phone_number}: known={is_known}, name='{contact_name}'"
-            )
-            return render_template(
-                "messages_detail.html",
-                phone_number=target_phone_number,
-                messages=msgs_for_number,
-                is_known=is_known,
-                contact_name=contact_name,
-            )
-        else:
-            # --- CORRECTED STRUCTURE for else block ---
-            app.logger.debug("--- Loading OVERVIEW view ---")
-            msgs_overview = (
-                Message.query.options(
-                    joinedload(Message.property), joinedload(Message.contact)
-                )
-                .order_by(Message.timestamp.desc())
-                .limit(100)
-                .all()
-            )
-            app.logger.debug(f"Query overview returned {len(msgs_overview)} messages.")
-            properties_list = Property.query.order_by(Property.name).all()
-            return render_template(
-                "messages_overview.html",
-                messages=msgs_overview,
-                properties=properties_list,
-            )
-            # --- END CORRECTION ---
-    except Exception as ex:
-        db.session.rollback()
-        app.logger.error(f"❌ Error messages_view: {ex}", exc_info=True)
-        error_msg = f"Error: {ex}"
-        flash(error_msg, "danger")
-        template_name = (
-            "messages_detail.html" if target_phone_number else "messages_overview.html"
-        )
-        try:
-            return render_template(
-                template_name,
-                messages=[],
-                properties=[],
-                phone_number=target_phone_number,
-                is_known=False,
-                contact_name=None,
-                error=error_msg,
-            )
-        except:
-            return redirect(url_for("index"))
 
 
 @app.route("/assign_property", methods=["POST"])

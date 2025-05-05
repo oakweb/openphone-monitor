@@ -13,46 +13,56 @@
      }
      body { background-color: #121416; } /* Fallback if needed */
 
-    .main-content-index {
-        flex: 1; display: flex; align-items: center; justify-content: center;
-        padding: 40px 20px; width: 100%; box-sizing: border-box;
-    }
-    .content-container-index {
-        max-width: 1100px; /* Slightly wider container */
-        width: 100%; text-align: center;
-        background-color: rgba(22, 26, 30, 0.8);
-        border: 1px solid rgba(108, 185, 211, 0.1);
-        border-radius: 15px; padding: 40px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.6); backdrop-filter: blur(5px);
-    }
-    .welcome-title { color: #fff; margin-bottom: 15px; font-size: 2.5rem; font-weight: 700; text-shadow: 0 1px 5px rgba(0,0,0,0.4); letter-spacing: 1px; }
-    .tech-divider { height: 3px; width: 100px; background: linear-gradient(90deg, #6cb9d3, #3a8bab); margin: 0 auto 30px; border-radius: 2px; box-shadow: 0 0 8px rgba(108, 185, 211, 0.4); }
-    .welcome-subtitle { color: #ccc; margin-bottom: 40px; /* Increased margin */ font-size: 1.1rem; font-weight: 300; letter-spacing: 0.5px; }
+     .main-content-index {
+         flex: 1; display: flex; align-items: center; justify-content: center;
+         padding: 40px 20px; width: 100%; box-sizing: border-box;
+     }
+     .content-container-index {
+         max-width: 1100px; /* Slightly wider container */
+         width: 100%; text-align: center;
+         background-color: rgba(22, 26, 30, 0.8);
+         border: 1px solid rgba(108, 185, 211, 0.1);
+         border-radius: 15px; padding: 40px;
+         box-shadow: 0 10px 30px rgba(0,0,0,0.6); backdrop-filter: blur(5px);
+     }
+     .welcome-title { color: #fff; margin-bottom: 15px; font-size: 2.5rem; font-weight: 700; text-shadow: 0 1px 5px rgba(0,0,0,0.4); letter-spacing: 1px; }
+     .tech-divider { height: 3px; width: 100px; background: linear-gradient(90deg, #6cb9d3, #3a8bab); margin: 0 auto 30px; border-radius: 2px; box-shadow: 0 0 8px rgba(108, 185, 211, 0.4); }
+     .welcome-subtitle { color: #ccc; margin-bottom: 40px; /* Increased margin */ font-size: 1.1rem; font-weight: 300; letter-spacing: 0.5px; }
 
-    /* Summary Cards Styling */
-    .summary-card { height: 100%; background-color: rgba(33, 37, 41, 0.85) !important; border: 1px solid rgba(108, 185, 211, 0.15); box-shadow: 0 3px 10px rgba(0,0,0,0.4); border-radius: 8px; display: flex; flex-direction: column; }
-    .summary-card .card-body { padding: 25px; display: flex; flex-direction: column; flex-grow: 1; } /* Allow body to grow */
-    .summary-card h5 { color: #6cb9d3; margin-bottom: 15px; font-weight: 600; font-size: 1.15rem; text-align: left; } /* Align left */
-    .summary-card h5 i { margin-right: 0.5rem; } /* Space after icon */
-    .summary-card p { color: #e9ecef; font-size: 0.95rem; margin-bottom: 20px; text-align: left; flex-grow: 1; } /* Align left, allow grow */
-    .summary-card .btn-group-vertical .btn,
-    .summary-card .d-grid .btn { /* Target buttons inside groups/grids */
-       text-align: center; margin-bottom: 0.5rem; padding: 0.5rem 1rem; font-size: 0.95rem; font-weight: 500;
-    }
-     .summary-card .btn-group-vertical .btn:last-child,
-     .summary-card .d-grid .btn:last-child { margin-bottom: 0; }
+     /* Summary Cards Styling */
+     .summary-card { height: 100%; background-color: rgba(33, 37, 41, 0.85) !important; border: 1px solid rgba(108, 185, 211, 0.15); box-shadow: 0 3px 10px rgba(0,0,0,0.4); border-radius: 8px; display: flex; flex-direction: column; }
+     .summary-card .card-body { padding: 25px; display: flex; flex-direction: column; flex-grow: 1; } /* Allow body to grow */
+     .summary-card h5 { color: #6cb9d3; margin-bottom: 15px; font-weight: 600; font-size: 1.15rem; text-align: left; } /* Align left */
+     .summary-card h5 i { margin-right: 0.5rem; } /* Space after icon */
+     .summary-card p { color: #e9ecef; font-size: 0.95rem; margin-bottom: 20px; text-align: left; flex-grow: 1; } /* Align left, allow grow */
+     .summary-card .btn-group-vertical .btn,
+     .summary-card .d-grid .btn { /* Target buttons inside groups/grids */
+         text-align: center; margin-bottom: 0.5rem; padding: 0.5rem 1rem; font-size: 0.95rem; font-weight: 500;
+     }
+      .summary-card .btn-group-vertical .btn:last-child,
+      .summary-card .d-grid .btn:last-child { margin-bottom: 0; }
 
-     /* Specific button styles */
-    .btn-nav { width: 100%; transition: all 0.2s ease-in-out; } /* Base class for nav buttons in cards */
-    .btn-nav:hover { transform: scale(1.03); }
-    .btn-nav i { margin-right: 0.5rem; } /* Space for icons */
+      /* Specific button styles */
+     .btn-nav { width: 100%; transition: all 0.2s ease-in-out; } /* Base class for nav buttons in cards */
+     .btn-nav:hover { transform: scale(1.03); }
+     .btn-nav i { margin-right: 0.5rem; } /* Space for icons */
 
-    /* Responsive */
-    @media (max-width: 768px) {
-        .welcome-title { font-size: 2rem; }
-        .content-container-index { padding: 25px 15px; }
-        .main-content-index { padding: 30px 10px; align-items: flex-start; }
-    }
+     /* AI Summary Card Specific Styles */
+     .ai-summary-card .list-group-item {
+         background-color: transparent; /* Make list items transparent */
+         border-color: rgba(108, 185, 211, 0.15); /* Match card border */
+         color: #e9ecef; /* Light text */
+         padding: 0.75rem 0; /* Adjust padding */
+     }
+     .ai-summary-card .list-group-item strong { color: #ffffff; } /* White name */
+
+
+     /* Responsive */
+     @media (max-width: 768px) {
+         .welcome-title { font-size: 2rem; }
+         .content-container-index { padding: 25px 15px; }
+         .main-content-index { padding: 30px 10px; align-items: flex-start; }
+     }
   </style>
 {% endblock %}
 
@@ -66,9 +76,8 @@
           <div class="tech-divider"></div>
           <p class="welcome-subtitle">Manage communications and properties efficiently.</p>
 
-          {# --- REMOVED Old Action Buttons --- #}
-
-          <div class="row text-white">
+          {# --- Row 1: Original Cards --- #}
+          <div class="row text-white mb-4"> {# Added margin-bottom #}
 
               <div class="col-lg-4 col-md-6 mb-4 d-flex"> {# Use lg-4 for 3 columns on large, md-6 for 2 on medium #}
                   <div class="card summary-card w-100">
@@ -78,14 +87,13 @@
                               <strong>Today:</strong> {{ summary_today | default('N/A') }}<br>
                               <strong>This Week:</strong> {{ summary_week | default('N/A') }}
                           </p>
-                          {# Use d-grid for stacked full-width buttons #}
                           <div class="d-grid gap-2">
-                             <a href="{{ url_for('messages_view') }}" class="btn btn-info btn-nav">
-                                <i class="fas fa-envelope"></i> View Messages
-                             </a>
-                             <a href="{{ url_for('notifications_view') }}" class="btn btn-warning btn-nav"> {# Changed to warning color #}
-                                <i class="fas fa-paper-plane"></i> Send Notification
-                             </a>
+                              <a href="{{ url_for('messages_view') }}" class="btn btn-info btn-nav">
+                                  <i class="fas fa-envelope"></i> View Messages
+                              </a>
+                              <a href="{{ url_for('notifications_view') }}" class="btn btn-warning btn-nav"> {# Changed to warning color #}
+                                  <i class="fas fa-paper-plane"></i> Send Notification
+                              </a>
                           </div>
                       </div>
                   </div>
@@ -99,15 +107,15 @@
                                 Manage contact details and property information, view tenants, and organize media galleries.
                             </p>
                             <div class="d-grid gap-2">
-                               <a href="{{ url_for('contacts_view') }}" class="btn btn-secondary btn-nav">
-                                  <i class="fas fa-address-book"></i> Manage Contacts
-                               </a>
-                               <a href="{{ url_for('properties_list_view') }}" class="btn btn-secondary btn-nav">
-                                  <i class="fas fa-building"></i> View Properties
-                               </a>
-                               <a href="{{ url_for('galleries_overview') }}" class="btn btn-secondary btn-nav">
-                                  <i class="fas fa-images"></i> View Galleries
-                               </a>
+                                <a href="{{ url_for('contacts_view') }}" class="btn btn-secondary btn-nav">
+                                    <i class="fas fa-address-book"></i> Manage Contacts
+                                </a>
+                                <a href="{{ url_for('properties_list_view') }}" class="btn btn-secondary btn-nav">
+                                    <i class="fas fa-building"></i> View Properties
+                                </a>
+                                <a href="{{ url_for('galleries_overview') }}" class="btn btn-secondary btn-nav">
+                                    <i class="fas fa-images"></i> View Galleries
+                                </a>
                             </div>
                        </div>
                    </div>
@@ -119,26 +127,63 @@
                           <h5><i class="fas fa-tools"></i> Tools & Status</h5>
                           <p>
                               Utilize AI assistance or check the system status.
-                              {# Optional: Add unsorted count here if passed #}
-                              {# {% if unsorted_count is defined %} <br><strong>Unsorted Media:</strong> {{ unsorted_count }} {% endif %} #}
                           </p>
                            <div class="d-grid gap-2">
-                               <a href="{{ url_for('ask_view') }}" class="btn btn-primary btn-nav">
-                                  <i class="fas fa-robot"></i> Ask AI
-                               </a>
-                               <a href="{{ url_for('ping_route') }}" target="_blank" class="btn btn-outline-light btn-sm">
-                                   <i class="fas fa-plug"></i> Ping DB ({{ db_status | default('Unknown') }})
-                               </a>
-                               {# Optionally link to unsorted gallery if count > 0 #}
-                               {# {% if unsorted_count > 0 %}
-                               <a href="{{ url_for('unsorted_gallery') }}" class="btn btn-outline-warning btn-sm">
-                                   <i class="fas fa-random"></i> View Unsorted Media
-                               </a>
-                               {% endif %} #}
+                                <a href="{{ url_for('ask_view') }}" class="btn btn-primary btn-nav">
+                                    <i class="fas fa-robot"></i> Ask AI
+                                </a>
+                                <a href="{{ url_for('ping_route') }}" target="_blank" class="btn btn-outline-light btn-sm">
+                                    <i class="fas fa-plug"></i> Ping DB ({{ db_status | default('Unknown') }})
+                                </a>
+                                {# Optional: Link to unsorted gallery if count > 0 #}
+                                {# {% if unsorted_count > 0 %} ... {% endif %} #}
                            </div>
                       </div>
                   </div>
               </div>
-          </div> </div> {# End content-container-index #}
+          </div> {# End Row 1 #}
+
+          {# --- Row 2: AI Summary Card --- #}
+          <div class="row justify-content-center text-white"> {# Center the content in this row #}
+              <div class="col-lg-8 mb-4 d-flex"> {# Make card wider (e.g., 8 columns on large screens) #}
+                  <div class="card summary-card ai-summary-card w-100"> {# Added ai-summary-card class #}
+                      <div class="card-header">
+                          <i class="fas fa-brain me-1"></i>
+                          Recent Contact Summaries (AI)
+                      </div>
+                      <div class="card-body">
+                          {% if error %} {# Display general page errors if any #}
+                              <div class="alert alert-warning small p-2">{{ error }}</div>
+                          {% endif %}
+
+                          {% if ai_summaries %}
+                              <ul class="list-group list-group-flush">
+                                  {% for summary_item in ai_summaries %}
+                                      <li class="list-group-item">
+                                          <strong>{{ summary_item.name }}:</strong> {# Display contact name/number #}
+                                          <span class="text-white-50">{{ summary_item.summary }}</span> {# Display AI summary - using text-white-50 for contrast #}
+                                          {% if summary_item.error %}
+                                              <small class="d-block text-danger">({{ summary_item.error }})</small> {# Show error if AI failed #}
+                                          {% endif %}
+                                          {# Optional: Link to messages? #}
+                                          {# <a href="{{ url_for('messages_view', phone_number=summary_item.phone) }}" class="btn btn-sm btn-outline-secondary float-end">View</a> #}
+                                      </li>
+                                  {% endfor %}
+                              </ul>
+                          {% else %}
+                              {# Only show 'No messages' if there wasn't a general page error #}
+                              {% if not error %}
+                              <p class="card-text text-muted">No recent incoming messages to summarize.</p>
+                              {% endif %}
+                          {% endif %}
+                      </div>
+                      <div class="card-footer small text-muted">
+                          AI summaries of last 5 contacts with recent incoming messages. May take a moment to load.
+                      </div>
+                  </div>
+              </div>
+          </div> {# End Row 2 #}
+
+      </div> {# End content-container-index #}
   </div> {# End main-content-index #}
 {% endblock %}
