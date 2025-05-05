@@ -372,7 +372,7 @@ def index():
         # --- AI Summaries Logic ---
         current_app.logger.info("Starting AI summary generation for dashboard...")
 
-        message_alias = aliased(Message); contact_alias = aliased(Contact)
+        message_alias = aliased(Message); contact_alias = aliased(Contact) # Uses aliased
         subq = (select(message_alias.phone_number, message_alias.timestamp, contact_alias.contact_name, func.row_number().over(partition_by=message_alias.phone_number, order_by=message_alias.timestamp.desc()).label('rn')).outerjoin(contact_alias, message_alias.phone_number == contact_alias.phone_number).where(message_alias.direction == 'incoming').subquery('ranked_messages'))
         latest_contacts_query = (select(subq.c.phone_number, subq.c.contact_name).where(subq.c.rn == 1).order_by(subq.c.timestamp.desc()).limit(5))
         latest_contacts_result = db.session.execute(latest_contacts_query).all()
@@ -388,19 +388,24 @@ def index():
                     recent_messages = (Message.query.filter(Message.phone_number == phone_number).order_by(Message.timestamp.desc()).limit(3).all())
                     recent_messages.reverse()
 
-                    # *** Use m.text instead of m.body ***
-                    message_texts = "\n".join([f"- {m.message}" for m in recent_messages if m.message])
+                    # *** Use m.message instead of m.text or m.body ***
+                    message_texts = "\n".join([f"- {m.message}" for m in recent_messages if m.message]) # CORRECTED LINE
 
                     if not message_texts:
                         summary_info['summary'] = "No recent message text found."
                         ai_summaries.append(summary_info)
-                        continue
+                        continue # Skip to next contact if no text found
 
                     display_name = contact_name if contact_name and not contact_name.isdigit() else phone_number
                     prompt = (f"You are an assistant for Sin City Rentals property management. Summarize the main point, request, or topic from these recent SMS messages from '{display_name}'. Be very concise (ideally one short sentence like 'Requested info about XYZ property' or 'Sent quote for $ABC'). Focus on the *latest* message if applicable. Mention specific properties or dollar amounts if present.\n\nRecent Messages (oldest first):\n{message_texts}")
                     current_app.logger.debug(f"Calling OpenAI for {display_name}...")
                     response = openai.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": "Provide a concise one-sentence summary."}, {"role": "user", "content": prompt}], temperature=0.2, max_tokens=60)
                     ai_summary = response.choices[0].message.content.strip(); summary_info['summary'] = ai_summary; current_app.logger.debug(f"OpenAI summary for {display_name}: {ai_summary}")
+                except AttributeError as attr_err:
+                    # Catch the specific error if it somehow still occurs
+                    current_app.logger.error(f"AttributeError during AI processing for {phone_number}: {attr_err}", exc_info=True)
+                    summary_info['error'] = f"Data error: {attr_err}"
+                    summary_info['summary'] = "Data processing error."
                 except Exception as ai_err:
                     current_app.logger.error(f"OpenAI API call failed for {phone_number}: {ai_err}", exc_info=True); summary_info['error'] = f"AI analysis failed: {ai_err}"; summary_info['summary'] = "AI analysis failed."
                 ai_summaries.append(summary_info)
@@ -408,14 +413,10 @@ def index():
              current_app.logger.info("No recent incoming messages found to summarize.")
     except NameError as ne:
          # Catch the specific NameError for aliased if import was missed
-         db.session.rollback()
-         app.logger.error(f"❌ Error loading index page (Likely missing import): {ne}", exc_info=True)
-         error_message = f"Error initializing AI Summaries: {ne}"
-         if db_status != "Connected": db_status = "Error" # Ensure DB status shows error too
+         db.session.rollback(); app.logger.error(f"❌ Error loading index page (Likely missing import): {ne}", exc_info=True); error_message = f"Error initializing AI Summaries: {ne}";
+         if db_status != "Connected": db_status = "Error"
     except Exception as ex:
-        db.session.rollback()
-        app.logger.error(f"❌ Error loading index page: {ex}", exc_info=True)
-        error_message = f"Error loading page data: {ex}"
+        db.session.rollback(); app.logger.error(f"❌ Error loading index page: {ex}", exc_info=True); error_message = f"Error loading page data: {ex}"
         if db_status != "Connected": db_status = f"Error: {ex}"
 
     return render_template(
@@ -423,9 +424,10 @@ def index():
         db_status=db_status,
         summary_today=summary_today,
         summary_week=summary_week,
-        ai_summaries=ai_summaries, # Pass summaries to template
-        error=error_message        # Pass general errors
+        ai_summaries=ai_summaries,
+        error=error_message
     )
+
 
 @app.route("/assign_property", methods=["POST"])
 def assign_property():
