@@ -69,7 +69,7 @@ from email_utils import send_email, wrap_email_html
 # ──────────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-STATIC_ROOT_FOR_WHITENOISE
+STATIC_ROOT_FOR_WHITENOISE = os.path.join(app.root_path, "static") # <-- MAKE SURE THIS LINE EXISTS!
 
 
 # --- Logging Setup ---
@@ -78,9 +78,8 @@ logging.basicConfig(
 )
 app.logger.setLevel(logging.DEBUG)
 # Log WhiteNoise config after logger is set up
-app.logger.info(
-    f"ℹ️ WhiteNoise configured with root: {STATIC_ROOT_FOR_WHITENOISE} and prefix /static/"
-)
+#app.logger.info(f"ℹ️ WhiteNoise configured with root: {STATIC_ROOT_FOR_WHITENOISE} and prefix /static/"
+
 
 
 # --- Flask App Configuration ---
