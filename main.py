@@ -12,9 +12,8 @@ import csv  # For reading CSV file
 import re   # For cleaning phone numbers using regular expressions
 import click # For creating the command line command argument
 from werkzeug.utils import secure_filename
+import send_from_directory
 
-# --- WhiteNoise Import ------
-from whitenoise import WhiteNoise
 
 # Import necessary Flask components
 from flask import (
@@ -25,6 +24,7 @@ from flask import (
     url_for,
     redirect,
     flash,
+    send_from_directory,
     current_app,
     abort,
 )
@@ -78,7 +78,7 @@ logging.basicConfig(
 )
 app.logger.setLevel(logging.DEBUG)
 # Log WhiteNoise config after logger is set up
-#app.logger.info(f"ℹ️ WhiteNoise configured with root: {STATIC_ROOT_FOR_WHITENOISE} and prefix /static/"
+# app.logger.info(f"ℹ️ WhiteNoise configured with root: {STATIC_ROOT_FOR_WHITENOISE} and prefix /static/"
 
 
 
@@ -1418,7 +1418,6 @@ def import_contacts_command(filename):
 
 # --- End Custom Flask CLI Commands ---
 
-app.wsgi_app = WhiteNoise(...)
 db.init_app(app)
 migrate.init_app(app, db)
 app.register_blueprint(webhook_bp)
