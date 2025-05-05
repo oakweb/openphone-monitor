@@ -44,7 +44,7 @@ from sqlalchemy import (
     not_,
     and_,
 )
-from sqlalchemy.orm import attributes, joinedload
+from sqlalchemy.orm import attributes, joinedload,  aliased # <-- ADDED aliased
 from sqlalchemy.sql.expression import null  # For setting NULL explicitly if needed
 
 # Import Flask-Migrate
