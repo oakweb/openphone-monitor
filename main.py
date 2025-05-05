@@ -762,36 +762,57 @@ def update_contact_name():
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/notifications", methods=["GET", "POST"])
 def notifications_view():
-    properties = []
-    history = []
-    error_message = None
+    """Displays notification form and history, handles sending."""
+    properties = []; history = []; error_message = None
     if request.method == "POST":
+        # --- Get form data ---
         property_ids = request.form.getlist("property_ids")
         subject = request.form.get("subject", "")
         message_body = request.form.get("message_body", "")
         channels = request.form.getlist("channels")
         uploaded_files = request.files.getlist("attachments")
         attachments_data = []
+
+        # --- Handle File Uploads with extra checks ---
+        current_app.logger.debug(f"Processing {len(uploaded_files)} potential file uploads.")
         for file in uploaded_files:
-            if file and file.filename:
-                filename = secure_filename(file.filename)
-                file_content_bytes = file.read()
-                content_type = (
-                    file.content_type
-                    or mimetypes.guess_type(filename)[0]
-                    or "application/octet-stream"
-                )
-                attachments_data.append(
-                    {
-                        "content_bytes": file_content_bytes,
-                        "filename": filename,
-                        "type": content_type,
-                    }
-                )
-        current_app.logger.debug(
-            f"Processed {len(attachments_data)} attachments for email."
-        )
-        # --- CORRECTED Single Line If blocks ---
+            # *** ADDED CHECKS for file and filename ***
+            if file and file.filename: # Check if file object exists AND has a non-empty filename
+                try:
+                    filename = secure_filename(file.filename)
+                    # Double check secure_filename didn't return empty
+                    if not filename:
+                         current_app.logger.warning(f"Skipping file: secure_filename resulted in empty string for original name '{file.filename}'")
+                         continue # Skip this file
+
+                    current_app.logger.debug(f"Processing valid file: '{filename}' (Original: '{file.filename}')")
+                    file_content_bytes = file.read()
+                    content_type = (
+                        file.content_type
+                        or mimetypes.guess_type(filename)[0]
+                        or "application/octet-stream"
+                    )
+                    attachments_data.append(
+                        {
+                            "content_bytes": file_content_bytes,
+                            "filename": filename, # Use the secured filename
+                            "type": content_type,
+                        }
+                    )
+                except Exception as e_file:
+                     # Log error during processing THIS specific file
+                     current_app.logger.error(f"Error processing file '{getattr(file, 'filename', 'N/A')}': {e_file}", exc_info=True)
+                     # Optionally flash a message? For now, just log and continue.
+                     # flash(f"Could not process attachment: {getattr(file, 'filename', 'N/A')}", "warning")
+                     continue # Skip this file if error occurs
+            elif file:
+                 # Log if a file object was sent but had no filename (e.g., empty input field)
+                 current_app.logger.debug(f"Skipping file upload object with no filename.")
+            # No need for else, non-file objects shouldn't be in request.files.getlist
+
+        current_app.logger.debug(f"Prepared {len(attachments_data)} attachments for email.")
+
+        # --- Input Validation (kept as before) ---
         if not property_ids:
             flash("Please select at least one property.", "error")
             return redirect(url_for("notifications_view"))
@@ -801,220 +822,84 @@ def notifications_view():
         if not channels:
             flash("Please select at least one channel (Email or SMS).", "error")
             return redirect(url_for("notifications_view"))
-        # --- END CORRECTION ---
+
+        # --- Send Logic (kept mostly as before) ---
         try:
             target_property_ids = [int(pid) for pid in property_ids if pid.isdigit()]
             if not target_property_ids:
-                flash("Invalid property selection.", "error")
-                return redirect(url_for("notifications_view"))  # Indented
-            target_properties = Property.query.filter(
-                Property.id.in_(target_property_ids)
-            ).all()
-            properties_targeted_str = ", ".join(
-                sorted([f"'{p.name}' (ID:{p.id})" for p in target_properties])
-            )
-            current_app.logger.info(
-                f"Fetching current tenants for properties: {target_property_ids}"
-            )
-            target_tenants = Tenant.query.filter(
-                Tenant.property_id.in_(target_property_ids), Tenant.status == "current"
-            ).all()
-            current_app.logger.info(
-                f"Found {len(target_tenants)} potential tenant recipients."
-            )
-            for t in target_tenants:
-                current_app.logger.debug(
-                    f"   Tenant Found: ID={t.id}, Name='{t.name}', Status='{t.status}', PropID={t.property_id}, Email='{t.email}', Phone='{t.phone}'"
-                )
-            emails_to_send = {t.email for t in target_tenants if t.email}
-            phones_to_send = {t.phone for t in target_tenants if t.phone}
-            current_app.logger.debug(f"Unique Emails prepared: {emails_to_send}")
-            current_app.logger.debug(f"Unique Phones prepared: {phones_to_send}")
+                 flash("Invalid property selection.", "error")
+                 return redirect(url_for('notifications_view'))
+            target_properties = Property.query.filter(Property.id.in_(target_property_ids)).all()
+            properties_targeted_str = ", ".join(sorted([f"'{p.name}' (ID:{p.id})" for p in target_properties]))
+            current_app.logger.info(f"Fetching current tenants for properties: {target_property_ids}")
+            target_tenants = Tenant.query.filter(Tenant.property_id.in_(target_property_ids), Tenant.status == 'current').all()
+            current_app.logger.info(f"Found {len(target_tenants)} potential tenant recipients.")
+            for t in target_tenants: current_app.logger.debug(f"   Tenant Found: ID={t.id}, Name='{t.name}', Status='{t.status}', PropID={t.property_id}, Email='{t.email}', Phone='{t.phone}'")
+            emails_to_send = {t.email for t in target_tenants if t.email}; phones_to_send = {t.phone for t in target_tenants if t.phone}
+            current_app.logger.debug(f"Unique Emails prepared: {emails_to_send}"); current_app.logger.debug(f"Unique Phones prepared: {phones_to_send}")
+
             if not emails_to_send and not phones_to_send:
-                flash(
-                    f"No current tenants with email or phone found for the selected properties.",
-                    "warning",
-                )
-                history_log = NotificationHistory(
-                    subject=subject or None,
-                    body=message_body,
-                    channels=", ".join(channels),
-                    status="No Recipients Found",
-                    properties_targeted=properties_targeted_str,
-                    recipients_summary="Email: 0/0. SMS: 0/0.",
-                    error_info=None,
-                )
-                db.session.add(history_log)
-                db.session.commit()
-                current_app.logger.warning(
-                    f"Notification attempt logged (ID: {history_log.id}), but no recipients found."
-                )
-                return redirect(url_for("notifications_view"))
-            email_success_count = 0
-            sms_success_count = 0
-            email_errors = []
-            sms_errors = []
-            channels_attempted = []
-            final_status = "Sent"
-            if "email" in channels and emails_to_send:
-                channels_attempted.append("Email")
-                current_app.logger.info(
-                    f"Attempting email to {len(emails_to_send)} addresses..."
-                )
-                email_subject = (
-                    subject
-                    if subject
-                    else message_body[:50] + ("..." if len(message_body) > 50 else "")
-                )
-                html_body = f"<p>{message_body.replace(os.linesep, '<br>')}</p>"
+                flash(f"No current tenants with email or phone found for the selected properties.", "warning")
+                history_log = NotificationHistory(subject=subject or None, body=message_body, channels=", ".join(channels), status="No Recipients Found", properties_targeted=properties_targeted_str, recipients_summary="Email: 0/0. SMS: 0/0.", error_info=None)
+                db.session.add(history_log); db.session.commit()
+                current_app.logger.warning(f"Notification attempt logged (ID: {history_log.id}), but no recipients found.")
+                return redirect(url_for('notifications_view'))
+
+            email_success_count = 0; sms_success_count = 0; email_errors = []; sms_errors = []; channels_attempted = []; final_status = "Sent"
+            if 'email' in channels and emails_to_send:
+                channels_attempted.append("Email"); current_app.logger.info(f"Attempting email to {len(emails_to_send)} addresses...")
+                email_subject = subject if subject else message_body[:50] + ("..." if len(message_body) > 50 else ""); html_body = f"<p>{message_body.replace(os.linesep, '<br>')}</p>"
                 for email in emails_to_send:
-                    try:  # Indented block
-                        email_sent_successfully = send_email(
-                            to_emails=[email],
-                            subject=email_subject,
-                            html_content=wrap_email_html(html_body),
-                            attachments=attachments_data,
-                        )
-                        if email_sent_successfully:
-                            email_success_count += 1
-                        else:
-                            email_errors.append(f"{email}: Failed")
-                    except Exception as e:  # Indented block
-                        current_app.logger.error(
-                            f"Email Exception for {email}: {e}", exc_info=True
-                        )
-                        email_errors.append(f"{email}: Exception")
-            elif "email" in channels:
-                current_app.logger.info(
-                    "Email channel selected, but no valid tenant emails found."
-                )  # Indented
-            if "sms" in channels and phones_to_send:
-                channels_attempted.append("SMS")
-                current_app.logger.info(
-                    f"Attempting SMS to {len(phones_to_send)} numbers..."
-                )
+                    try:
+                        email_sent_successfully = send_email(to_emails=[email], subject=email_subject, html_content=wrap_email_html(html_body), attachments=attachments_data)
+                        if email_sent_successfully: email_success_count += 1
+                        else: email_errors.append(f"{email}: Failed")
+                    except Exception as e: current_app.logger.error(f"Email Exception for {email}: {e}", exc_info=True); email_errors.append(f"{email}: Exception")
+            elif 'email' in channels: current_app.logger.info("Email channel selected, but no valid tenant emails found.")
+
+            if 'sms' in channels and phones_to_send:
+                channels_attempted.append("SMS"); current_app.logger.info(f"Attempting SMS to {len(phones_to_send)} numbers...")
                 for phone in phones_to_send:
-                    try:  # Indented block
-                        sms_sent = send_openphone_sms(
-                            recipient_phone=phone, message_body=message_body
-                        )
-                        if sms_sent:
-                            sms_success_count += 1
-                        else:
-                            sms_errors.append(f"{phone}: Failed")
-                    except Exception as e:  # Indented block
-                        current_app.logger.error(
-                            f"SMS Exception for {phone}: {e}", exc_info=True
-                        )
-                        sms_errors.append(f"{phone}: Exception")
-            elif "sms" in channels:
-                current_app.logger.info(
-                    "SMS channel selected, but no valid tenant phone numbers found."
-                )  # Indented
-            total_email_attempts = (
-                len(emails_to_send) if "Email" in channels_attempted else 0
-            )
-            total_sms_attempts = (
-                len(phones_to_send) if "SMS" in channels_attempted else 0
-            )
-            total_successes = email_success_count + sms_success_count
-            total_attempts = total_email_attempts + total_sms_attempts
-            current_app.logger.warning(
-                f"Status Calc: Channels Attempted={channels_attempted}"
-            )
-            current_app.logger.warning(
-                f"Status Calc: Email Success={email_success_count}, Email Attempts={total_email_attempts}"
-            )
-            current_app.logger.warning(
-                f"Status Calc: SMS Success={sms_success_count}, SMS Attempts={total_sms_attempts}"
-            )
-            current_app.logger.warning(
-                f"Status Calc: Total Successes={total_successes}, Total Attempts={total_attempts}"
-            )
+                    try:
+                        sms_sent = send_openphone_sms(recipient_phone=phone, message_body=message_body)
+                        if sms_sent: sms_success_count += 1
+                        else: sms_errors.append(f"{phone}: Failed")
+                    except Exception as e: current_app.logger.error(f"SMS Exception for {phone}: {e}", exc_info=True); sms_errors.append(f"{phone}: Exception")
+            elif 'sms' in channels: current_app.logger.info("SMS channel selected, but no valid tenant phone numbers found.")
+
+            # Status calculation and logging (kept as before)
+            total_email_attempts = len(emails_to_send) if 'Email' in channels_attempted else 0; total_sms_attempts = len(phones_to_send) if 'SMS' in channels_attempted else 0
+            total_successes = email_success_count + sms_success_count; total_attempts = total_email_attempts + total_sms_attempts
             recipients_summary = f"Email: {email_success_count}/{total_email_attempts}. SMS: {sms_success_count}/{total_sms_attempts}."
-            error_details = []
-            if email_errors:
-                error_details.append(
-                    f"{len(email_errors)} Email failure(s)"
-                )  # Indented
-            if sms_errors:
-                error_details.append(f"{len(sms_errors)} SMS failure(s)")  # Indented
-            error_info_str = (
-                "; ".join(error_details) + " (See logs)" if error_details else None
-            )
-            if total_attempts == 0:
-                final_status = "No Recipients Found"
-                current_app.logger.error(
-                    "!!! Reached 'total_attempts == 0' unexpectedly in status calc !!!"
-                )  # Indented
+            error_details = [];
+            if email_errors: error_details.append(f"{len(email_errors)} Email failure(s)")
+            if sms_errors: error_details.append(f"{len(sms_errors)} SMS failure(s)")
+            error_info_str = "; ".join(error_details) + " (See logs)" if error_details else None
+            if total_attempts == 0: final_status = "No Recipients Found"
             elif email_errors or sms_errors:
-                if total_successes > 0:
-                    final_status = "Partial Failure"
-                    current_app.logger.warning(
-                        f"Setting final status to 'Partial Failure'. Successes ({total_successes}) < Attempts ({total_attempts})."
-                    )
-                    flash(
-                        f"Notifications sent with some failures. ({recipients_summary})",
-                        "warning",
-                    )
-                else:
-                    final_status = "Failed"
-                    current_app.logger.error(
-                        f"Setting final status to 'Failed'. Successes ({total_successes}), Attempts ({total_attempts})."
-                    )
-                    flash(f"All notifications failed to send. Check logs.", "danger")
-            else:
-                final_status = "Sent"
-                current_app.logger.info(
-                    f"Setting final status to 'Sent'. Successes ({total_successes}) == Attempts ({total_attempts})."
-                )
-                flash(
-                    f"Notifications sent successfully! ({recipients_summary})",
-                    "success",
-                )
-            current_app.logger.info(
-                f"Attempting to log history with calculated status: {final_status}"
-            )
-            history_log = NotificationHistory(
-                subject=subject if "Email" in channels_attempted else None,
-                body=message_body,
-                channels=", ".join(channels_attempted),
-                status=final_status,
-                properties_targeted=properties_targeted_str,
-                recipients_summary=recipients_summary,
-                error_info=error_info_str,
-            )
-            db.session.add(history_log)
-            db.session.commit()
-            current_app.logger.info(
-                f"Notification history logged (ID: {history_log.id}, Status: {final_status})."
-            )
+                if total_successes > 0: final_status = "Partial Failure"; flash(f"Notifications sent with some failures. ({recipients_summary})", "warning")
+                else: final_status = "Failed"; flash(f"All notifications failed to send. Check logs.", "danger")
+            else: final_status = "Sent"; flash(f"Notifications sent successfully! ({recipients_summary})", "success")
+            current_app.logger.info(f"Attempting to log history with calculated status: {final_status}")
+            history_log = NotificationHistory(subject=subject if 'Email' in channels_attempted else None, body=message_body, channels=", ".join(channels_attempted), status=final_status, properties_targeted=properties_targeted_str, recipients_summary=recipients_summary, error_info=error_info_str )
+            db.session.add(history_log); db.session.commit(); current_app.logger.info(f"Notification history logged (ID: {history_log.id}, Status: {final_status}).")
+
         except Exception as ex:
             db.session.rollback()
-            current_app.logger.error(
-                f"❌ Unexpected error during notification POST: {ex}", exc_info=True
-            )
+            current_app.logger.error(f"❌ Unexpected error during notification POST: {ex}", exc_info=True)
             flash(f"An unexpected error occurred: {ex}", "danger")
-        return redirect(url_for("notifications_view"))
-    # GET Logic
+        return redirect(url_for('notifications_view'))
+
+    # GET Logic (kept as before)
     try:
         properties = Property.query.order_by(Property.name).all()
-        history = (
-            NotificationHistory.query.order_by(NotificationHistory.timestamp.desc())
-            .limit(20)
-            .all()
-        )
+        history = NotificationHistory.query.order_by(NotificationHistory.timestamp.desc()).limit(20).all()
     except Exception as ex:
         db.session.rollback()
         app.logger.error(f"❌ Error loading notifications GET: {ex}", exc_info=True)
-        error_message = f"Error loading page data: {ex}"
-        flash(error_message, "danger")
-    return render_template(
-        "notifications.html",
-        properties=properties,
-        history=history,
-        error=error_message,
-    )
+        error_message = f"Error loading page data: {ex}"; flash(error_message, "danger")
+    return render_template("notifications.html", properties=properties, history=history, error=error_message)
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
