@@ -12,6 +12,7 @@ import csv  # For reading CSV file
 import re   # For cleaning phone numbers using regular expressions
 import click # For creating the command line command argument
 from werkzeug.utils import secure_filename
+from flask_migrate import Migrate
 
 
 # Import necessary Flask components
@@ -50,6 +51,10 @@ from sqlalchemy.sql.expression import null  # For setting NULL explicitly if nee
 from flask_migrate import Migrate
 
 import openai
+
+# --- Create Extension Objects ---
+migrate = Migrate() # <-- ADD THIS LINE if it's missing!
+
 
 # Import local modules
 from extensions import db
