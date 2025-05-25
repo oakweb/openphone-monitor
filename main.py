@@ -54,6 +54,52 @@ with app.app_context():
             else:
                 app.logger.warning(f"⚠️ Could not add 'sid' column: {alter_err}")
         
+        # Add enhanced Property fields if they don't exist (for production upgrade)
+        enhanced_columns = [
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS address TEXT",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS hoa_name VARCHAR(200)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS hoa_phone VARCHAR(15)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS hoa_email VARCHAR(200)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS hoa_website VARCHAR(200)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS neighbor_name VARCHAR(200)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS neighbor_phone VARCHAR(15)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS neighbor_email VARCHAR(200)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS neighbor_notes TEXT",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS year_purchased INTEGER",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS purchase_amount NUMERIC(12,2)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS redfin_current_value NUMERIC(12,2)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS monthly_rent NUMERIC(10,2)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS property_taxes NUMERIC(10,2)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS bedrooms INTEGER",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS bathrooms NUMERIC(3,1)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS square_feet INTEGER",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS lot_size VARCHAR(50)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS notes TEXT",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS maintenance_notes TEXT",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS tenant_notes TEXT",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS access_notes TEXT",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS lockbox_code VARCHAR(20)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS garage_code VARCHAR(20)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS wifi_network VARCHAR(100)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS wifi_password VARCHAR(100)",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP"
+        ]
+        
+        if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+            for sql in enhanced_columns:
+                try:
+                    db.session.execute(text(sql))
+                    app.logger.info(f"✅ {sql}")
+                except Exception as e:
+                    app.logger.warning(f"⚠️ {sql} - {e}")
+            
+            try:
+                db.session.commit()
+                app.logger.info("✅ Enhanced Property fields added to production database.")
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"❌ Error adding enhanced fields: {e}")
+        
         app.logger.info("✅ Database initialization complete.")
     except Exception as e:
         db.session.rollback()
