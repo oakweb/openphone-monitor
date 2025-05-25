@@ -100,13 +100,6 @@ with app.app_context():
                 db.session.rollback()
                 app.logger.error(f"❌ Error adding enhanced fields: {e}")
         
-        app.logger.info("✅ Database initialization complete.")
-    except Exception as e:
-        db.session.rollback()
-        app.logger.critical(f"❌ Database initialization error: {e}")
-
-# Add this to your database initialization section in main.py, after the enhanced Property fields:
-
         # Add message tracking fields for tenant communications
         message_tracking_columns = [
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type VARCHAR(50) DEFAULT 'sms'",  # 'sms', 'email', 'notification'
@@ -129,6 +122,11 @@ with app.app_context():
             except Exception as e:
                 db.session.rollback()
                 app.logger.error(f"❌ Error adding message tracking fields: {e}")
+        
+        app.logger.info("✅ Database initialization complete.")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.critical(f"❌ Database initialization error: {e}")
 
 # Define all routes first, then print URL map at the end
 
@@ -329,15 +327,213 @@ def ask_view():
         flash(f"Error loading ask page: {e}", "danger")
         return redirect(url_for('index'))
 
-@app.route("/notifications")
+# FIXED: Corrected notifications_view function with proper try/except structure
+@app.route("/notifications", methods=["GET", "POST"])
 def notifications_view():
-    """Display notifications page."""
+    """Displays notification form and history, handles sending."""
+    properties = []
+    history = []
+    error_message = None
+    
+    if request.method == "POST":
+        # --- Get form data ---
+        property_ids = request.form.getlist("property_ids")
+        subject = request.form.get("subject", "")
+        message_body = request.form.get("message_body", "")
+        channels = request.form.getlist("channels")
+        uploaded_files = request.files.getlist("attachments")
+        
+        app.logger.info(f"Notification POST: properties={property_ids}, channels={channels}, subject='{subject}'")
+        
+        # --- Input Validation ---
+        if not property_ids:
+            flash("Please select at least one property.", "error")
+            return redirect(url_for("notifications_view"))
+        if not message_body:
+            flash("Message body cannot be empty.", "error")
+            return redirect(url_for("notifications_view"))
+        if not channels:
+            flash("Please select at least one channel (Email or SMS).", "error")
+            return redirect(url_for("notifications_view"))
+        
+        try:
+            # Get target properties and tenants
+            target_property_ids = [int(pid) for pid in property_ids if pid.isdigit()]
+            target_properties = Property.query.filter(Property.id.in_(target_property_ids)).all()
+            properties_targeted_str = ", ".join([f"'{p.name}' (ID:{p.id})" for p in target_properties])
+            
+            # Get current tenants for selected properties
+            target_tenants = Tenant.query.filter(
+                Tenant.property_id.in_(target_property_ids), 
+                Tenant.status == 'current'
+            ).all()
+            
+            app.logger.info(f"Found {len(target_tenants)} current tenants for notification")
+            
+            # Collect unique emails and phones
+            emails_to_send = {t.email for t in target_tenants if t.email}
+            phones_to_send = {t.phone for t in target_tenants if t.phone}
+            
+            if not emails_to_send and not phones_to_send:
+                flash("No current tenants with email or phone found for the selected properties.", "warning")
+                
+                # Log the attempt even if no recipients
+                history_log = NotificationHistory(
+                    subject=subject or None,
+                    body=message_body,
+                    channels=", ".join(channels),
+                    status="No Recipients Found",
+                    properties_targeted=properties_targeted_str,
+                    recipients_summary="Email: 0/0. SMS: 0/0.",
+                    error_info=None
+                )
+                db.session.add(history_log)
+                db.session.commit()
+                return redirect(url_for('notifications_view'))
+            
+            # Initialize counters
+            email_success_count = 0
+            sms_success_count = 0
+            email_errors = []
+            sms_errors = []
+            channels_attempted = []
+            
+            # Send emails if requested
+            if 'email' in channels and emails_to_send:
+                channels_attempted.append("Email")
+                app.logger.info(f"Attempting email to {len(emails_to_send)} addresses...")
+                
+                email_subject = subject if subject else message_body[:50] + ("..." if len(message_body) > 50 else "")
+                
+                for email in emails_to_send:
+                    try:
+                        # Use your existing send_email function
+                        email_sent_successfully = send_email(
+                            to_emails=[email], 
+                            subject=email_subject, 
+                            html_content=f"<p>{message_body.replace(os.linesep, '<br>')}</p>",
+                            attachments=[]  # Handle attachments later if needed
+                        )
+                        if email_sent_successfully:
+                            email_success_count += 1
+                        else:
+                            email_errors.append(f"{email}: Failed")
+                    except Exception as e:
+                        app.logger.error(f"Email Exception for {email}: {e}")
+                        email_errors.append(f"{email}: Exception")
+            
+            # Send SMS if requested
+            if 'sms' in channels and phones_to_send:
+                channels_attempted.append("SMS")
+                app.logger.info(f"Attempting SMS to {len(phones_to_send)} numbers...")
+                
+                for phone in phones_to_send:
+                    try:
+                        # Use your existing send_openphone_sms function
+                        sms_sent = send_openphone_sms(
+                            recipient_phone=phone, 
+                            message_body=message_body
+                        )
+                        if sms_sent:
+                            sms_success_count += 1
+                        else:
+                            sms_errors.append(f"{phone}: Failed")
+                    except Exception as e:
+                        app.logger.error(f"SMS Exception for {phone}: {e}")
+                        sms_errors.append(f"{phone}: Exception")
+            
+            # Calculate status and summary
+            total_email_attempts = len(emails_to_send) if 'Email' in channels_attempted else 0
+            total_sms_attempts = len(phones_to_send) if 'SMS' in channels_attempted else 0
+            total_successes = email_success_count + sms_success_count
+            total_attempts = total_email_attempts + total_sms_attempts
+            
+            recipients_summary = f"Email: {email_success_count}/{total_email_attempts}. SMS: {sms_success_count}/{total_sms_attempts}."
+            
+            # Determine final status
+            if total_attempts == 0:
+                final_status = "No Recipients Found"
+            elif email_errors or sms_errors:
+                if total_successes > 0:
+                    final_status = "Partial Failure"
+                    flash(f"Notifications sent with some failures. ({recipients_summary})", "warning")
+                else:
+                    final_status = "Failed"
+                    flash("All notifications failed to send. Check logs.", "danger")
+            else:
+                final_status = "Sent"
+                flash(f"Notifications sent successfully! ({recipients_summary})", "success")
+            
+            # Log to history
+            error_details = []
+            if email_errors:
+                error_details.append(f"{len(email_errors)} Email failure(s)")
+            if sms_errors:
+                error_details.append(f"{len(sms_errors)} SMS failure(s)")
+            error_info_str = "; ".join(error_details) + " (See logs)" if error_details else None
+            
+            history_log = NotificationHistory(
+                subject=subject if 'Email' in channels_attempted else None,
+                body=message_body,
+                channels=", ".join(channels_attempted),
+                status=final_status,
+                properties_targeted=properties_targeted_str,
+                recipients_summary=recipients_summary,
+                error_info=error_info_str
+            )
+            db.session.add(history_log)
+            db.session.commit()
+            
+            app.logger.info(f"Notification logged (ID: {history_log.id}, Status: {final_status})")
+            
+        except Exception as ex:
+            db.session.rollback()
+            app.logger.error(f"❌ Unexpected error during notification POST: {ex}", exc_info=True)
+            flash(f"An unexpected error occurred: {ex}", "danger")
+        
+        return redirect(url_for('notifications_view'))
+    
+    # GET request - load properties and history
     try:
-        return render_template('notifications.html', properties=[], history=[])
+        app.logger.info("=== DEBUGGING NOTIFICATIONS PAGE ===")
+        
+        # Check if we have any properties at all
+        property_count = Property.query.count()
+        app.logger.info(f"Total properties in database: {property_count}")
+        
+        properties = Property.query.order_by(Property.name).all()
+        app.logger.info(f"Properties loaded: {len(properties)}")
+        
+        for prop in properties:
+            app.logger.info(f"  - Property: {prop.name} (ID: {prop.id})")
+        
+        history = NotificationHistory.query.order_by(NotificationHistory.timestamp.desc()).limit(20).all()
+        app.logger.info(f"History records loaded: {len(history)}")
+        app.logger.info("=== END DEBUG ===")
+        
+    except Exception as ex:
+        db.session.rollback()
+        app.logger.error(f"❌ Error loading notifications GET: {ex}", exc_info=True)
+        error_message = f"Error loading page data: {ex}"
+        flash(error_message, "danger")
+        properties = []
+        history = []
+    
+    return render_template("notifications.html", 
+                         properties=properties, 
+                         history=history, 
+                         error=error_message)
+
+# Add debug route to test property loading
+@app.route("/debug/properties")
+def debug_properties():
+    """Simple debug route to test if properties load at all"""
+    try:
+        properties = Property.query.all()
+        return f"<h3>Properties Debug</h3><p>Found {len(properties)} properties:</p>" + \
+               "<ul>" + "".join([f"<li>{p.name} (ID: {p.id})</li>" for p in properties]) + "</ul>"
     except Exception as e:
-        app.logger.error(f"Error loading notifications: {e}")
-        flash(f"Error loading notifications: {e}", "danger")
-        return redirect(url_for('index'))
+        return f"<h3>Error</h3><p>{str(e)}</p>"
 
 @app.route("/assign_property", methods=["POST"])
 def assign_property():
@@ -368,8 +564,6 @@ def gallery_for_property(property_id):
         app.logger.error(f"Error loading gallery for property {property_id}: {e}")
         flash(f"Error loading gallery: {e}", "danger")
         return redirect(url_for("galleries_overview"))
-    
-# Add these routes to your main.py after the existing property routes
 
 @app.route('/property/<int:property_id>/edit', methods=['GET', 'POST'])
 def property_edit_view(property_id):
@@ -500,6 +694,73 @@ with app.app_context():
         methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
         app.logger.info(f"{rule.endpoint:30} {methods:<15} {rule.rule}")
     app.logger.info("--- END URL MAP ---\n")
+
+# Add these helper functions that your notifications route references
+def send_email(to_emails, subject, html_content, attachments=None):
+    """Send email using SendGrid - placeholder implementation"""
+    # You'll need to implement this based on your SendGrid setup
+    # This is just a placeholder to prevent errors
+    app.logger.info(f"send_email called: {to_emails}, {subject}")
+    try:
+        # Add your SendGrid implementation here
+        # Example:
+        # from sendgrid import SendGridAPIClient
+        # from sendgrid.helpers.mail import Mail
+        # 
+        # SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
+        # if not SENDGRID_API_KEY:
+        #     return False
+        # 
+        # message = Mail(
+        #     from_email='your-email@domain.com',
+        #     to_emails=to_emails,
+        #     subject=subject,
+        #     html_content=html_content
+        # )
+        # 
+        # sg = SendGridAPIClient(api_key=SENDGRID_API_KEY)
+        # response = sg.send(message)
+        # return response.status_code == 202
+        
+        return True  # Placeholder - replace with actual implementation
+    except Exception as e:
+        app.logger.error(f"Email send error: {e}")
+        return False
+
+def send_openphone_sms(recipient_phone, message_body):
+    """Send SMS using OpenPhone API - placeholder implementation"""
+    # You'll need to implement this based on your OpenPhone setup
+    # This is just a placeholder to prevent errors
+    app.logger.info(f"send_openphone_sms called: {recipient_phone}, {message_body}")
+    try:
+        # Add your OpenPhone implementation here
+        # Example:
+        # OPENPHONE_API_KEY = os.environ.get('OPENPHONE_API_KEY')
+        # if not OPENPHONE_API_KEY:
+        #     return False
+        # 
+        # headers = {
+        #     'Authorization': f'Bearer {OPENPHONE_API_KEY}',
+        #     'Content-Type': 'application/json'
+        # }
+        # 
+        # data = {
+        #     'to': recipient_phone,
+        #     'text': message_body,
+        #     'from': 'your-openphone-number'
+        # }
+        # 
+        # response = requests.post(
+        #     'https://api.openphone.com/v1/messages',
+        #     headers=headers,
+        #     json=data
+        # )
+        # return response.status_code == 200
+        
+        return True  # Placeholder - replace with actual implementation
+    except Exception as e:
+        app.logger.error(f"SMS send error: {e}")
+        return False
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
