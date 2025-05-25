@@ -316,6 +316,140 @@ def galleries_overview():
         app.logger.error(f"Error loading galleries: {e}")
         flash(f"Error loading galleries: {e}", "danger")
         return redirect(url_for('index'))
+    
+@app.route("/gallery/unsorted")
+def unsorted_gallery():
+    """Display gallery for unsorted media (messages without property assignment)."""
+    try:
+        # Get messages with media but no property assignment
+        unsorted_messages = (
+            Message.query.options(joinedload(Message.contact))
+            .filter(
+                Message.property_id.is_(None),
+                Message.local_media_paths.isnot(None)
+            )
+            .order_by(Message.timestamp.desc())
+            .all()
+        )
+        
+        # Process media paths for display
+        image_items = []
+        for msg in unsorted_messages:
+            if msg.local_media_paths:
+                # Parse the media paths (assuming they're stored as JSON or comma-separated)
+                try:
+                    import json
+                    if msg.local_media_paths.startswith('['):
+                        media_paths = json.loads(msg.local_media_paths)
+                    else:
+                        media_paths = [path.strip() for path in msg.local_media_paths.split(',')]
+                    
+                    for path in media_paths:
+                        if path:  # Skip empty paths
+                            image_items.append({
+                                'path': path,
+                                'message': msg,
+                                'contact': msg.contact,
+                                'timestamp': msg.timestamp
+                            })
+                except (json.JSONDecodeError, AttributeError):
+                    # Handle parsing errors gracefully
+                    pass
+        
+        return render_template("gallery.html", 
+                             image_items=image_items, 
+                             property=None, 
+                             gallery_title="Unsorted Media")
+    except Exception as e:
+        app.logger.error(f"Error loading unsorted gallery: {e}")
+        flash(f"Error loading unsorted gallery: {e}", "danger")
+        return redirect(url_for("galleries_overview"))
+
+# Add this configuration at the top of your app setup
+# (Add this after your existing app.config settings)
+
+# Configure upload folder for media files
+UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join(app.instance_path, "uploads"))
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+# Ensure upload directory exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.logger.info(f"✅ Upload folder configured: {UPLOAD_FOLDER}")
+
+# Update your gallery_for_property route to actually load media
+@app.route("/gallery/<int:property_id>")
+def gallery_for_property(property_id):
+    """Display gallery for specific property."""
+    try:
+        prop = db.session.get(Property, property_id)
+        if not prop:
+            flash("Property not found.", "warning")
+            return redirect(url_for("galleries_overview"))
+        
+        # Get messages with media for this property
+        messages_with_media = (
+            Message.query.options(joinedload(Message.contact))
+            .filter(
+                Message.property_id == property_id,
+                Message.local_media_paths.isnot(None)
+            )
+            .order_by(Message.timestamp.desc())
+            .all()
+        )
+        
+        # Process media paths for display
+        image_items = []
+        for msg in messages_with_media:
+            if msg.local_media_paths:
+                try:
+                    import json
+                    if msg.local_media_paths.startswith('['):
+                        media_paths = json.loads(msg.local_media_paths)
+                    else:
+                        media_paths = [path.strip() for path in msg.local_media_paths.split(',')]
+                    
+                    for path in media_paths:
+                        if path:
+                            image_items.append({
+                                'path': path,
+                                'message': msg,
+                                'contact': msg.contact,
+                                'timestamp': msg.timestamp
+                            })
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+        
+        return render_template("gallery.html", 
+                             image_items=image_items, 
+                             property=prop, 
+                             gallery_title=f"Gallery for {prop.name}")
+    except Exception as e:
+        app.logger.error(f"Error loading gallery for property {property_id}: {e}")
+        flash(f"Error loading gallery: {e}", "danger")
+        return redirect(url_for("galleries_overview"))
+
+# Add a route to serve uploaded media files
+@app.route("/media/<path:filename>")
+def serve_media(filename):
+    """Serve uploaded media files."""
+    try:
+        from flask import send_from_directory
+        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    except Exception as e:
+        app.logger.error(f"Error serving media file {filename}: {e}")
+        return "File not found", 404
+
+# Add environment variable setup for better configuration
+# Add this to your .env file:
+"""
+# Add these to your .env file:
+UPLOAD_FOLDER=/path/to/your/uploads
+FLASK_DEBUG=true
+DATABASE_URL=sqlite:///instance/messages.db
+FLASK_SECRET=your-secret-key-here
+"""
+
+
 
 @app.route("/ask", methods=["GET", "POST"])
 def ask_view():
