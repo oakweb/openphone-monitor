@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit {{ property.name }} | OpenPhone System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #121416; color: #fff; }
+        .card { background-color: #1a1d20; border-color: #495057; margin-bottom: 1.5rem; }
+        .card-title { color: #6cb9d3; }
+        .form-control, .form-select { background-color: #2d3338; border-color: #495057; color: #fff; }
+        .form-control:focus, .form-select:focus { background-color: #2d3338; border-color: #6cb9d3; color: #fff; box-shadow: 0 0 0 0.2rem rgba(108, 185, 211, 0.25); }
+        .btn-primary { background-color: #6cb9d3; border-color: #6cb9d3; }
+        .btn-primary:hover { background-color: #5a9fb5; border-color: #5a9fb5; }
+        .page-title { margin-bottom: 1.5rem; font-weight: 700; }
+        .tech-divider { height: 3px; width: 100px; background: linear-gradient(90deg, #6cb9d3, #3a8bab); margin: 0 auto 30px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    {% include '_header.html' %}
+
+    <main class="py-4">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h1 class="page-title">
+                    <i class="fas fa-edit me-2"></i>Edit {{ property.name }}
+                </h1>
+                <div>
+                    <a href="{{ url_for('property_detail_view', property_id=property.id) }}" class="btn btn-outline-secondary btn-sm me-2">
+                        <i class="fas fa-eye me-1"></i>View Details
+                    </a>
+                    <a href="{{ url_for('properties_list_view') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Properties
+                    </a>
+                </div>
+            </div>
+            <div class="tech-divider"></div>
+
+            <form method="POST">
+                <div class="row">
+                    <!-- Basic Information -->
+                    <div class="col-lg-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0"><i class="fas fa-home me-2"></i>Basic Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="name" class="form-label">Property Name *</label>
+                                    <input type="text" class="form-control" id="name" name="name" value="{{ property.name }}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="address" class="form-label">Address</label>
+                                    <textarea class="form-control" id="address" name="address" rows="2">{{ property.address or '' }}</textarea>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="bedrooms" class="form-label">Bedrooms</label>
+                                        <input type="number" class="form-control" id="bedrooms" name="bedrooms" value="{{ property.bedrooms or '' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="bathrooms" class="form-label">Bathrooms</label>
+                                        <input type="number" step="0.5" class="form-control" id="bathrooms" name="bathrooms" value="{{ property.bathrooms or '' }}">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="square_feet" class="form-label">Square Feet</label>
+                                        <input type="number" class="form-control" id="square_feet" name="square_feet" value="{{ property.square_feet or '' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="lot_size" class="form-label">Lot Size</label>
+                                        <input type="text" class="form-control" id="lot_size" name="lot_size" value="{{ property.lot_size or '' }}" placeholder="e.g., 0.25 acres">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Financial Information -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0"><i class="fas fa-dollar-sign me-2"></i>Financial Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="year_purchased" class="form-label">Year Purchased</label>
+                                        <input type="number" class="form-control" id="year_purchased" name="year_purchased" value="{{ property.year_purchased or '' }}" min="1900" max="2030">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="purchase_amount" class="form-label">Purchase Amount</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="text" class="form-control" id="purchase_amount" name="purchase_amount" value="{{ '{:,.0f}'.format(property.purchase_amount) if property.purchase_amount else '' }}" placeholder="250000">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="redfin_current_value" class="form-label">Current Value (Redfin)</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="text" class="form-control" id="redfin_current_value" name="redfin_current_value" value="{{ '{:,.0f}'.format(property.redfin_current_value) if property.redfin_current_value else '' }}" placeholder="300000">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="monthly_rent" class="form-label">Monthly Rent</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="text" class="form-control" id="monthly_rent" name="monthly_rent" value="{{ '{:,.0f}'.format(property.monthly_rent) if property.monthly_rent else '' }}" placeholder="2500">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="property_taxes" class="form-label">Annual Property Taxes</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="text" class="form-control" id="property_taxes" name="property_taxes" value="{{ '{:,.0f}'.format(property.property_taxes) if property.property_taxes else '' }}" placeholder="5000">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Contact Information -->
+                    <div class="col-lg-6">
+                        <!-- HOA Information -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0"><i class="fas fa-building me-2"></i>HOA Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="hoa_name" class="form-label">HOA Name</label>
+                                    <input type="text" class="form-control" id="hoa_name" name="hoa_name" value="{{ property.hoa_name or '' }}">
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="hoa_phone" class="form-label">HOA Phone</label>
+                                        <input type="tel" class="form-control" id="hoa_phone" name="hoa_phone" value="{{ property.hoa_phone or '' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="hoa_email" class="form-label">HOA Email</label>
+                                        <input type="email" class="form-control" id="hoa_email" name="hoa_email" value="{{ property.hoa_email or '' }}">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="hoa_website" class="form-label">HOA Website</label>
+                                    <input type="url" class="form-control" id="hoa_website" name="hoa_website" value="{{ property.hoa_website or '' }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Neighbor Information -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0"><i class="fas fa-user-friends me-2"></i>Neighbor Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="neighbor_name" class="form-label">Neighbor Name</label>
+                                    <input type="text" class="form-control" id="neighbor_name" name="neighbor_name" value="{{ property.neighbor_name or '' }}">
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="neighbor_phone" class="form-label">Phone</label>
+                                        <input type="tel" class="form-control" id="neighbor_phone" name="neighbor_phone" value="{{ property.neighbor_phone or '' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="neighbor_email" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="neighbor_email" name="neighbor_email" value="{{ property.neighbor_email or '' }}">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="neighbor_notes" class="form-label">Neighbor Notes</label>
+                                    <textarea class="form-control" id="neighbor_notes" name="neighbor_notes" rows="2">{{ property.neighbor_notes or '' }}</textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Access Information -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0"><i class="fas fa-key me-2"></i>Access Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="lockbox_code" class="form-label">Lockbox Code</label>
+                                        <input type="text" class="form-control" id="lockbox_code" name="lockbox_code" value="{{ property.lockbox_code or '' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="garage_code" class="form-label">Garage Code</label>
+                                        <input type="text" class="form-control" id="garage_code" name="garage_code" value="{{ property.garage_code or '' }}">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="wifi_network" class="form-label">WiFi Network</label>
+                                        <input type="text" class="form-control" id="wifi_network" name="wifi_network" value="{{ property.wifi_network or '' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="wifi_password" class="form-label">WiFi Password</label>
+                                        <input type="text" class="form-control" id="wifi_password" name="wifi_password" value="{{ property.wifi_password or '' }}">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notes Section -->
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0"><i class="fas fa-sticky-note me-2"></i>Notes</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="notes" class="form-label">General Notes</label>
+                                        <textarea class="form-control" id="notes" name="notes" rows="4">{{ property.notes or '' }}</textarea>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="maintenance_notes" class="form-label">Maintenance Notes</label>
+                                        <textarea class="form-control" id="maintenance_notes" name="maintenance_notes" rows="4">{{ property.maintenance_notes or '' }}</textarea>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="tenant_notes" class="form-label">Tenant Notes</label>
+                                        <textarea class="form-control" id="tenant_notes" name="tenant_notes" rows="4">{{ property.tenant_notes or '' }}</textarea>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="access_notes" class="form-label">Access Notes</label>
+                                    <textarea class="form-control" id="access_notes" name="access_notes" rows="2" placeholder="Gate codes, alarm instructions, special access requirements...">{{ property.access_notes or '' }}</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="text-center mb-4">
+                    <button type="submit" class="btn btn-primary btn-lg me-3">
+                        <i class="fas fa-save me-2"></i>Save Changes
+                    </button>
+                    <a href="{{ url_for('property_detail_view', property_id=property.id) }}" class="btn btn-outline-secondary btn-lg">
+                        <i class="fas fa-times me-2"></i>Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    {% include '_footer.html' %}
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

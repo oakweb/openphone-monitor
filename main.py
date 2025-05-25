@@ -105,6 +105,31 @@ with app.app_context():
         db.session.rollback()
         app.logger.critical(f"❌ Database initialization error: {e}")
 
+# Add this to your database initialization section in main.py, after the enhanced Property fields:
+
+        # Add message tracking fields for tenant communications
+        message_tracking_columns = [
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type VARCHAR(50) DEFAULT 'sms'",  # 'sms', 'email', 'notification'
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sent_to_tenant BOOLEAN DEFAULT FALSE",      # Track if sent to tenant
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS notification_id INTEGER",                 # Link to NotificationHistory
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20) DEFAULT 'sent'" # 'sent', 'delivered', 'failed'
+        ]
+        
+        if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+            for sql in message_tracking_columns:
+                try:
+                    db.session.execute(text(sql))
+                    app.logger.info(f"✅ {sql}")
+                except Exception as e:
+                    app.logger.warning(f"⚠️ {sql} - {e}")
+            
+            try:
+                db.session.commit()
+                app.logger.info("✅ Message tracking fields added to production database.")
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"❌ Error adding message tracking fields: {e}")
+
 # Define all routes first, then print URL map at the end
 
 @app.context_processor
@@ -148,6 +173,7 @@ def index():
                          summary_week=summary_week,
                          ai_summaries=[],
                          error=error_message)
+
 
 @app.route("/messages")
 def messages_view():
@@ -342,6 +368,117 @@ def gallery_for_property(property_id):
         app.logger.error(f"Error loading gallery for property {property_id}: {e}")
         flash(f"Error loading gallery: {e}", "danger")
         return redirect(url_for("galleries_overview"))
+    
+# Add these routes to your main.py after the existing property routes
+
+@app.route('/property/<int:property_id>/edit', methods=['GET', 'POST'])
+def property_edit_view(property_id):
+    """Edit property details."""
+    try:
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            flash(f"Property with ID {property_id} not found.", "warning")
+            return redirect(url_for("properties_list_view"))
+        
+        if request.method == 'POST':
+            # Update property with form data
+            property_obj.name = request.form.get('name', property_obj.name)
+            property_obj.address = request.form.get('address', property_obj.address)
+            
+            # HOA Information
+            property_obj.hoa_name = request.form.get('hoa_name') or None
+            property_obj.hoa_phone = request.form.get('hoa_phone') or None
+            property_obj.hoa_email = request.form.get('hoa_email') or None
+            property_obj.hoa_website = request.form.get('hoa_website') or None
+            
+            # Neighbor Information
+            property_obj.neighbor_name = request.form.get('neighbor_name') or None
+            property_obj.neighbor_phone = request.form.get('neighbor_phone') or None
+            property_obj.neighbor_email = request.form.get('neighbor_email') or None
+            property_obj.neighbor_notes = request.form.get('neighbor_notes') or None
+            
+            # Financial Information
+            year_purchased = request.form.get('year_purchased')
+            if year_purchased and year_purchased.isdigit():
+                property_obj.year_purchased = int(year_purchased)
+            
+            purchase_amount = request.form.get('purchase_amount')
+            if purchase_amount:
+                try:
+                    property_obj.purchase_amount = float(purchase_amount.replace(',', ''))
+                except ValueError:
+                    pass
+            
+            redfin_value = request.form.get('redfin_current_value')
+            if redfin_value:
+                try:
+                    property_obj.redfin_current_value = float(redfin_value.replace(',', ''))
+                except ValueError:
+                    pass
+            
+            monthly_rent = request.form.get('monthly_rent')
+            if monthly_rent:
+                try:
+                    property_obj.monthly_rent = float(monthly_rent.replace(',', ''))
+                except ValueError:
+                    pass
+            
+            property_taxes = request.form.get('property_taxes')
+            if property_taxes:
+                try:
+                    property_obj.property_taxes = float(property_taxes.replace(',', ''))
+                except ValueError:
+                    pass
+            
+            # Property Details
+            bedrooms = request.form.get('bedrooms')
+            if bedrooms and bedrooms.isdigit():
+                property_obj.bedrooms = int(bedrooms)
+            
+            bathrooms = request.form.get('bathrooms')
+            if bathrooms:
+                try:
+                    property_obj.bathrooms = float(bathrooms)
+                except ValueError:
+                    pass
+            
+            square_feet = request.form.get('square_feet')
+            if square_feet and square_feet.isdigit():
+                property_obj.square_feet = int(square_feet)
+            
+            property_obj.lot_size = request.form.get('lot_size') or None
+            
+            # Access Information
+            property_obj.lockbox_code = request.form.get('lockbox_code') or None
+            property_obj.garage_code = request.form.get('garage_code') or None
+            property_obj.wifi_network = request.form.get('wifi_network') or None
+            property_obj.wifi_password = request.form.get('wifi_password') or None
+            
+            # Notes
+            property_obj.notes = request.form.get('notes') or None
+            property_obj.maintenance_notes = request.form.get('maintenance_notes') or None
+            property_obj.tenant_notes = request.form.get('tenant_notes') or None
+            property_obj.access_notes = request.form.get('access_notes') or None
+            
+            # Update timestamp
+            property_obj.updated_at = datetime.now(timezone.utc)
+            
+            try:
+                db.session.commit()
+                flash(f"Property '{property_obj.name}' updated successfully!", "success")
+                return redirect(url_for('property_detail_view', property_id=property_id))
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"Error updating property {property_id}: {e}")
+                flash(f"Error updating property: {e}", "danger")
+        
+        return render_template('property_edit.html', property=property_obj)
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error in property_edit_view {property_id}: {e}")
+        flash(f"Error loading property edit page: {e}", "danger")
+        return redirect(url_for("properties_list_view"))
 
 @app.route("/ping")
 def ping_route():
