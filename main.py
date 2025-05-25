@@ -458,6 +458,23 @@ def properties_list_view():
     properties = Property.query.order_by(Property.name).all()
     return render_template('properties_list.html', properties=properties)
 
+@app.route('/property/<int:property_id>')
+def property_detail_view(property_id):
+    """Displays detailed information for a specific property."""
+    try:
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            flash(f"Property with ID {property_id} not found.", "warning")
+            return redirect(url_for("properties_list_view"))
+        
+        return render_template('property_detail.html', property=property_obj)
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error loading property {property_id}: {e}", exc_info=True)
+        flash(f"Error loading property details: {e}", "danger")
+        return redirect(url_for("properties_list_view"))
+
 # (The @app.route('/property/<int:property_id>') function should come after this)
 
 @app.route("/assign_property", methods=["POST"])
