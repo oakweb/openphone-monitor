@@ -439,15 +439,6 @@ def serve_media(filename):
         app.logger.error(f"Error serving media file {filename}: {e}")
         return "File not found", 404
 
-# Add environment variable setup for better configuration
-# Add this to your .env file:
-"""
-# Add these to your .env file:
-UPLOAD_FOLDER=/path/to/your/uploads
-FLASK_DEBUG=true
-DATABASE_URL=sqlite:///instance/messages.db
-FLASK_SECRET=your-secret-key-here
-"""
 
 
 
@@ -681,23 +672,7 @@ def assign_property():
         flash(f"Error: {e}", "danger")
         return redirect(url_for('index'))
 
-@app.route("/gallery/<int:property_id>")
-def gallery_for_property(property_id):
-    """Display gallery for specific property."""
-    try:
-        prop = db.session.get(Property, property_id)
-        if not prop:
-            flash("Property not found.", "warning")
-            return redirect(url_for("galleries_overview"))
-        
-        return render_template("gallery.html", 
-                             image_items=[], 
-                             property=prop, 
-                             gallery_title=f"Gallery for {prop.name}")
-    except Exception as e:
-        app.logger.error(f"Error loading gallery for property {property_id}: {e}")
-        flash(f"Error loading gallery: {e}", "danger")
-        return redirect(url_for("galleries_overview"))
+
 
 @app.route('/property/<int:property_id>/edit', methods=['GET', 'POST'])
 def property_edit_view(property_id):
