@@ -1,8 +1,9 @@
 # models.py
 # Revised Version with Tenant and NotificationHistory
 
+from sqlalchemy import Numeric
 from extensions import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # Association Table (If deciding later on Many-to-Many for Property<->Contact)
 # property_contacts = db.Table('property_contacts',
@@ -30,27 +31,76 @@ class Contact(db.Model):
         return f"<Contact {self.contact_name} ({self.phone_number})>"
 
 
-# Defines the 'properties' table
+# Defines the 'properties' table - ENHANCED VERSION
 class Property(db.Model):
     __tablename__ = "properties"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False, unique=True) # Address or Name
+    address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # --- NEW/REVISED FIELDS ---
-    hoa_name = db.Column(db.String(150), nullable=True)
-    hoa_contact_info = db.Column(db.Text, nullable=True) # Store phone/email/website etc.
+    
+    # Property management details
+    hoa_name = db.Column(db.String(200))
+    hoa_phone = db.Column(db.String(15))
+    hoa_email = db.Column(db.String(200))
+    hoa_website = db.Column(db.String(200))
+    hoa_contact_info = db.Column(db.Text, nullable=True) # Store additional phone/email/website etc.
+    
+    # Neighbor information
+    neighbor_name = db.Column(db.String(200))
+    neighbor_phone = db.Column(db.String(15))
+    neighbor_email = db.Column(db.String(200))
+    neighbor_notes = db.Column(db.Text)
+    
+    # Financial information
+    year_purchased = db.Column(db.Integer)
+    purchase_amount = db.Column(db.Numeric(12, 2))
+    redfin_current_value = db.Column(db.Numeric(12, 2))
+    monthly_rent = db.Column(db.Numeric(10, 2))
+    property_taxes = db.Column(db.Numeric(10, 2))
+    
+    # Property details
+    bedrooms = db.Column(db.Integer)
+    bathrooms = db.Column(db.Numeric(3, 1))  # Allows 2.5 baths
+    square_feet = db.Column(db.Integer)
+    lot_size = db.Column(db.String(50))
+    
+    # Management notes
+    notes = db.Column(db.Text)
+    maintenance_notes = db.Column(db.Text)
+    tenant_notes = db.Column(db.Text)
     access_notes = db.Column(db.Text, nullable=True) # Gate codes, alarm info brief, etc.
-    # Utility account numbers could go here if simple, or separate model later
-    # electric_account = db.Column(db.String(50), nullable=True)
-    # water_account = db.Column(db.String(50), nullable=True)
+    
+    # Key information
+    lockbox_code = db.Column(db.String(20))
+    garage_code = db.Column(db.String(20))
+    wifi_network = db.Column(db.String(100))
+    wifi_password = db.Column(db.String(100))
+    
+    # Metadata
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationship to Tenants (One Property -> Many Tenants) defined via Tenant.property backref
-
     # Relationship to Messages (defined via Message.property backref)
 
     def __repr__(self):
         return f"<Property {self.name}>"
+    
+    @property
+    def current_tenants(self):
+        """Get current tenants for this property"""
+        return self.tenants.filter_by(status='current').all()
+    
+    @property
+    def media_count(self):
+        """Count of messages with media for this property"""
+        return self.messages.filter(Message.local_media_paths.isnot(None)).count()
+    
+    @property
+    def recent_messages_count(self):
+        """Count of messages in last 30 days"""
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        return self.messages.filter(Message.timestamp >= thirty_days_ago).count()
 
 
 # --- NEW TENANT MODEL ---

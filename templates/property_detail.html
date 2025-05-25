@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Property Details: {{ prop.name }} | OpenPhone System</title>
+    <title>Property Details: {{ property.name }} | OpenPhone System</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         /* Consistent base styles */
         body { background-color: #121416; color: #fff; }
@@ -17,35 +18,135 @@
         .card-title { color: #6cb9d3; }
         .table th { color: #adb5bd; }
         .badge { font-size: 0.8rem; }
+        
+        /* Enhanced styles for property details */
+        .stat-card {
+            background: linear-gradient(135deg, #6cb9d3 0%, #3a8bab 100%);
+            border: none;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        .contact-section .fas {
+            color: #6cb9d3;
+            margin-right: 8px;
+        }
+        .access-code {
+            background-color: #495057;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #6cb9d3;
+        }
+        .financial-highlight {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .note-section {
+            background-color: #212529;
+            border-left: 3px solid #6cb9d3;
+            padding: 15px;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body class="d-flex flex-column min-vh-100">
 
-    {% include '_header.html' %} {# Make sure '_header.html' exists or change filename #}
+    {% include '_header.html' %}
 
     <main class="flex-grow-1 py-4">
         <div class="container">
-            <h1 class="text-center page-title">{{ prop.name }} - Details</h1>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h1 class="page-title">
+                    <i class="fas fa-home me-2"></i>{{ property.name }} - Details
+                </h1>
+                <div>
+                    <a href="{{ url_for('gallery_for_property', property_id=property.id) }}" class="btn btn-outline-info btn-sm me-2">
+                        <i class="fas fa-images me-1"></i>Gallery ({{ property.media_count or 0 }})
+                    </a>
+                    <a href="{{ url_for('properties_list_view') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Properties
+                    </a>
+                </div>
+            </div>
             <div class="tech-divider"></div>
 
-            <div class="card">
-                <div class="card-body">
-                    <h2 class="card-title h5">Property Information</h2>
-                    <dl class="row">
-                        <dt class="col-sm-3">Property Name:</dt>
-                        <dd class="col-sm-9">{{ prop.name }}</dd>
-
-                        <dt class="col-sm-3">Database ID:</dt>
-                        <dd class="col-sm-9">{{ prop.id }}</dd>
-
-                        </dl>
+            <!-- Quick Stats Row -->
+            <div class="row mb-4">
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card">
+                        <div class="card-body">
+                            <h3 class="mb-1">{{ property.current_tenants|length or 0 }}</h3>
+                            <small>Current Tenants</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card">
+                        <div class="card-body">
+                            <h3 class="mb-1">{{ property.recent_messages_count or 0 }}</h3>
+                            <small>Messages (30 days)</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card">
+                        <div class="card-body">
+                            <h3 class="mb-1">{{ property.media_count or 0 }}</h3>
+                            <small>Media Files</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card">
+                        <div class="card-body">
+                            <h3 class="mb-1 financial-highlight">${{ "{:,.0f}".format(property.monthly_rent or 0) }}</h3>
+                            <small>Monthly Rent</small>
+                        </div>
+                    </div>
                 </div>
             </div>
 
+            <!-- Basic Property Information -->
             <div class="card">
                 <div class="card-body">
-                    <h2 class="card-title h5">Associated Tenants</h2>
-                    {% if tenants %}
+                    <h2 class="card-title h5"><i class="fas fa-info-circle me-2"></i>Property Information</h2>
+                    <dl class="row">
+                        <dt class="col-sm-3">Property Name:</dt>
+                        <dd class="col-sm-9">{{ property.name }}</dd>
+
+                        {% if property.address %}
+                        <dt class="col-sm-3">Address:</dt>
+                        <dd class="col-sm-9">{{ property.address }}</dd>
+                        {% endif %}
+
+                        <dt class="col-sm-3">Database ID:</dt>
+                        <dd class="col-sm-9">{{ property.id }}</dd>
+
+                        {% if property.bedrooms or property.bathrooms or property.square_feet %}
+                        <dt class="col-sm-3">Size:</dt>
+                        <dd class="col-sm-9">
+                            {% if property.bedrooms %}{{ property.bedrooms }} bed{% endif %}
+                            {% if property.bathrooms %} / {{ property.bathrooms }} bath{% endif %}
+                            {% if property.square_feet %} / {{ "{:,}".format(property.square_feet) }} sq ft{% endif %}
+                        </dd>
+                        {% endif %}
+
+                        {% if property.lot_size %}
+                        <dt class="col-sm-3">Lot Size:</dt>
+                        <dd class="col-sm-9">{{ property.lot_size }}</dd>
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+
+            <!-- Current Tenants -->
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="card-title h5"><i class="fas fa-users me-2"></i>Current Tenants</h2>
+                    {% if property.current_tenants %}
                         <div class="table-responsive">
                             <table class="table table-dark table-striped table-hover mb-0">
                                 <thead>
@@ -57,19 +158,27 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for tenant in tenants %}
+                                    {% for tenant in property.current_tenants %}
                                     <tr>
                                         <td>{{ tenant.name or 'N/A' }}</td>
-                                        <td>{{ tenant.email or 'N/A' }}</td>
-                                        <td>{{ tenant.phone or 'N/A' }}</td>
                                         <td>
-                                            {% if tenant.status %}
+                                            {% if tenant.email %}
+                                                <a href="mailto:{{ tenant.email }}" class="text-info">{{ tenant.email }}</a>
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if tenant.phone %}
+                                                <a href="tel:{{ tenant.phone }}" class="text-info">{{ tenant.phone }}</a>
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td>
                                             <span class="badge bg-{{ 'success' if tenant.status == 'current' else 'secondary' }}">
                                                 {{ tenant.status | capitalize }}
                                             </span>
-                                            {% else %}
-                                            <span class="badge bg-dark">Unknown</span>
-                                            {% endif %}
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -77,14 +186,206 @@
                             </table>
                         </div>
                     {% else %}
-                        <p class="text-muted">No tenants currently associated with this property.</p>
+                        <p class="text-muted">No current tenants associated with this property.</p>
                     {% endif %}
                 </div>
             </div>
 
+            <div class="row">
+                <!-- Contact Information Column -->
+                <div class="col-lg-6">
+                    <!-- HOA Information -->
+                    <div class="card">
+                        <div class="card-body contact-section">
+                            <h2 class="card-title h5"><i class="fas fa-building me-2"></i>HOA Information</h2>
+                            {% if property.hoa_name or property.hoa_phone or property.hoa_email or property.hoa_website %}
+                                <dl class="row mb-0">
+                                    {% if property.hoa_name %}
+                                    <dt class="col-4">Name:</dt>
+                                    <dd class="col-8">{{ property.hoa_name }}</dd>
+                                    {% endif %}
+                                    {% if property.hoa_phone %}
+                                    <dt class="col-4">Phone:</dt>
+                                    <dd class="col-8"><a href="tel:{{ property.hoa_phone }}" class="text-info">{{ property.hoa_phone }}</a></dd>
+                                    {% endif %}
+                                    {% if property.hoa_email %}
+                                    <dt class="col-4">Email:</dt>
+                                    <dd class="col-8"><a href="mailto:{{ property.hoa_email }}" class="text-info">{{ property.hoa_email }}</a></dd>
+                                    {% endif %}
+                                    {% if property.hoa_website %}
+                                    <dt class="col-4">Website:</dt>
+                                    <dd class="col-8"><a href="{{ property.hoa_website }}" target="_blank" class="text-info">{{ property.hoa_website }}</a></dd>
+                                    {% endif %}
+                                </dl>
+                            {% else %}
+                                <p class="text-muted">No HOA information available.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Neighbor Information -->
+                    <div class="card">
+                        <div class="card-body contact-section">
+                            <h2 class="card-title h5"><i class="fas fa-user-friends me-2"></i>Neighbor Information</h2>
+                            {% if property.neighbor_name or property.neighbor_phone or property.neighbor_email %}
+                                <dl class="row mb-0">
+                                    {% if property.neighbor_name %}
+                                    <dt class="col-4">Name:</dt>
+                                    <dd class="col-8">{{ property.neighbor_name }}</dd>
+                                    {% endif %}
+                                    {% if property.neighbor_phone %}
+                                    <dt class="col-4">Phone:</dt>
+                                    <dd class="col-8"><a href="tel:{{ property.neighbor_phone }}" class="text-info">{{ property.neighbor_phone }}</a></dd>
+                                    {% endif %}
+                                    {% if property.neighbor_email %}
+                                    <dt class="col-4">Email:</dt>
+                                    <dd class="col-8"><a href="mailto:{{ property.neighbor_email }}" class="text-info">{{ property.neighbor_email }}</a></dd>
+                                    {% endif %}
+                                    {% if property.neighbor_notes %}
+                                    <dt class="col-4">Notes:</dt>
+                                    <dd class="col-8">{{ property.neighbor_notes }}</dd>
+                                    {% endif %}
+                                </dl>
+                            {% else %}
+                                <p class="text-muted">No neighbor information available.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Financial & Access Column -->
+                <div class="col-lg-6">
+                    <!-- Financial Information -->
+                    <div class="card">
+                        <div class="card-body">
+                            <h2 class="card-title h5"><i class="fas fa-dollar-sign me-2"></i>Financial Information</h2>
+                            {% if property.year_purchased or property.purchase_amount or property.redfin_current_value or property.monthly_rent or property.property_taxes %}
+                                <dl class="row mb-0">
+                                    {% if property.year_purchased %}
+                                    <dt class="col-5">Year Purchased:</dt>
+                                    <dd class="col-7">{{ property.year_purchased }}</dd>
+                                    {% endif %}
+                                    {% if property.purchase_amount %}
+                                    <dt class="col-5">Purchase Amount:</dt>
+                                    <dd class="col-7 financial-highlight">${{ "{:,.0f}".format(property.purchase_amount) }}</dd>
+                                    {% endif %}
+                                    {% if property.redfin_current_value %}
+                                    <dt class="col-5">Current Value:</dt>
+                                    <dd class="col-7 financial-highlight">${{ "{:,.0f}".format(property.redfin_current_value) }}</dd>
+                                    {% endif %}
+                                    {% if property.monthly_rent %}
+                                    <dt class="col-5">Monthly Rent:</dt>
+                                    <dd class="col-7 financial-highlight">${{ "{:,.0f}".format(property.monthly_rent) }}</dd>
+                                    {% endif %}
+                                    {% if property.property_taxes %}
+                                    <dt class="col-5">Property Taxes:</dt>
+                                    <dd class="col-7">${{ "{:,.0f}".format(property.property_taxes) }}</dd>
+                                    {% endif %}
+                                </dl>
+                            {% else %}
+                                <p class="text-muted">No financial information available.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Access Information -->
+                    <div class="card">
+                        <div class="card-body">
+                            <h2 class="card-title h5"><i class="fas fa-key me-2"></i>Access Information</h2>
+                            {% if property.lockbox_code or property.garage_code or property.wifi_network or property.wifi_password %}
+                                <dl class="row mb-0">
+                                    {% if property.lockbox_code %}
+                                    <dt class="col-5">Lockbox Code:</dt>
+                                    <dd class="col-7"><span class="access-code">{{ property.lockbox_code }}</span></dd>
+                                    {% endif %}
+                                    {% if property.garage_code %}
+                                    <dt class="col-5">Garage Code:</dt>
+                                    <dd class="col-7"><span class="access-code">{{ property.garage_code }}</span></dd>
+                                    {% endif %}
+                                    {% if property.wifi_network %}
+                                    <dt class="col-5">WiFi Network:</dt>
+                                    <dd class="col-7">{{ property.wifi_network }}</dd>
+                                    {% endif %}
+                                    {% if property.wifi_password %}
+                                    <dt class="col-5">WiFi Password:</dt>
+                                    <dd class="col-7"><span class="access-code">{{ property.wifi_password }}</span></dd>
+                                    {% endif %}
+                                </dl>
+                            {% else %}
+                                <p class="text-muted">No access information available.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notes Section -->
             <div class="card">
                 <div class="card-body">
-                    <h2 class="card-title h5">Recent Communication History (Targeting This Property)</h2>
+                    <h2 class="card-title h5"><i class="fas fa-sticky-note me-2"></i>Notes</h2>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="note-section">
+                                <h6><i class="fas fa-note-sticky me-2"></i>General Notes</h6>
+                                <p class="mb-0">{{ property.notes or "No general notes available." }}</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="note-section">
+                                <h6><i class="fas fa-tools me-2"></i>Maintenance Notes</h6>
+                                <p class="mb-0">{{ property.maintenance_notes or "No maintenance notes available." }}</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="note-section">
+                                <h6><i class="fas fa-user-check me-2"></i>Tenant Notes</h6>
+                                <p class="mb-0">{{ property.tenant_notes or "No tenant notes available." }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Messages -->
+            {% if recent_messages %}
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="card-title h5"><i class="fas fa-comments me-2"></i>Recent Messages</h2>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Contact</th>
+                                    <th>Message</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for message in recent_messages[:5] %}
+                                <tr>
+                                    <td>{{ message.contact.contact_name if message.contact else message.phone_number }}</td>
+                                    <td>{{ message.message[:100] }}{% if message.message|length > 100 %}...{% endif %}</td>
+                                    <td>{{ message.timestamp.strftime('%m/%d/%Y %H:%M') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if recent_messages|length > 5 %}
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('messages_view') }}?property_id={{ property.id }}" class="btn btn-outline-info btn-sm">
+                            View All Messages for This Property
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Communication History (keeping your existing section) -->
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="card-title h5"><i class="fas fa-bell me-2"></i>Recent Communication History</h2>
                      {% if history %}
                         <div class="table-responsive">
                             <table class="table table-dark table-striped table-hover mb-0">
@@ -94,7 +395,7 @@
                                         <th>Subject/Body Snippet</th>
                                         <th>Channels</th>
                                         <th>Status</th>
-                                        </tr>
+                                    </tr>
                                 </thead>
                                 <tbody>
                                     {% for item in history %}
@@ -102,7 +403,7 @@
                                         <td>{{ item.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
                                         <td>
                                             {% if item.subject %}<strong>{{ item.subject }}</strong><br>{% endif %}
-                                            {{ item.body | truncate(100, True) }} {# Show first 100 chars, add ellipsis #}
+                                            {{ item.body | truncate(100, True) }}
                                         </td>
                                         <td>{{ item.channels }}</td>
                                         <td>
@@ -125,12 +426,15 @@
             </div>
 
             <div class="text-center mt-4">
-                <a href="{{ url_for('properties_list_view') }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Properties Overview</a>
+                <a href="{{ url_for('properties_list_view') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Properties Overview
+                </a>
             </div>
 
-        </div> </main>
+        </div>
+    </main>
 
-    {% include '_footer.html' %} {# Make sure '_footer.html' exists or change filename #}
+    {% include '_footer.html' %}
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
 </body>
