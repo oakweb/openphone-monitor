@@ -102,6 +102,9 @@ app.config["FLASK_SECRET"] = os.getenv(
 app.secret_key = app.config["FLASK_SECRET"]
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
+# --- Initialize Extensions with App ---
+db.init_app(app)
+migrate.init_app(app, db)
 
 # --- Static and Upload Folder Setup ---
 app.static_folder = os.path.join(app.root_path, "static")  # Still needed for url_for
@@ -1422,8 +1425,7 @@ def import_contacts_command(filename):
 
 # --- End Custom Flask CLI Commands ---
 
-db.init_app(app)
-migrate.init_app(app, db)
+
 app.register_blueprint(webhook_bp)
 
 # --- Keep __main__ block ---
