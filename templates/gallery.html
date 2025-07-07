@@ -7,45 +7,207 @@
 
 {% block head_extra %}
   <style>
-    /* Styles reverted to original functional ones */
-    .gallery { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: flex-start; padding: 1rem 0; }
-    .image-wrapper { position: relative; width: 150px; height: 150px; overflow: hidden; border: 1px solid #444; border-radius: 4px; background-color: #212529; display: flex; align-items: center; justify-content: center; color: #ccc; }
-    .image-wrapper img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s ease-in-out; background-color: #555; /* Background for broken image */ }
-    .image-wrapper a:hover img { transform: scale(1.05); }
-    .image-wrapper .delete-form { position: absolute; top: 5px; right: 5px; z-index: 10; opacity: 0.8; transition: opacity 0.2s ease-in-out; }
-     .image-wrapper:hover .delete-form { opacity: 1; }
-    .delete-form button { padding: 0.2rem 0.4rem; font-size: 0.75rem; line-height: 1; }
-    .image-wrapper a { display: block; width: 100%; height: 100%; }
+    /* Enhanced styles for thumbnail functionality */
+    .gallery { 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 1rem; 
+      justify-content: flex-start; 
+      padding: 1rem 0; 
+    }
+    
+    .image-wrapper { 
+      position: relative; 
+      width: 200px; 
+      min-height: 200px;
+      overflow: hidden; 
+      border: 1px solid #444; 
+      border-radius: 8px; 
+      background-color: #212529; 
+      display: flex; 
+      flex-direction: column;
+      color: #ccc; 
+      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+    
+    .image-wrapper:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(58, 139, 171, 0.3);
+    }
+    
+    .image-container {
+      position: relative;
+      width: 100%;
+      height: 150px;
+      overflow: hidden;
+    }
+    
+    .image-container img { 
+      width: 100%; 
+      height: 100%; 
+      object-fit: cover; 
+      display: block; 
+      transition: transform 0.2s ease-in-out; 
+      background-color: #555;
+    }
+    
+    .image-container a:hover img { 
+      transform: scale(1.05); 
+    }
+    
+    .image-info {
+      padding: 0.75rem;
+      background: #2c3035;
+      border-top: 1px solid #444;
+      flex-grow: 1;
+    }
+    
+    .image-meta {
+      font-size: 0.8rem;
+      color: #adb5bd;
+      margin-bottom: 0.5rem;
+    }
+    
+    .image-actions {
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+    
+    .image-actions .btn {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      line-height: 1.2;
+    }
+    
+    .thumbnail-indicator {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(252, 193, 7, 0.95);
+      color: #000;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: bold;
+      z-index: 10;
+    }
+    
+    .no-image {
+      width: 100%;
+      height: 150px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a1d20;
+      color: #6c757d;
+      font-size: 2rem;
+    }
+
+    /* Notification styles */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      max-width: 400px;
+    }
   </style>
 {% endblock %}
 
 {% block content %}
-  <h2 class="mb-3"> {# Added margin-bottom #}
-    {# Use the gallery_title variable passed from Python #}
-    {{ gallery_title | default('Image Gallery') }}
-  </h2>
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+      {# Use the gallery_title variable passed from Python #}
+      {{ gallery_title | default('Image Gallery') }}
+    </h2>
+    
+    {% if property %}
+      <div class="d-flex gap-2">
+        {% if hasattr(property, 'thumbnail_path') and property.thumbnail_path %}
+          <button class="btn btn-outline-warning btn-sm" onclick="removePropertyThumbnail({{ property.id }})">
+            <i class="fas fa-times"></i> Remove Thumbnail
+          </button>
+        {% endif %}
+        <span class="badge bg-info">{{ image_items|length }} images</span>
+      </div>
+    {% endif %}
+  </div>
 
   {% if image_items %}
     <div class="gallery">
       {% for img_item in image_items %} {# img_item is {'path': 'uploads/...', 'message': msg, 'contact': contact, 'timestamp': timestamp} #}
         <div class="image-wrapper">
-          {# Extract just the filename from the path - remove 'uploads/' prefix #}
-          {% set filename = img_item.path.replace('uploads/', '') %}
+          <div class="image-container">
+            {# Thumbnail indicator #}
+            {% if property and hasattr(property, 'thumbnail_path') and property.thumbnail_path == img_item.path %}
+              <div class="thumbnail-indicator">
+                <i class="fas fa-star"></i> Thumbnail
+              </div>
+            {% endif %}
+            
+            {# Extract just the filename from the path - remove 'uploads/' prefix #}
+            {% set filename = img_item.path.replace('uploads/', '') %}
+            
+            {# Use the /media/ route to serve images #}
+            <a href="{{ url_for('serve_media', filename=filename) }}" target="_blank" title="View full image (from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }})">
+              <img src="{{ url_for('serve_media', filename=filename) }}"
+                   alt="Gallery image from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }}"
+                   onerror="this.style.display='none'; this.parentElement.parentElement.innerHTML='<div class=\"no-image\"><i class=\"fas fa-image-slash\"></i></div>'">
+            </a>
+          </div>
           
-          {# Use the /media/ route to serve images #}
-          <a href="{{ url_for('serve_media', filename=filename) }}" target="_blank" title="View full image (from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }})">
-            <img src="{{ url_for('serve_media', filename=filename) }}"
-                 alt="Gallery image from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }}"
-                 onerror="this.style.display='none'"> {# Basic onerror handling #}
-          </a>
-
-          {# --- Delete form remains commented out --- #}
-          {# ... (delete form commented out as before) ... #}
+          <div class="image-info">
+            <div class="image-meta">
+              <div><i class="fas fa-calendar"></i> {{ img_item.timestamp.strftime('%Y-%m-%d %H:%M') }}</div>
+              <div><i class="fas fa-user"></i> {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }}</div>
+              {% if img_item.message and img_item.message.property %}
+                <div><i class="fas fa-home"></i> {{ img_item.message.property.name }}</div>
+              {% endif %}
+            </div>
+            
+            {% if property %}
+              <div class="image-actions">
+                {% if hasattr(property, 'thumbnail_path') and property.thumbnail_path == img_item.path %}
+                  <button class="btn btn-warning btn-sm" 
+                          data-property-id="{{ property.id }}"
+                          data-image-path="{{ img_item.path }}"
+                          disabled>
+                    <i class="fas fa-star"></i> Current
+                  </button>
+                {% else %}
+                  <button class="btn btn-outline-warning btn-sm" 
+                          data-property-id="{{ property.id }}"
+                          data-image-path="{{ img_item.path }}"
+                          onclick="setPropertyThumbnail({{ property.id }}, '{{ img_item.path }}')">
+                    <i class="fas fa-image"></i> Set Thumb
+                  </button>
+                {% endif %}
+                <a href="{{ url_for('serve_media', filename=filename) }}" 
+                   class="btn btn-outline-primary btn-sm" 
+                   target="_blank">
+                  <i class="fas fa-external-link-alt"></i> View
+                </a>
+              </div>
+            {% else %}
+              <div class="image-actions">
+                <a href="{{ url_for('serve_media', filename=filename) }}" 
+                   class="btn btn-outline-primary btn-sm" 
+                   target="_blank">
+                  <i class="fas fa-external-link-alt"></i> View Full
+                </a>
+              </div>
+            {% endif %}
+          </div>
         </div>
       {% endfor %}
     </div>
   {% else %}
-    <p class="text-muted">No images found for this gallery.</p> {# Added text-muted class #}
+    <div class="alert alert-info text-center">
+      <i class="fas fa-images fa-2x mb-3"></i>
+      <h4>No Images Found</h4>
+      <p class="text-muted mb-0">No images found for this gallery.</p>
+    </div>
     {% if error %}
        <div class="alert alert-warning" role="alert">
          Error loading gallery: {{ error }}
@@ -53,16 +215,179 @@
     {% endif %}
   {% endif %}
 
-  {# Optional: Link back #}
+  {# Navigation links #}
   {% if property %}
-     <div class="mt-4">
-         <a href="{{ url_for('property_detail_view', property_id=property.id) }}" class="btn btn-outline-secondary btn-sm me-2">&laquo; Back to Property Details</a>
-         <a href="{{ url_for('galleries_overview') }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Galleries Overview</a>
+     <div class="mt-4 d-flex gap-2 flex-wrap">
+         <a href="{{ url_for('property_detail_view', property_id=property.id) }}" class="btn btn-outline-secondary btn-sm">
+           <i class="fas fa-arrow-left"></i> Back to Property Details
+         </a>
+         <a href="{{ url_for('galleries_overview') }}" class="btn btn-outline-secondary btn-sm">
+           <i class="fas fa-th"></i> All Galleries
+         </a>
+         <a href="{{ url_for('messages_view', property_id=property.id) }}" class="btn btn-outline-info btn-sm">
+           <i class="fas fa-comments"></i> Property Messages
+         </a>
      </div>
   {% else %}
       <div class="mt-4">
-          <a href="{{ url_for('galleries_overview') }}" class="btn btn-outline-secondary btn-sm">&laquo; Back to Galleries Overview</a>
+          <a href="{{ url_for('galleries_overview') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Back to Galleries Overview
+          </a>
       </div>
   {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setPropertyThumbnail(propertyId, imagePath) {
+    if (!confirm('Set this image as the property thumbnail?')) {
+        return;
+    }
+    
+    console.log(`Setting thumbnail for property ${propertyId}: ${imagePath}`);
+    
+    fetch(`/property/${propertyId}/set-thumbnail`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            thumbnail_path: imagePath
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Thumbnail response:', data);
+        if (data.success) {
+            showNotification('Thumbnail set successfully!', 'success');
+            
+            // Update UI - remove current thumbnail indicators
+            document.querySelectorAll(`[data-property-id="${propertyId}"]`).forEach(btn => {
+                if (btn.innerHTML.includes('Current')) {
+                    btn.innerHTML = '<i class="fas fa-image"></i> Set Thumb';
+                    btn.classList.remove('btn-warning');
+                    btn.classList.add('btn-outline-warning');
+                    btn.disabled = false;
+                    btn.onclick = function() { setPropertyThumbnail(propertyId, btn.getAttribute('data-image-path')); };
+                }
+            });
+            
+            // Update the current button
+            const currentBtn = document.querySelector(`[data-image-path="${imagePath}"]`);
+            if (currentBtn) {
+                currentBtn.innerHTML = '<i class="fas fa-star"></i> Current';
+                currentBtn.classList.remove('btn-outline-warning');
+                currentBtn.classList.add('btn-warning');
+                currentBtn.disabled = true;
+                currentBtn.onclick = null;
+            }
+            
+            // Remove existing thumbnail indicators
+            document.querySelectorAll('.thumbnail-indicator').forEach(indicator => {
+                indicator.remove();
+            });
+            
+            // Add thumbnail indicator to current image
+            const imageContainer = currentBtn.closest('.image-wrapper').querySelector('.image-container');
+            if (imageContainer && !imageContainer.querySelector('.thumbnail-indicator')) {
+                const indicator = document.createElement('div');
+                indicator.className = 'thumbnail-indicator';
+                indicator.innerHTML = '<i class="fas fa-star"></i> Thumbnail';
+                imageContainer.appendChild(indicator);
+            }
+            
+        } else {
+            showNotification('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error setting thumbnail: ' + error.message, 'error');
+    });
+}
+
+function removePropertyThumbnail(propertyId) {
+    if (!confirm('Remove the current property thumbnail?')) {
+        return;
+    }
+    
+    fetch(`/property/${propertyId}/remove-thumbnail`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showNotification('Thumbnail removed successfully!', 'success');
+            
+            // Update all buttons for this property
+            document.querySelectorAll(`[data-property-id="${propertyId}"]`).forEach(btn => {
+                btn.innerHTML = '<i class="fas fa-image"></i> Set Thumb';
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-outline-warning');
+                btn.disabled = false;
+                btn.onclick = function() { setPropertyThumbnail(propertyId, btn.getAttribute('data-image-path')); };
+            });
+            
+            // Remove thumbnail indicators
+            document.querySelectorAll('.thumbnail-indicator').forEach(indicator => {
+                indicator.remove();
+            });
+            
+            // Reload page to update header
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+            
+        } else {
+            showNotification('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error removing thumbnail: ' + error.message, 'error');
+    });
+}
+
+function showNotification(message, type) {
+    // Remove existing notifications
+    const existingNotifications = document.querySelectorAll('.notification');
+    existingNotifications.forEach(n => n.remove());
+
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show notification`;
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 3000);
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Gallery page loaded');
+});
+</script>
 {% endblock %}

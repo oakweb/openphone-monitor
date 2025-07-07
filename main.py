@@ -1617,6 +1617,152 @@ def debug_mismatch():
 
 # Add this route to re-download from Google URLs
 
+# Add this to your main.py after the existing routes
+
+@app.route("/property/<int:property_id>/set-thumbnail", methods=["POST"])
+def set_property_thumbnail(property_id):
+    """Set a property thumbnail from a gallery image"""
+    try:
+        data = request.get_json()
+        thumbnail_path = data.get('thumbnail_path')
+        
+        if not thumbnail_path:
+            return jsonify({"error": "No thumbnail path provided"}), 400
+        
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            return jsonify({"error": "Property not found"}), 404
+        
+        # Add thumbnail_path column if it doesn't exist (for migration)
+        try:
+            # Check if the column exists
+            inspector = db.inspect(db.engine)
+            columns = [column['name'] for column in inspector.get_columns('properties')]
+            if 'thumbnail_path' not in columns:
+                # Add the column
+                db.session.execute(text("ALTER TABLE properties ADD COLUMN thumbnail_path TEXT"))
+                db.session.commit()
+                app.logger.info("Added thumbnail_path column to properties table")
+        except Exception as e:
+            app.logger.warning(f"Could not add thumbnail_path column: {e}")
+        
+        # Update the property thumbnail
+        property_obj.thumbnail_path = thumbnail_path
+        db.session.commit()
+        
+        app.logger.info(f"Set thumbnail for property {property_obj.name}: {thumbnail_path}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Thumbnail set for {property_obj.name}",
+            "thumbnail_path": thumbnail_path
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error setting property thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/property/<int:property_id>/remove-thumbnail", methods=["POST"])
+def remove_property_thumbnail(property_id):
+    """Remove a property thumbnail"""
+    try:
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            return jsonify({"error": "Property not found"}), 404
+        
+        # Remove the thumbnail
+        old_thumbnail = property_obj.thumbnail_path
+        property_obj.thumbnail_path = None
+        db.session.commit()
+        
+        app.logger.info(f"Removed thumbnail for property {property_obj.name}: {old_thumbnail}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Thumbnail removed from {property_obj.name}"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error removing property thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# Add this function to the existing galleries_overview route to include thumbnails
+# Replace your existing galleries_overview function with this updated version:
+
+@app.route("/galleries")
+def galleries_overview():
+    """Display galleries overview with thumbnails."""
+    try:
+        # Get properties that have media
+        property_ids_with_media = (
+            db.session.query(Message.property_id)
+            .filter(
+                Message.property_id.isnot(None), 
+                Message.local_media_paths.isnot(None)
+            )
+            .distinct()
+            .all()
+        )
+        prop_ids = [pid for (pid,) in property_ids_with_media]
+        
+        properties_with_galleries = []
+        if prop_ids:
+            properties_with_galleries = (
+                Property.query.filter(Property.id.in_(prop_ids))
+                .order_by(Property.name)
+                .all()
+            )
+        
+        # Get sample images for properties without thumbnails
+        for prop in properties_with_galleries:
+            if not hasattr(prop, 'thumbnail_path') or not prop.thumbnail_path:
+                # Get the first available image for this property
+                sample_message = (
+                    Message.query.filter(
+                        Message.property_id == prop.id,
+                        Message.local_media_paths.isnot(None),
+                        Message.local_media_paths != '',
+                        Message.local_media_paths != '[]'
+                    )
+                    .order_by(Message.timestamp.desc())
+                    .first()
+                )
+                
+                if sample_message and sample_message.local_media_paths:
+                    try:
+                        import json
+                        if sample_message.local_media_paths.startswith('['):
+                            media_paths = json.loads(sample_message.local_media_paths)
+                        else:
+                            media_paths = [sample_message.local_media_paths]
+                        
+                        if media_paths and media_paths[0]:
+                            prop.sample_image = media_paths[0]
+                    except:
+                        prop.sample_image = None
+                else:
+                    prop.sample_image = None
+            else:
+                prop.sample_image = prop.thumbnail_path
+        
+        # Count unsorted media
+        unsorted_count = db.session.query(func.count(Message.id)).filter(
+            Message.property_id.is_(None), 
+            Message.local_media_paths.isnot(None)
+        ).scalar() or 0
+        
+        return render_template("galleries_overview.html",
+                             gallery_summaries=properties_with_galleries,
+                             unsorted_count=unsorted_count)
+    except Exception as e:
+        app.logger.error(f"Error loading galleries: {e}")
+        flash(f"Error loading galleries: {e}", "danger")
+        return redirect(url_for('index'))
+
 @app.route("/admin/redownload-from-google", methods=["GET", "POST"])
 def redownload_from_google():
     """Re-download images from Google Storage URLs"""
