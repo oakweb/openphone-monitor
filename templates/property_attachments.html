@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Attachments - {{ property.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Attachments for {{ property.name }}</h1>
+            
+            <!-- Navigation -->
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('properties_list_view') }}">Properties</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('property_detail_view', property_id=property.id) }}">{{ property.name }}</a></li>
+                    <li class="breadcrumb-item active">Attachments</li>
+                </ol>
+            </nav>
+
+            <!-- Upload New File Form -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Upload New Attachment</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('property_attachments', property_id=property.id) }}" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="upload">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="category">Category</label>
+                                    <select class="form-control" id="category" name="category" required>
+                                        {% for cat in categories %}
+                                        <option value="{{ cat }}">{{ cat }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="file">Select File</label>
+                                    <input type="file" class="form-control-file" id="file" name="file" required>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="description">Description (Optional)</label>
+                                    <input type="text" class="form-control" id="description" name="description" 
+                                           placeholder="Brief description of the file">
+                                </div>
+                            </div>
+                            <div class="col-md-1">
+                                <div class="form-group">
+                                    <label>&nbsp;</label>
+                                    <button type="submit" class="btn btn-primary btn-block">Upload</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Display Existing Attachments -->
+            {% if attachments_by_category %}
+                {% for category, attachments in attachments_by_category.items() %}
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">{{ category }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Description</th>
+                                        <th>Size</th>
+                                        <th>Type</th>
+                                        <th>Uploaded</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for attachment in attachments %}
+                                    <tr>
+                                        <td>
+                                            <i class="fas fa-file"></i>
+                                            {{ attachment.original_filename }}
+                                        </td>
+                                        <td>{{ attachment.description or '-' }}</td>
+                                        <td>
+                                            {% if attachment.file_size %}
+                                                {% if attachment.file_size < 1024 %}
+                                                    {{ attachment.file_size }} B
+                                                {% elif attachment.file_size < 1048576 %}
+                                                    {{ "%.1f"|format(attachment.file_size / 1024) }} KB
+                                                {% else %}
+                                                    {{ "%.1f"|format(attachment.file_size / 1048576) }} MB
+                                                {% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ attachment.file_type or 'Unknown' }}</td>
+                                        <td>{{ attachment.uploaded_at.strftime('%m/%d/%Y') }}</td>
+                                        <td>
+                                            <a href="{{ url_for('download_attachment', property_id=property.id, attachment_id=attachment.id) }}" 
+                                               class="btn btn-sm btn-info">
+                                                <i class="fas fa-download"></i> Download
+                                            </a>
+                                            <form method="POST" action="{{ url_for('property_attachments', property_id=property.id) }}" 
+                                                  style="display: inline;" onsubmit="return confirm('Delete this attachment?');">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="attachment_id" value="{{ attachment.id }}">
+                                                <button type="submit" class="btn btn-sm btn-danger">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-info">
+                    No attachments have been uploaded yet. Use the form above to upload documents related to this property.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Contacts - {{ property.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Contacts for {{ property.name }}</h1>
+            
+            <!-- Navigation -->
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('properties_list_view') }}">Properties</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('property_detail_view', property_id=property.id) }}">{{ property.name }}</a></li>
+                    <li class="breadcrumb-item active">Contacts</li>
+                </ol>
+            </nav>
+
+            <!-- Add New Contact Form -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Add New Contact</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('property_contacts', property_id=property.id) }}">
+                        <input type="hidden" name="action" value="add">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="contact_type">Contact Type</label>
+                                    <select class="form-control" id="contact_type" name="contact_type" required>
+                                        {% for type in contact_types %}
+                                        <option value="{{ type }}">{{ type }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="name">Name</label>
+                                    <input type="text" class="form-control" id="name" name="name" required>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label for="phone">Phone</label>
+                                    <input type="tel" class="form-control" id="phone" name="phone">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="email">Email</label>
+                                    <input type="email" class="form-control" id="email" name="email">
+                                </div>
+                            </div>
+                            <div class="col-md-1">
+                                <div class="form-group">
+                                    <label>&nbsp;</label>
+                                    <button type="submit" class="btn btn-primary btn-block">Add</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="company">Company/Organization</label>
+                                    <input type="text" class="form-control" id="company" name="company">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="role">Role/Title</label>
+                                    <input type="text" class="form-control" id="role" name="role">
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <div class="form-group">
+                                    <label for="notes">Notes</label>
+                                    <input type="text" class="form-control" id="notes" name="notes">
+                                </div>
+                            </div>
+                            <div class="col-md-1">
+                                <div class="form-group">
+                                    <label for="is_primary">Primary?</label>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="is_primary" name="is_primary">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Display Existing Contacts -->
+            {% if contacts_by_type %}
+                {% for contact_type, contacts in contacts_by_type.items() %}
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">{{ contact_type }} Contacts</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Company</th>
+                                        <th>Role</th>
+                                        <th>Phone</th>
+                                        <th>Email</th>
+                                        <th>Notes</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for contact in contacts %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ contact.name }}</strong>
+                                            {% if contact.is_primary %}
+                                            <span class="badge badge-primary">Primary</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ contact.company or '-' }}</td>
+                                        <td>{{ contact.role or '-' }}</td>
+                                        <td>
+                                            {% if contact.phone %}
+                                            <a href="tel:{{ contact.phone }}">{{ contact.phone }}</a>
+                                            {% else %}
+                                            -
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if contact.email %}
+                                            <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+                                            {% else %}
+                                            -
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ contact.notes or '-' }}</td>
+                                        <td>
+                                            <form method="POST" action="{{ url_for('property_contacts', property_id=property.id) }}" 
+                                                  style="display: inline;" onsubmit="return confirm('Delete this contact?');">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="contact_id" value="{{ contact.id }}">
+                                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-info">
+                    No contacts have been added yet. Use the form above to add important contacts for this property.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

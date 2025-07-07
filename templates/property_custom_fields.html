@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Custom Fields - {{ property.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Custom Fields for {{ property.name }}</h1>
+            
+            <!-- Navigation -->
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('properties_list_view') }}">Properties</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('property_detail_view', property_id=property.id) }}">{{ property.name }}</a></li>
+                    <li class="breadcrumb-item active">Custom Fields</li>
+                </ol>
+            </nav>
+
+            <!-- Add New Field Form -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Add New Custom Field</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('property_custom_fields', property_id=property.id) }}">
+                        <input type="hidden" name="action" value="add">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="category">Category</label>
+                                    <select class="form-control" id="category" name="category" required>
+                                        {% for cat in categories %}
+                                        <option value="{{ cat }}">{{ cat }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="field_name">Field Name</label>
+                                    <input type="text" class="form-control" id="field_name" name="field_name" 
+                                           placeholder="e.g., Account Number" required>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="field_value">Field Value</label>
+                                    <input type="text" class="form-control" id="field_value" name="field_value" 
+                                           placeholder="Enter value" required>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label for="field_type">Type</label>
+                                    <select class="form-control" id="field_type" name="field_type">
+                                        <option value="text">Text</option>
+                                        <option value="number">Number</option>
+                                        <option value="date">Date</option>
+                                        <option value="url">URL</option>
+                                        <option value="phone">Phone</option>
+                                        <option value="email">Email</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-1">
+                                <div class="form-group">
+                                    <label>&nbsp;</label>
+                                    <button type="submit" class="btn btn-primary btn-block">Add</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Display Existing Fields -->
+            {% if fields_by_category %}
+                {% for category, fields in fields_by_category.items() %}
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">{{ category }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th width="30%">Field Name</th>
+                                    <th width="40%">Value</th>
+                                    <th width="10%">Type</th>
+                                    <th width="10%">Updated</th>
+                                    <th width="10%">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for field in fields %}
+                                <tr>
+                                    <td><strong>{{ field.field_name }}</strong></td>
+                                    <td>
+                                        {% if field.field_type == 'url' %}
+                                            <a href="{{ field.field_value }}" target="_blank">{{ field.field_value }}</a>
+                                        {% elif field.field_type == 'email' %}
+                                            <a href="mailto:{{ field.field_value }}">{{ field.field_value }}</a>
+                                        {% elif field.field_type == 'phone' %}
+                                            <a href="tel:{{ field.field_value }}">{{ field.field_value }}</a>
+                                        {% else %}
+                                            {{ field.field_value }}
+                                        {% endif %}
+                                    </td>
+                                    <td><span class="badge badge-secondary">{{ field.field_type }}</span></td>
+                                    <td>{{ field.updated_at.strftime('%m/%d/%Y') }}</td>
+                                    <td>
+                                        <form method="POST" action="{{ url_for('property_custom_fields', property_id=property.id) }}" 
+                                              style="display: inline;" onsubmit="return confirm('Delete this field?');">
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="field_id" value="{{ field.id }}">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-info">
+                    No custom fields have been added yet. Use the form above to add custom information about this property.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

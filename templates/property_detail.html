@@ -50,6 +50,34 @@
             padding: 15px;
             margin: 10px 0;
         }
+        
+        /* New styles for management section */
+        .management-card {
+            background-color: #1a1d20;
+            border: 2px solid #495057;
+            transition: all 0.3s ease;
+        }
+        .management-card:hover {
+            border-color: #6cb9d3;
+            transform: translateY(-2px);
+        }
+        .management-btn {
+            width: 100%;
+            padding: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border: none;
+            transition: all 0.3s ease;
+        }
+        .management-btn i {
+            font-size: 1.3rem;
+            margin-right: 8px;
+        }
+        .management-description {
+            font-size: 0.85rem;
+            color: #adb5bd;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body class="d-flex flex-column min-vh-100">
@@ -104,6 +132,64 @@
                         <div class="card-body">
                             <h3 class="mb-1 financial-highlight">${{ "{:,.0f}".format(property.monthly_rent or 0) }}</h3>
                             <small>Monthly Rent</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NEW: Property Management Section -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h2 class="card-title h5 mb-4"><i class="fas fa-cogs me-2"></i>Property Management</h2>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <div class="management-card card h-100">
+                                <div class="card-body text-center">
+                                    <a href="{{ url_for('property_custom_fields', property_id=property.id) }}" class="btn btn-primary management-btn">
+                                        <i class="fas fa-list"></i> Custom Fields
+                                        {% if custom_fields_count %}
+                                        <span class="badge bg-light text-dark ms-2">{{ custom_fields_count }}</span>
+                                        {% endif %}
+                                    </a>
+                                    <p class="management-description mb-0">Add flexible information like HOA account numbers, access codes, etc.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="management-card card h-100">
+                                <div class="card-body text-center">
+                                    <a href="{{ url_for('property_contacts', property_id=property.id) }}" class="btn btn-info management-btn">
+                                        <i class="fas fa-address-book"></i> Contacts
+                                        {% if contacts_count %}
+                                        <span class="badge bg-light text-dark ms-2">{{ contacts_count }}</span>
+                                        {% endif %}
+                                    </a>
+                                    <p class="management-description mb-0">Manage HOA contacts, neighbors, vendors, and emergency contacts.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="management-card card h-100">
+                                <div class="card-body text-center">
+                                    <a href="{{ url_for('property_attachments', property_id=property.id) }}" class="btn btn-success management-btn">
+                                        <i class="fas fa-paperclip"></i> Attachments
+                                        {% if attachments_count %}
+                                        <span class="badge bg-light text-dark ms-2">{{ attachments_count }}</span>
+                                        {% endif %}
+                                    </a>
+                                    <p class="management-description mb-0">Upload and manage documents, photos, and files for this property.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="management-card card h-100">
+                                <div class="card-body text-center">
+                                    <a href="{{ url_for('property_edit_view', property_id=property.id) }}" class="btn btn-warning management-btn">
+                                        <i class="fas fa-edit"></i> Edit Property
+                                    </a>
+                                    <p class="management-description mb-0">Edit basic property information and details.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

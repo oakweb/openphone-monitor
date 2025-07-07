@@ -1,17 +1,18 @@
 import os
 import logging
-from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
+from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, send_file
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from sqlalchemy import text, func, select
 from sqlalchemy.orm import joinedload, aliased
+from werkzeug.utils import secure_filename
 
 load_dotenv()
 
 # Import local modules
 from extensions import db
-from models import Contact, Message, Property, Tenant, NotificationHistory
+from models import Contact, Message, Property, Tenant, NotificationHistory, PropertyCustomField, PropertyAttachment, PropertyContact
 from webhook_route import webhook_bp
 
 app = Flask(__name__)
@@ -31,6 +32,14 @@ app.config["FLASK_SECRET"] = os.getenv("FLASK_SECRET", "dev_secret_key")
 app.secret_key = app.config["FLASK_SECRET"]
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
+
+# Configure upload folder for media files
+UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join(app.instance_path, "uploads"))
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+# Ensure upload directory exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.logger.info(f"✅ Upload folder configured: {UPLOAD_FOLDER}")
 
 # Initialize Extensions
 db.init_app(app)
@@ -258,9 +267,21 @@ def property_detail_view(property_id):
             .all()
         )
         
+        # Get custom fields count
+        custom_fields_count = PropertyCustomField.query.filter_by(property_id=property_id).count()
+        
+        # Get attachments count
+        attachments_count = PropertyAttachment.query.filter_by(property_id=property_id).count()
+        
+        # Get contacts count
+        contacts_count = PropertyContact.query.filter_by(property_id=property_id).count()
+        
         return render_template('property_detail.html', 
                              property=property_obj,
-                             recent_messages=recent_messages)
+                             recent_messages=recent_messages,
+                             custom_fields_count=custom_fields_count,
+                             attachments_count=attachments_count,
+                             contacts_count=contacts_count)
         
     except Exception as e:
         db.session.rollback()
@@ -365,18 +386,6 @@ def unsorted_gallery():
         flash(f"Error loading unsorted gallery: {e}", "danger")
         return redirect(url_for("galleries_overview"))
 
-# Add this configuration at the top of your app setup
-# (Add this after your existing app.config settings)
-
-# Configure upload folder for media files
-UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join(app.instance_path, "uploads"))
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
-# Ensure upload directory exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.logger.info(f"✅ Upload folder configured: {UPLOAD_FOLDER}")
-
-# Update your gallery_for_property route to actually load media
 @app.route("/gallery/<int:property_id>")
 def gallery_for_property(property_id):
     """Display gallery for specific property."""
@@ -439,9 +448,6 @@ def serve_media(filename):
         app.logger.error(f"Error serving media file {filename}: {e}")
         return "File not found", 404
 
-
-
-
 @app.route("/ask", methods=["GET", "POST"])
 def ask_view():
     """Display Ask AI page."""
@@ -452,7 +458,6 @@ def ask_view():
         flash(f"Error loading ask page: {e}", "danger")
         return redirect(url_for('index'))
 
-# FIXED: Corrected notifications_view function with proper try/except structure
 @app.route("/notifications", methods=["GET", "POST"])
 def notifications_view():
     """Displays notification form and history, handles sending."""
@@ -649,6 +654,256 @@ def notifications_view():
                          history=history, 
                          error=error_message)
 
+# NEW ROUTES FOR PROPERTY CUSTOM FIELDS, CONTACTS, AND ATTACHMENTS
+
+@app.route('/property/<int:property_id>/custom-fields', methods=['GET', 'POST'])
+def property_custom_fields(property_id):
+    """Manage custom fields for a property"""
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        flash("Property not found.", "warning")
+        return redirect(url_for("properties_list_view"))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add':
+            category = request.form.get('category', 'General')
+            field_name = request.form.get('field_name')
+            field_value = request.form.get('field_value')
+            field_type = request.form.get('field_type', 'text')
+            
+            if field_name and field_value:
+                try:
+                    # Check if field already exists
+                    existing = PropertyCustomField.query.filter_by(
+                        property_id=property_id,
+                        category=category,
+                        field_name=field_name
+                    ).first()
+                    
+                    if existing:
+                        existing.field_value = field_value
+                        existing.field_type = field_type
+                        existing.updated_at = datetime.now(timezone.utc)
+                    else:
+                        new_field = PropertyCustomField(
+                            property_id=property_id,
+                            category=category,
+                            field_name=field_name,
+                            field_value=field_value,
+                            field_type=field_type
+                        )
+                        db.session.add(new_field)
+                    
+                    db.session.commit()
+                    flash(f"Custom field '{field_name}' saved successfully!", "success")
+                except Exception as e:
+                    db.session.rollback()
+                    flash(f"Error saving custom field: {e}", "danger")
+            else:
+                flash("Field name and value are required.", "warning")
+        
+        elif action == 'delete':
+            field_id = request.form.get('field_id')
+            if field_id:
+                field = db.session.get(PropertyCustomField, field_id)
+                if field and field.property_id == property_id:
+                    db.session.delete(field)
+                    db.session.commit()
+                    flash("Custom field deleted.", "success")
+        
+        return redirect(url_for('property_custom_fields', property_id=property_id))
+    
+    # GET request - load custom fields grouped by category
+    custom_fields = PropertyCustomField.query.filter_by(property_id=property_id).order_by(
+        PropertyCustomField.category, PropertyCustomField.field_name
+    ).all()
+    
+    # Group fields by category
+    fields_by_category = {}
+    for field in custom_fields:
+        if field.category not in fields_by_category:
+            fields_by_category[field.category] = []
+        fields_by_category[field.category].append(field)
+    
+    # Predefined categories for the dropdown
+    categories = ['HOA', 'Tenant Info', 'Access Codes', 'Neighbors', 'Utilities', 'Maintenance', 'Financial', 'General']
+    
+    return render_template('property_custom_fields.html', 
+                         property=property_obj, 
+                         fields_by_category=fields_by_category,
+                         categories=categories)
+
+@app.route('/property/<int:property_id>/contacts', methods=['GET', 'POST'])
+def property_contacts(property_id):
+    """Manage contacts for a property"""
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        flash("Property not found.", "warning")
+        return redirect(url_for("properties_list_view"))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add':
+            try:
+                contact = PropertyContact(
+                    property_id=property_id,
+                    contact_type=request.form.get('contact_type', 'General'),
+                    name=request.form.get('name'),
+                    phone=request.form.get('phone'),
+                    email=request.form.get('email'),
+                    company=request.form.get('company'),
+                    role=request.form.get('role'),
+                    notes=request.form.get('notes'),
+                    is_primary=request.form.get('is_primary') == 'on'
+                )
+                db.session.add(contact)
+                db.session.commit()
+                flash("Contact added successfully!", "success")
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error adding contact: {e}", "danger")
+        
+        elif action == 'delete':
+            contact_id = request.form.get('contact_id')
+            if contact_id:
+                contact = db.session.get(PropertyContact, contact_id)
+                if contact and contact.property_id == property_id:
+                    db.session.delete(contact)
+                    db.session.commit()
+                    flash("Contact deleted.", "success")
+        
+        return redirect(url_for('property_contacts', property_id=property_id))
+    
+    # GET request
+    contacts = PropertyContact.query.filter_by(property_id=property_id).order_by(
+        PropertyContact.contact_type, PropertyContact.name
+    ).all()
+    
+    # Group contacts by type
+    contacts_by_type = {}
+    for contact in contacts:
+        if contact.contact_type not in contacts_by_type:
+            contacts_by_type[contact.contact_type] = []
+        contacts_by_type[contact.contact_type].append(contact)
+    
+    contact_types = ['HOA', 'Neighbor', 'Vendor', 'Emergency', 'Utility', 'Property Manager', 'Other']
+    
+    return render_template('property_contacts.html', 
+                         property=property_obj, 
+                         contacts_by_type=contacts_by_type,
+                         contact_types=contact_types)
+
+@app.route('/property/<int:property_id>/attachments', methods=['GET', 'POST'])
+def property_attachments(property_id):
+    """Manage file attachments for a property"""
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        flash("Property not found.", "warning")
+        return redirect(url_for("properties_list_view"))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'upload':
+            if 'file' not in request.files:
+                flash('No file selected', 'warning')
+                return redirect(request.url)
+            
+            file = request.files['file']
+            if file.filename == '':
+                flash('No file selected', 'warning')
+                return redirect(request.url)
+            
+            if file:
+                try:
+                    # Create property-specific upload folder
+                    property_folder = os.path.join(app.config['UPLOAD_FOLDER'], 'properties', str(property_id))
+                    os.makedirs(property_folder, exist_ok=True)
+                    
+                    # Generate unique filename
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    file_ext = os.path.splitext(file.filename)[1]
+                    safe_filename = f"{timestamp}_{secure_filename(file.filename)}"
+                    file_path = os.path.join(property_folder, safe_filename)
+                    
+                    # Save file
+                    file.save(file_path)
+                    
+                    # Create database record
+                    attachment = PropertyAttachment(
+                        property_id=property_id,
+                        category=request.form.get('category', 'General'),
+                        filename=safe_filename,
+                        original_filename=file.filename,
+                        file_path=file_path,
+                        file_size=os.path.getsize(file_path),
+                        file_type=file.content_type,
+                        description=request.form.get('description')
+                    )
+                    db.session.add(attachment)
+                    db.session.commit()
+                    
+                    flash(f"File '{file.filename}' uploaded successfully!", "success")
+                except Exception as e:
+                    db.session.rollback()
+                    flash(f"Error uploading file: {e}", "danger")
+        
+        elif action == 'delete':
+            attachment_id = request.form.get('attachment_id')
+            if attachment_id:
+                attachment = db.session.get(PropertyAttachment, attachment_id)
+                if attachment and attachment.property_id == property_id:
+                    # Delete file from disk
+                    try:
+                        if os.path.exists(attachment.file_path):
+                            os.remove(attachment.file_path)
+                    except Exception as e:
+                        app.logger.error(f"Error deleting file: {e}")
+                    
+                    # Delete database record
+                    db.session.delete(attachment)
+                    db.session.commit()
+                    flash("Attachment deleted.", "success")
+        
+        return redirect(url_for('property_attachments', property_id=property_id))
+    
+    # GET request
+    attachments = PropertyAttachment.query.filter_by(property_id=property_id).order_by(
+        PropertyAttachment.category, PropertyAttachment.uploaded_at.desc()
+    ).all()
+    
+    # Group attachments by category
+    attachments_by_category = {}
+    for attachment in attachments:
+        if attachment.category not in attachments_by_category:
+            attachments_by_category[attachment.category] = []
+        attachments_by_category[attachment.category].append(attachment)
+    
+    categories = ['HOA Documents', 'Lease Agreement', 'Maintenance Records', 'Photos', 'Insurance', 'Financial', 'Other']
+    
+    return render_template('property_attachments.html', 
+                         property=property_obj, 
+                         attachments_by_category=attachments_by_category,
+                         categories=categories)
+
+@app.route('/property/<int:property_id>/download/<int:attachment_id>')
+def download_attachment(property_id, attachment_id):
+    """Download a property attachment"""
+    attachment = PropertyAttachment.query.filter_by(id=attachment_id, property_id=property_id).first()
+    if not attachment:
+        flash("Attachment not found.", "warning")
+        return redirect(url_for('property_attachments', property_id=property_id))
+    
+    try:
+        return send_file(attachment.file_path, as_attachment=True, download_name=attachment.original_filename)
+    except Exception as e:
+        app.logger.error(f"Error downloading attachment: {e}")
+        flash("Error downloading file.", "danger")
+        return redirect(url_for('property_attachments', property_id=property_id))
+
 # Add debug route to test property loading
 @app.route("/debug/properties")
 def debug_properties():
@@ -671,8 +926,6 @@ def assign_property():
         app.logger.error(f"Error in assign_property: {e}")
         flash(f"Error: {e}", "danger")
         return redirect(url_for('index'))
-
-
 
 @app.route('/property/<int:property_id>/edit', methods=['GET', 'POST'])
 def property_edit_view(property_id):
