@@ -322,11 +322,12 @@ def messages_view():
 
 @app.route("/messages/ai-search", methods=["POST"])
 def ai_search_messages():
-    """Use AI to search and analyze messages"""
+    """Use AI to search and analyze messages with better property context"""
     try:
         from openai import OpenAI
         import os
         import json
+        import re
         
         # Get OpenAI API key from environment
         openai_api_key = os.getenv('OPENAI_API_KEY')
@@ -341,64 +342,135 @@ def ai_search_messages():
         if not query:
             return jsonify({"error": "No query provided"}), 400
         
-        # Fetch relevant messages based on keywords
-        keywords = ['fridge', 'refrigerator', 'appliance', 'install', 'repair', 'maintenance']
-        relevant_messages = []
+        # Extract property name/address from query if mentioned
+        query_lower = query.lower()
+        target_property = None
+        property_keywords = []
         
-        # Get all messages with properties
-        messages = Message.query.options(
+        # Check if query mentions a specific property
+        properties = Property.query.all()
+        for prop in properties:
+            if prop.name and prop.name.lower() in query_lower:
+                target_property = prop
+                property_keywords.append(prop.name.lower())
+            if prop.address and any(part.lower() in query_lower for part in prop.address.split() if len(part) > 3):
+                if not target_property:  # Don't override if we already found by name
+                    target_property = prop
+                property_keywords.extend([part.lower() for part in prop.address.split() if len(part) > 3])
+        
+        # Build query for messages
+        messages_query = Message.query.options(
             joinedload(Message.property),
             joinedload(Message.contact)
-        ).filter(
-            Message.message.isnot(None)
-        ).all()
+        ).filter(Message.message.isnot(None))
+        
+        # If we identified a specific property, filter by it
+        if target_property:
+            messages_query = messages_query.filter(Message.property_id == target_property.id)
+            app.logger.info(f"AI Search filtered to property: {target_property.name}")
+        
+        # Get messages
+        messages = messages_query.order_by(Message.timestamp.desc()).limit(100).all()
+        
+        # Extract key topics/keywords from the query
+        issue_keywords = []
+        common_issues = {
+            'ac': ['ac', 'air conditioning', 'hvac', 'cooling', 'heat pump'],
+            'refrigerator': ['fridge', 'refrigerator', 'freezer'],
+            'microwave': ['microwave'],
+            'appliance': ['appliance', 'dishwasher', 'washer', 'dryer', 'oven', 'stove'],
+            'plumbing': ['plumbing', 'leak', 'water', 'toilet', 'sink', 'faucet', 'pipe'],
+            'electrical': ['electrical', 'power', 'outlet', 'light', 'switch', 'breaker'],
+            'lawn': ['lawn', 'grass', 'yard', 'landscaping', 'mowing'],
+            'roof': ['roof', 'roofing', 'shingle', 'gutter'],
+            'security': ['security', 'camera', 'alarm', 'lock'],
+            'repair': ['repair', 'fix', 'broken', 'maintenance', 'replace', 'install']
+        }
+        
+        for category, keywords in common_issues.items():
+            if any(keyword in query_lower for keyword in keywords):
+                issue_keywords.extend(keywords)
+        
+        # If no specific keywords found, use broader search terms from the query
+        if not issue_keywords:
+            # Extract meaningful words from query (excluding common words)
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'have', 'has', 'had', 'what', 'when', 'where', 'why', 'how', 'is', 'are', 'was', 'were', 'been', 'being'}
+            query_words = [word.strip('.,!?') for word in query_lower.split() if len(word) > 2 and word not in stop_words]
+            issue_keywords = query_words[:5]  # Take first 5 meaningful words
+        
+        # Filter messages based on content relevance
+        relevant_messages = []
+        for msg in messages:
+            if msg.message:
+                msg_lower = msg.message.lower()
+                # Check if message contains any of our keywords
+                if any(keyword in msg_lower for keyword in issue_keywords):
+                    relevant_messages.append(msg)
+        
+        # Limit to most recent relevant messages
+        relevant_messages = relevant_messages[:20]
         
         # Build context for AI
         message_context = []
-        for msg in messages:
-            if msg.message and any(keyword in msg.message.lower() for keyword in keywords):
-                message_context.append({
-                    'date': msg.timestamp.strftime('%Y-%m-%d'),
-                    'property': msg.property.name if msg.property else 'Unknown',
-                    'message': msg.message[:200],  # Truncate long messages
-                    'contact': msg.contact.contact_name if msg.contact else msg.phone_number
-                })
+        for msg in relevant_messages:
+            message_context.append({
+                'id': msg.id,
+                'date': msg.timestamp.strftime('%Y-%m-%d %H:%M'),
+                'property': msg.property.name if msg.property else 'Unknown Property',
+                'message': msg.message[:300],  # More context
+                'contact': msg.contact.contact_name if msg.contact else msg.phone_number,
+                'direction': 'received' if not hasattr(msg, 'is_outbound') or not msg.is_outbound else 'sent'
+            })
         
-        # Prepare AI prompt
+        # Enhanced AI prompt
+        property_context = f" specifically at {target_property.name}" if target_property else ""
+        
         prompt = f"""
-        You are analyzing property management messages. Based on the following messages, answer this question: {query}
+        You are analyzing property management messages{property_context}. 
         
+        Query: "{query}"
+        
+        Based on these {len(message_context)} relevant messages, provide a specific answer:
+
         Messages:
         {json.dumps(message_context, indent=2)}
         
-        Provide a clear, concise answer with specific details like counts, property names, and dates.
+        Instructions:
+        1. Focus only on issues mentioned in these specific messages
+        2. If the query asks about a specific property, only discuss that property
+        3. Provide specific dates, contact names, and message details
+        4. If no relevant issues are found, say so clearly
+        5. Count specific occurrences and incidents
+        6. Group related messages about the same issue
         """
         
         # Call OpenAI using new API
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a helpful property management assistant analyzing message history."},
+                {"role": "system", "content": "You are a helpful property management assistant. Be specific and accurate based only on the provided messages."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=500,
-            temperature=0.3
+            max_tokens=800,
+            temperature=0.1  # Lower temperature for more focused responses
         )
         
         ai_response = response.choices[0].message.content
         
-        # Find specific message IDs mentioned
-        relevant_msg_ids = [msg.id for msg in messages if msg.message and any(keyword in msg.message.lower() for keyword in keywords)]
+        # Return IDs of the relevant messages that were analyzed
+        relevant_msg_ids = [msg.id for msg in relevant_messages]
         
         return jsonify({
             "response": ai_response,
-            "relevant_messages": relevant_msg_ids[:10]  # Limit to 10 most relevant
+            "relevant_messages": relevant_msg_ids,
+            "property_filtered": target_property.name if target_property else None,
+            "messages_analyzed": len(relevant_messages),
+            "keywords_used": issue_keywords[:10]  # For debugging
         })
         
     except Exception as e:
         app.logger.error(f"AI Search error: {e}")
-        return jsonify({"error": str(e)}), 500
-        
+        return jsonify({"error": str(e)}), 500        
 
 @app.route('/properties')
 def properties_list_view():
