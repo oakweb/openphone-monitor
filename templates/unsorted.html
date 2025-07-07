@@ -37,23 +37,25 @@
     </div>
   {% endif %}
 
-  {% if unsorted %}
+  {% if image_items %}
     <div class="unsorted-grid">
-      {% for u in unsorted %} {# u is {'path': 'uploads/...', 'msg': <Message>} #}
+      {% for img_item in image_items %}
         <div class="unsorted-item">
-          {# *** REVERTED IMG SRC to use url_for 'static' *** #}
-          <img src="{{ url_for('static', filename=u.path) }}"
-               alt="Unsorted media from {{ u.msg.contact.contact_name or u.msg.phone_number }}"
+          {# Extract just the filename from the path #}
+          {% set filename = img_item.path.split('/')[-1] %}
+          
+          {# Use the /media/ route to serve images #}
+          <img src="{{ url_for('serve_media', filename=filename) }}"
+               alt="Unsorted media from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }}"
                onerror="this.style.display='none'"> {# Basic onerror handling #}
 
           <div class="info">
-            Msg #{{ u.msg.id }}<br>
-            {# This logic relies on msg.contact being loaded and having contact_name #}
-            {{ u.msg.contact.contact_name or u.msg.phone_number }}<br>
-            {{ u.msg.timestamp.strftime('%Y-%m-%d %H:%M') }}
+            Msg #{{ img_item.message.id }}<br>
+            {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }}<br>
+            {{ img_item.timestamp.strftime('%Y-%m-%d %H:%M') }}
           </div>
           <form method="POST" action="{{ url_for('assign_property') }}">
-            <input type="hidden" name="message_id" value="{{ u.msg.id }}">
+            <input type="hidden" name="message_id" value="{{ img_item.message.id }}">
             <select name="property_id" class="form-select form-select-sm mb-1" required> {# Added required attribute #}
               <option value="">– Select property –</option>
               {% for prop in properties %}
