@@ -443,7 +443,9 @@ def serve_media(filename):
     """Serve uploaded media files."""
     try:
         from flask import send_from_directory
-        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+        # Use the configured UPLOAD_FOLDER which is now /app/static/uploads
+        upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
+        return send_from_directory(upload_folder, filename)
     except Exception as e:
         app.logger.error(f"Error serving media file {filename}: {e}")
         return "File not found", 404
