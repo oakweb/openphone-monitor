@@ -1048,6 +1048,45 @@ def ping_route():
 # Register webhook blueprint
 app.register_blueprint(webhook_bp)
 
+# Add this debug route to your main.py
+
+@app.route("/debug/volume")
+def debug_volume():
+    """Check what's actually in the volume"""
+    import os
+    
+    upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
+    results = {
+        "upload_folder": upload_folder,
+        "exists": os.path.exists(upload_folder),
+        "files": [],
+        "sample_db_paths": []
+    }
+    
+    # List files in upload folder
+    if os.path.exists(upload_folder):
+        try:
+            files = os.listdir(upload_folder)
+            results["total_files"] = len(files)
+            results["files"] = files[:20]  # First 20 files
+        except Exception as e:
+            results["error"] = str(e)
+    
+    # Get sample paths from database
+    messages = Message.query.filter(
+        Message.local_media_paths.isnot(None)
+    ).limit(5).all()
+    
+    for msg in messages:
+        results["sample_db_paths"].append({
+            "msg_id": msg.id,
+            "local_media_paths": msg.local_media_paths
+        })
+    
+    return f"<pre>{json.dumps(results, indent=2)}</pre>"
+
+
+
 # Print URL Map after all routes are defined
 with app.app_context():
     app.logger.info("\n--- URL MAP ---")
