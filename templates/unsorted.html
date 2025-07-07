@@ -41,11 +41,8 @@
     <div class="unsorted-grid">
       {% for img_item in image_items %}
         <div class="unsorted-item">
-          {# Extract just the filename from the path #}
-          {% set filename = img_item.path.split('/')[-1] %}
-          
-          {# Use the /media/ route to serve images #}
-          <img src="{{ url_for('serve_media', filename=filename) }}"
+          {# Use static route to serve images #}
+          <img src="{{ url_for('static', filename=img_item.path) }}"
                alt="Unsorted media from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }}"
                onerror="this.style.display='none'"> {# Basic onerror handling #}
 
