@@ -1086,6 +1086,86 @@ def debug_volume():
     
     return f"<pre>{json.dumps(results, indent=2)}</pre>"
 
+# Add this route to fix the database paths
+
+@app.route("/admin/fix-paths", methods=["GET", "POST"])
+def fix_database_paths():
+    """Fix database paths to match files in volume"""
+    import os
+    import json
+    import re
+    
+    if request.method == "POST":
+        upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
+        fixed_count = 0
+        
+        try:
+            # Get all files in upload folder
+            if os.path.exists(upload_folder):
+                files = os.listdir(upload_folder)
+                
+                # Group files by message ID
+                files_by_msg_id = {}
+                for filename in files:
+                    # Extract message ID from filename (e.g., msg129_4_xxx.jpg -> 129)
+                    match = re.match(r'msg(\d+)_', filename)
+                    if match:
+                        msg_id = int(match.group(1))
+                        if msg_id not in files_by_msg_id:
+                            files_by_msg_id[msg_id] = []
+                        files_by_msg_id[msg_id].append(filename)
+                
+                # Update database for each message
+                for msg_id, filenames in files_by_msg_id.items():
+                    message = db.session.get(Message, msg_id)
+                    if message:
+                        # Create paths relative to static folder
+                        paths = [f"uploads/{filename}" for filename in sorted(filenames)]
+                        message.local_media_paths = json.dumps(paths)
+                        fixed_count += 1
+                
+                db.session.commit()
+                flash(f"Fixed {fixed_count} messages with {len(files)} total files!", "success")
+            else:
+                flash("Upload folder not found!", "danger")
+                
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {str(e)}", "danger")
+            app.logger.error(f"Fix paths error: {e}")
+        
+        return redirect(url_for('fix_database_paths'))
+    
+    # GET - show info
+    upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
+    file_count = 0
+    empty_path_count = Message.query.filter(
+        (Message.local_media_paths == "") | (Message.local_media_paths.is_(None))
+    ).count()
+    
+    if os.path.exists(upload_folder):
+        file_count = len(os.listdir(upload_folder))
+    
+    return f"""
+    <html>
+    <head><title>Fix Database Paths</title></head>
+    <body style="font-family: sans-serif; padding: 20px;">
+        <h2>Fix Database Paths</h2>
+        <p>Files in volume: <strong>{file_count}</strong></p>
+        <p>Messages with empty paths: <strong>{empty_path_count}</strong></p>
+        
+        <form method="POST">
+            <button type="submit" style="padding: 10px 20px; font-size: 16px;">
+                Fix Database Paths
+            </button>
+        </form>
+        
+        <p><a href="/">Back to Home</a></p>
+    </body>
+    </html>
+    """
+
+
 
 # Print URL Map after all routes are defined
 with app.app_context():
