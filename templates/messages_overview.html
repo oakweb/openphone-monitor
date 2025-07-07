@@ -415,7 +415,7 @@
                 </label>
                 <select name="property_id" id="property_id_{{msg.id}}"
                         class="form-select form-select-sm flex-grow-1"
-                        onchange="assignPropertyToMessage({{ msg.id }}, this.value)">
+                        data-message-id="{{ msg.id }}">
                    {# Add option to unassign if already assigned #}
                   <option value="" {% if not msg.property_id %}selected{% endif %}>-- Select / Unassign --</option>
                   {% for p in properties %}
@@ -425,6 +425,10 @@
                     </option>
                   {% endfor %} {# Closes property loop #}
                 </select>
+                <button type="button" class="btn btn-primary btn-sm" 
+                        onclick="assignPropertyFromDropdown({{ msg.id }})">
+                  <i class="fas fa-save"></i> Assign
+                </button>
               </div>
               {% if msg.property %}
                 <div class="mt-2 text-end"> {# Aligned to the right #}
@@ -480,11 +484,18 @@
 {% block scripts %}
   <script>
     // Property assignment function
-    function assignPropertyToMessage(messageId, propertyId) {
-        // Show loading state
+    function assignPropertyFromDropdown(messageId) {
         const selectElement = document.getElementById(`property_id_${messageId}`);
-        const originalValue = selectElement.value;
+        const propertyId = selectElement.value;
+        
+        // Show loading state
+        const buttonElement = selectElement.parentElement.querySelector('button');
+        const originalButtonText = buttonElement.innerHTML;
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         selectElement.disabled = true;
+
+        console.log(`Assigning message ${messageId} to property ${propertyId || 'none'}`);
 
         fetch('/messages/assign-property', {
             method: 'POST',
@@ -492,12 +503,16 @@
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                message_id: messageId,
+                message_id: parseInt(messageId),
                 property_id: propertyId || null
             })
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log('Response status:', response.status);
+            return response.json();
+        })
         .then(data => {
+            console.log('Response data:', data);
             if (data.success) {
                 // Show success message
                 showNotification('Property assigned successfully!', 'success');
@@ -520,17 +535,15 @@
                 }
             } else {
                 showNotification('Error: ' + data.error, 'error');
-                // Revert selection
-                selectElement.value = originalValue;
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            showNotification('Error assigning property', 'error');
-            // Revert selection
-            selectElement.value = originalValue;
+            showNotification('Error assigning property: ' + error.message, 'error');
         })
         .finally(() => {
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = originalButtonText;
             selectElement.disabled = false;
         });
     }
@@ -559,6 +572,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+      console.log('Page loaded, initializing...');
+      
       // Refresh button
       const refreshBtn = document.getElementById('refreshBtn');
       if (refreshBtn) {
@@ -636,9 +651,17 @@
       const aiSearchResults = document.getElementById('aiSearchResults');
       const aiResponseText = document.getElementById('aiResponseText');
 
+      console.log('AI Search elements:', {
+          aiSearchBtn: !!aiSearchBtn,
+          aiSearchInput: !!aiSearchInput,
+          aiSearchResults: !!aiSearchResults,
+          aiResponseText: !!aiResponseText
+      });
+
       if (aiSearchBtn && aiSearchInput) {
           aiSearchBtn.addEventListener('click', async () => {
               const query = aiSearchInput.value.trim();
+              console.log('AI Search query:', query);
               if (!query) return;
 
               // Show loading state
@@ -646,6 +669,7 @@
               aiSearchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Thinking...';
               
               try {
+                  console.log('Sending AI search request...');
                   const response = await fetch('/messages/ai-search', {
                       method: 'POST',
                       headers: {
@@ -654,7 +678,9 @@
                       body: JSON.stringify({ query: query })
                   });
 
+                  console.log('AI Search response status:', response.status);
                   const data = await response.json();
+                  console.log('AI Search response data:', data);
                   
                   if (response.ok) {
                       aiResponseText.textContent = data.response;
@@ -666,6 +692,7 @@
                       
                       // Highlight relevant messages if any
                       if (data.relevant_messages && data.relevant_messages.length > 0) {
+                          console.log('Highlighting messages:', data.relevant_messages);
                           // Clear previous highlights
                           document.querySelectorAll('[id^="msg-"]').forEach(el => {
                               el.style.backgroundColor = '';
@@ -676,16 +703,21 @@
                               const msgElement = document.getElementById(`msg-${msgId}`);
                               if (msgElement) {
                                   msgElement.style.backgroundColor = 'rgba(108, 185, 211, 0.2)';
+                                  console.log(`Highlighted message ${msgId}`);
+                              } else {
+                                  console.log(`Message element not found: msg-${msgId}`);
                               }
                           });
                       }
                   } else {
+                      console.error('AI Search error response:', data);
                       aiResponseText.textContent = `Error: ${data.error || 'Failed to get AI response'}`;
                       aiSearchResults.style.display = 'block';
                       const alertElement = aiSearchResults.querySelector('.alert');
                       alertElement.className = 'alert alert-danger';
                   }
               } catch (error) {
+                  console.error('AI Search fetch error:', error);
                   aiResponseText.textContent = `Error: ${error.message}`;
                   aiSearchResults.style.display = 'block';
                   const alertElement = aiSearchResults.querySelector('.alert');
@@ -700,9 +732,12 @@
           // Allow Enter key to search
           aiSearchInput.addEventListener('keypress', (e) => {
               if (e.key === 'Enter') {
+                  console.log('Enter key pressed, triggering AI search');
                   aiSearchBtn.click();
               }
           });
+      } else {
+          console.error('AI Search elements not found');
       }
 
     });
