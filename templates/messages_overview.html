@@ -169,6 +169,15 @@
       color: #6c757d;
     }
 
+    /* Notification styles */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      max-width: 400px;
+    }
+
     @media (max-width: 576px) {
       /* Stack on very small screens if needed */
       .controls { flex-direction: column; }
@@ -399,15 +408,14 @@
 
             {# --- Property Assignment Section --- #}
             <div class="assign-property-section">
-              <form method="POST" action="{{ url_for('assign_property') }}"
-                    class="d-flex gap-2 align-items-center">
-                <input type="hidden" name="message_id" value="{{ msg.id }}">
+              <div class="d-flex gap-2 align-items-center">
                 <label for="property_id_{{msg.id}}"
                        class="form-label mb-0 small text-muted">
                   Property:
                 </label>
                 <select name="property_id" id="property_id_{{msg.id}}"
-                        class="form-select form-select-sm flex-grow-1">
+                        class="form-select form-select-sm flex-grow-1"
+                        onchange="assignPropertyToMessage({{ msg.id }}, this.value)">
                    {# Add option to unassign if already assigned #}
                   <option value="" {% if not msg.property_id %}selected{% endif %}>-- Select / Unassign --</option>
                   {% for p in properties %}
@@ -417,10 +425,7 @@
                     </option>
                   {% endfor %} {# Closes property loop #}
                 </select>
-                <button type="submit" class="btn btn-primary btn-sm flex-shrink-0" title="Assign/Update Property">
-                  <i class="fas fa-save"></i> Assign
-                </button>
-              </form>
+              </div>
               {% if msg.property %}
                 <div class="mt-2 text-end"> {# Aligned to the right #}
                   {# Removed the badge, info is in the dropdown #}
@@ -474,6 +479,85 @@
 
 {% block scripts %}
   <script>
+    // Property assignment function
+    function assignPropertyToMessage(messageId, propertyId) {
+        // Show loading state
+        const selectElement = document.getElementById(`property_id_${messageId}`);
+        const originalValue = selectElement.value;
+        selectElement.disabled = true;
+
+        fetch('/messages/assign-property', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message_id: messageId,
+                property_id: propertyId || null
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                showNotification('Property assigned successfully!', 'success');
+                
+                // Update UI - remove from unsorted if we're viewing unsorted
+                if (window.location.href.includes('unsorted_media') && propertyId) {
+                    const messageElement = document.getElementById(`msg-${messageId}`);
+                    if (messageElement) {
+                        messageElement.style.transition = 'opacity 0.5s ease';
+                        messageElement.style.opacity = '0.5';
+                        setTimeout(() => {
+                            messageElement.remove();
+                        }, 500);
+                    }
+                } else {
+                    // Reload the page to update galleries
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                }
+            } else {
+                showNotification('Error: ' + data.error, 'error');
+                // Revert selection
+                selectElement.value = originalValue;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error assigning property', 'error');
+            // Revert selection
+            selectElement.value = originalValue;
+        })
+        .finally(() => {
+            selectElement.disabled = false;
+        });
+    }
+
+    function showNotification(message, type) {
+        // Remove existing notifications
+        const existingNotifications = document.querySelectorAll('.notification');
+        existingNotifications.forEach(n => n.remove());
+
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show notification`;
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       // Refresh button
       const refreshBtn = document.getElementById('refreshBtn');
@@ -576,8 +660,18 @@
                       aiResponseText.textContent = data.response;
                       aiSearchResults.style.display = 'block';
                       
+                      // Reset alert classes
+                      const alertElement = aiSearchResults.querySelector('.alert');
+                      alertElement.className = 'alert alert-info';
+                      
                       // Highlight relevant messages if any
                       if (data.relevant_messages && data.relevant_messages.length > 0) {
+                          // Clear previous highlights
+                          document.querySelectorAll('[id^="msg-"]').forEach(el => {
+                              el.style.backgroundColor = '';
+                          });
+                          
+                          // Highlight relevant messages
                           data.relevant_messages.forEach(msgId => {
                               const msgElement = document.getElementById(`msg-${msgId}`);
                               if (msgElement) {
@@ -588,14 +682,14 @@
                   } else {
                       aiResponseText.textContent = `Error: ${data.error || 'Failed to get AI response'}`;
                       aiSearchResults.style.display = 'block';
-                      aiSearchResults.querySelector('.alert').classList.remove('alert-info');
-                      aiSearchResults.querySelector('.alert').classList.add('alert-danger');
+                      const alertElement = aiSearchResults.querySelector('.alert');
+                      alertElement.className = 'alert alert-danger';
                   }
               } catch (error) {
                   aiResponseText.textContent = `Error: ${error.message}`;
                   aiSearchResults.style.display = 'block';
-                  aiSearchResults.querySelector('.alert').classList.remove('alert-info');
-                  aiSearchResults.querySelector('.alert').classList.add('alert-danger');
+                  const alertElement = aiSearchResults.querySelector('.alert');
+                  alertElement.className = 'alert alert-danger';
               } finally {
                   // Reset button
                   aiSearchBtn.disabled = false;
