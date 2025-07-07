@@ -247,6 +247,16 @@ function setPropertyThumbnail(propertyId, imagePath) {
     
     console.log(`Setting thumbnail for property ${propertyId}: ${imagePath}`);
     
+    // Find the button that was clicked
+    const clickedButton = document.querySelector(`[data-image-path="${imagePath}"]`);
+    const originalButtonText = clickedButton ? clickedButton.innerHTML : '';
+    
+    // Show loading state on the clicked button
+    if (clickedButton) {
+        clickedButton.disabled = true;
+        clickedButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Setting...';
+    }
+    
     fetch(`/property/${propertyId}/set-thumbnail`, {
         method: 'POST',
         headers: {
@@ -267,25 +277,26 @@ function setPropertyThumbnail(propertyId, imagePath) {
         if (data.success) {
             showNotification('Thumbnail set successfully!', 'success');
             
-            // Update UI - remove current thumbnail indicators
+            // Update UI - remove current thumbnail indicators from all buttons for this property
             document.querySelectorAll(`[data-property-id="${propertyId}"]`).forEach(btn => {
                 if (btn.innerHTML.includes('Current')) {
                     btn.innerHTML = '<i class="fas fa-image"></i> Set Thumb';
                     btn.classList.remove('btn-warning');
                     btn.classList.add('btn-outline-warning');
                     btn.disabled = false;
-                    btn.onclick = function() { setPropertyThumbnail(propertyId, btn.getAttribute('data-image-path')); };
+                    // Re-attach click handler
+                    const imagePath = btn.getAttribute('data-image-path');
+                    btn.onclick = function() { setPropertyThumbnail(propertyId, imagePath); };
                 }
             });
             
-            // Update the current button
-            const currentBtn = document.querySelector(`[data-image-path="${imagePath}"]`);
-            if (currentBtn) {
-                currentBtn.innerHTML = '<i class="fas fa-star"></i> Current';
-                currentBtn.classList.remove('btn-outline-warning');
-                currentBtn.classList.add('btn-warning');
-                currentBtn.disabled = true;
-                currentBtn.onclick = null;
+            // Update the clicked button to show it's current
+            if (clickedButton) {
+                clickedButton.innerHTML = '<i class="fas fa-star"></i> Current';
+                clickedButton.classList.remove('btn-outline-warning');
+                clickedButton.classList.add('btn-warning');
+                clickedButton.disabled = true;
+                clickedButton.onclick = null;
             }
             
             // Remove existing thumbnail indicators
@@ -294,21 +305,33 @@ function setPropertyThumbnail(propertyId, imagePath) {
             });
             
             // Add thumbnail indicator to current image
-            const imageContainer = currentBtn.closest('.image-wrapper').querySelector('.image-container');
-            if (imageContainer && !imageContainer.querySelector('.thumbnail-indicator')) {
-                const indicator = document.createElement('div');
-                indicator.className = 'thumbnail-indicator';
-                indicator.innerHTML = '<i class="fas fa-star"></i> Thumbnail';
-                imageContainer.appendChild(indicator);
+            if (clickedButton) {
+                const imageContainer = clickedButton.closest('.image-wrapper').querySelector('.image-container');
+                if (imageContainer && !imageContainer.querySelector('.thumbnail-indicator')) {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'thumbnail-indicator';
+                    indicator.innerHTML = '<i class="fas fa-star"></i> Thumbnail';
+                    imageContainer.appendChild(indicator);
+                }
             }
             
         } else {
             showNotification('Error: ' + (data.error || 'Unknown error'), 'error');
+            // Reset button on error
+            if (clickedButton) {
+                clickedButton.disabled = false;
+                clickedButton.innerHTML = originalButtonText;
+            }
         }
     })
     .catch(error => {
         console.error('Error:', error);
         showNotification('Error setting thumbnail: ' + error.message, 'error');
+        // Reset button on error
+        if (clickedButton) {
+            clickedButton.disabled = false;
+            clickedButton.innerHTML = originalButtonText;
+        }
     });
 }
 
