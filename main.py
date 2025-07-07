@@ -1693,6 +1693,82 @@ def remove_property_thumbnail(property_id):
 # Add this function to the existing galleries_overview route to include thumbnails
 # Replace your existing galleries_overview function with this updated version:
 
+# Add this to your main.py after the existing routes
+
+@app.route("/property/<int:property_id>/set-thumbnail", methods=["POST"])
+def set_property_thumbnail(property_id):
+    """Set a property thumbnail from a gallery image"""
+    try:
+        data = request.get_json()
+        thumbnail_path = data.get('thumbnail_path')
+        
+        if not thumbnail_path:
+            return jsonify({"error": "No thumbnail path provided"}), 400
+        
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            return jsonify({"error": "Property not found"}), 404
+        
+        # Add thumbnail_path column if it doesn't exist (for migration)
+        try:
+            # Check if the column exists
+            inspector = db.inspect(db.engine)
+            columns = [column['name'] for column in inspector.get_columns('properties')]
+            if 'thumbnail_path' not in columns:
+                # Add the column
+                db.session.execute(text("ALTER TABLE properties ADD COLUMN thumbnail_path TEXT"))
+                db.session.commit()
+                app.logger.info("Added thumbnail_path column to properties table")
+        except Exception as e:
+            app.logger.warning(f"Could not add thumbnail_path column: {e}")
+        
+        # Update the property thumbnail
+        property_obj.thumbnail_path = thumbnail_path
+        db.session.commit()
+        
+        app.logger.info(f"Set thumbnail for property {property_obj.name}: {thumbnail_path}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Thumbnail set for {property_obj.name}",
+            "thumbnail_path": thumbnail_path
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error setting property thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/property/<int:property_id>/remove-thumbnail", methods=["POST"])
+def remove_property_thumbnail(property_id):
+    """Remove a property thumbnail"""
+    try:
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            return jsonify({"error": "Property not found"}), 404
+        
+        # Remove the thumbnail
+        old_thumbnail = property_obj.thumbnail_path
+        property_obj.thumbnail_path = None
+        db.session.commit()
+        
+        app.logger.info(f"Removed thumbnail for property {property_obj.name}: {old_thumbnail}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Thumbnail removed from {property_obj.name}"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error removing property thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# Update your EXISTING galleries_overview function with this enhanced version:
+# Replace the existing @app.route("/galleries") function with this:
+
 @app.route("/galleries")
 def galleries_overview():
     """Display galleries overview with thumbnails."""
