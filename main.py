@@ -328,6 +328,7 @@ def ai_search_messages():
         import os
         import json
         import re
+        from datetime import datetime, timedelta
         
         # Get OpenAI API key from environment
         openai_api_key = os.getenv('OPENAI_API_KEY')
@@ -342,21 +343,21 @@ def ai_search_messages():
         if not query:
             return jsonify({"error": "No query provided"}), 400
         
+        app.logger.info(f"AI Search Query: '{query}'")
+        
         # Extract property name/address from query if mentioned
         query_lower = query.lower()
         target_property = None
-        property_keywords = []
         
         # Check if query mentions a specific property
         properties = Property.query.all()
         for prop in properties:
             if prop.name and prop.name.lower() in query_lower:
                 target_property = prop
-                property_keywords.append(prop.name.lower())
+                break
             if prop.address and any(part.lower() in query_lower for part in prop.address.split() if len(part) > 3):
-                if not target_property:  # Don't override if we already found by name
-                    target_property = prop
-                property_keywords.extend([part.lower() for part in prop.address.split() if len(part) > 3])
+                target_property = prop
+                break
         
         # Build query for messages
         messages_query = Message.query.options(
@@ -369,64 +370,67 @@ def ai_search_messages():
             messages_query = messages_query.filter(Message.property_id == target_property.id)
             app.logger.info(f"AI Search filtered to property: {target_property.name}")
         
-        # Check if query is asking for general/broad information
-        broad_query_indicators = ['general', 'all', 'any', 'overall', 'summary', 'this week', 'recent', 'lately']
-        is_broad_query = any(indicator in query_lower for indicator in broad_query_indicators)
+        # Check if query is asking for recent/time-based information
+        time_indicators = ['week', 'recent', 'lately', 'today', 'yesterday', 'past', 'last']
+        is_time_query = any(indicator in query_lower for indicator in time_indicators)
         
-        # Extract key topics/keywords from the query
-        issue_keywords = []
-        common_issues = {
-            'ac': ['ac', 'air conditioning', 'hvac', 'cooling', 'heat pump'],
-            'refrigerator': ['fridge', 'refrigerator', 'freezer'],
-            'microwave': ['microwave'],
-            'appliance': ['appliance', 'dishwasher', 'washer', 'dryer', 'oven', 'stove'],
-            'plumbing': ['plumbing', 'leak', 'water', 'toilet', 'sink', 'faucet', 'pipe'],
-            'electrical': ['electrical', 'power', 'outlet', 'light', 'switch', 'breaker'],
-            'lawn': ['lawn', 'grass', 'yard', 'landscaping', 'mowing'],
-            'roof': ['roof', 'roofing', 'shingle', 'gutter'],
-            'security': ['security', 'camera', 'alarm', 'lock'],
-            'repair': ['repair', 'fix', 'broken', 'maintenance', 'replace', 'install'],
-            'problem': ['problem', 'issue', 'trouble', 'concern', 'complaint']
-        }
+        if is_time_query:
+            # For time-based queries, get messages from the last 2 weeks
+            two_weeks_ago = datetime.now() - timedelta(days=14)
+            messages_query = messages_query.filter(Message.timestamp >= two_weeks_ago)
+            app.logger.info(f"AI Search filtered to messages since: {two_weeks_ago}")
         
-        for category, keywords in common_issues.items():
-            if any(keyword in query_lower for keyword in keywords):
-                issue_keywords.extend(keywords)
-        
-        # If no specific keywords found or it's a broad query, use broader search terms
-        if not issue_keywords or is_broad_query:
-            # Extract meaningful words from query (excluding common words)
-            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'have', 'has', 'had', 'what', 'when', 'where', 'why', 'how', 'is', 'are', 'was', 'were', 'been', 'being'}
-            query_words = [word.strip('.,!?') for word in query_lower.split() if len(word) > 2 and word not in stop_words]
-            issue_keywords.extend(query_words[:5])  # Add first 5 meaningful words
-        
-        # Get more messages for broader queries
-        message_limit = 500 if is_broad_query else 200
+        # Get messages (more for time-based queries)
+        message_limit = 100 if is_time_query else 50
         messages = messages_query.order_by(Message.timestamp.desc()).limit(message_limit).all()
         
-        # Filter messages based on content relevance
+        app.logger.info(f"Found {len(messages)} messages to analyze")
+        
+        # For broad queries like "problems this week", include most messages
+        broad_indicators = ['general', 'problems', 'issues', 'what', 'anything', 'tell me about']
+        is_broad_query = any(indicator in query_lower for indicator in broad_indicators)
+        
         relevant_messages = []
         
-        if is_broad_query or not issue_keywords:
-            # For broad queries, include more messages
-            relevant_messages = messages[:50]  # Take recent messages without strict filtering
+        if is_broad_query or is_time_query:
+            # For broad/time queries, include most messages with minimal filtering
+            relevant_messages = messages[:30]
+            app.logger.info(f"Broad/time query - using {len(relevant_messages)} messages")
         else:
-            # For specific queries, filter by keywords
+            # For specific queries, do keyword filtering
+            issue_keywords = []
+            common_issues = {
+                'ac': ['ac', 'air conditioning', 'hvac', 'cooling', 'heat pump', 'hot', 'cold'],
+                'refrigerator': ['fridge', 'refrigerator', 'freezer', 'ice'],
+                'microwave': ['microwave'],
+                'appliance': ['appliance', 'dishwasher', 'washer', 'dryer', 'oven', 'stove'],
+                'plumbing': ['plumbing', 'leak', 'water', 'toilet', 'sink', 'faucet', 'pipe', 'drain'],
+                'electrical': ['electrical', 'power', 'outlet', 'light', 'switch', 'breaker'],
+                'lawn': ['lawn', 'grass', 'yard', 'landscaping', 'mowing'],
+                'roof': ['roof', 'roofing', 'shingle', 'gutter'],
+                'security': ['security', 'camera', 'alarm', 'lock'],
+                'repair': ['repair', 'fix', 'broken', 'maintenance', 'replace', 'install'],
+                'problem': ['problem', 'issue', 'trouble', 'concern', 'complaint', 'broken', 'not working']
+            }
+            
+            for category, keywords in common_issues.items():
+                if any(keyword in query_lower for keyword in keywords):
+                    issue_keywords.extend(keywords)
+            
+            # Filter messages by keywords
             for msg in messages:
                 if msg.message:
                     msg_lower = msg.message.lower()
-                    # Check if message contains any of our keywords
                     if any(keyword in msg_lower for keyword in issue_keywords):
                         relevant_messages.append(msg)
             
-            # If we found very few relevant messages, expand the search
+            app.logger.info(f"Keyword filtering found {len(relevant_messages)} relevant messages")
+            
+            # If very few found, add recent messages
             if len(relevant_messages) < 5:
-                # Add some recent messages as context
-                recent_messages = [msg for msg in messages[:30] if msg not in relevant_messages]
-                relevant_messages.extend(recent_messages[:10])
-        
-        # Limit to most recent relevant messages
-        relevant_messages = relevant_messages[:30]
+                recent_additions = [msg for msg in messages[:20] if msg not in relevant_messages]
+                relevant_messages.extend(recent_additions[:10])
+                app.logger.info(f"Added {len(recent_additions[:10])} recent messages as context")
         
         # Build context for AI
         message_context = []
@@ -435,61 +439,192 @@ def ai_search_messages():
                 'id': msg.id,
                 'date': msg.timestamp.strftime('%Y-%m-%d %H:%M'),
                 'property': msg.property.name if msg.property else 'Unknown Property',
-                'message': msg.message[:300],  # More context
-                'contact': msg.contact.contact_name if msg.contact else msg.phone_number,
-                'direction': 'received' if not hasattr(msg, 'is_outbound') or not msg.is_outbound else 'sent'
+                'message': msg.message[:400],
+                'contact': msg.contact.contact_name if msg.contact else msg.phone_number
             })
         
-        # Enhanced AI prompt
-        property_context = f" specifically at {target_property.name}" if target_property else ""
+        if not message_context:
+            return jsonify({
+                "response": "No relevant messages found for your query. Try broadening your search terms or check if there are any messages in the selected time period.",
+                "relevant_messages": [],
+                "messages_analyzed": 0,
+                "debug_info": f"Total messages in DB: {Message.query.count()}, Messages after filtering: {len(messages)}"
+            })
+        
+        # Create AI prompt
+        property_context = f" at {target_property.name}" if target_property else ""
+        time_context = " in the recent period" if is_time_query else ""
         
         prompt = f"""
-        You are analyzing property management messages{property_context}. 
+        You are analyzing property management messages{property_context}{time_context}.
         
         Query: "{query}"
         
-        Based on these {len(message_context)} relevant messages, provide a specific answer:
+        Based on these {len(message_context)} messages, provide a helpful answer:
 
         Messages:
         {json.dumps(message_context, indent=2)}
         
         Instructions:
-        1. Focus only on issues mentioned in these specific messages
-        2. If the query asks about a specific property, only discuss that property
-        3. Provide specific dates, contact names, and message details
-        4. If no relevant issues are found, say so clearly
-        5. Count specific occurrences and incidents
-        6. Group related messages about the same issue
+        1. Summarize what you find in these messages
+        2. Be specific about dates, properties, and issues mentioned
+        3. If few issues are found, mention that things seem quiet
+        4. Group similar issues together
+        5. Provide actionable insights when possible
         """
         
-        # Call OpenAI using new API
+        # Call OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a helpful property management assistant. Be specific and accurate based only on the provided messages."},
+                {"role": "system", "content": "You are a helpful property management assistant. Analyze the provided messages and give useful insights."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=800,
-            temperature=0.1  # Lower temperature for more focused responses
+            temperature=0.2
         )
         
         ai_response = response.choices[0].message.content
-        
-        # Return IDs of the relevant messages that were analyzed
         relevant_msg_ids = [msg.id for msg in relevant_messages]
         
-        return jsonify({
+        result = {
             "response": ai_response,
             "relevant_messages": relevant_msg_ids,
             "property_filtered": target_property.name if target_property else None,
             "messages_analyzed": len(relevant_messages),
-            "keywords_used": issue_keywords[:10]  # For debugging
-        })
+            "total_messages_found": len(messages),
+            "query_type": "broad/time" if (is_broad_query or is_time_query) else "specific"
+        }
+        
+        app.logger.info(f"AI Search returning: {len(ai_response)} char response, {len(relevant_msg_ids)} relevant messages")
+        
+        return jsonify(result)
         
     except Exception as e:
         app.logger.error(f"AI Search error: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+# Add a route to assign property to messages (for fixing the gallery issue)
+@app.route("/messages/assign-property", methods=["POST"])
+def assign_property_to_message():
+    """Assign a property to a message"""
+    try:
+        app.logger.info(f"Property assignment request: {request.get_json()}")
+        
+        data = request.get_json()
+        if not data:
+            app.logger.error("No JSON data received")
+            return jsonify({"error": "No JSON data received"}), 400
+            
+        message_id = data.get('message_id')
+        property_id = data.get('property_id')
+        
+        app.logger.info(f"Assigning message {message_id} to property {property_id}")
+        
+        if not message_id:
+            return jsonify({"error": "Missing message_id"}), 400
+        
+        message = db.session.get(Message, message_id)
+        if not message:
+            return jsonify({"error": "Message not found"}), 404
+        
+        # Handle empty string as null
+        if property_id == "":
+            property_id = None
+            
+        if property_id:
+            property_obj = db.session.get(Property, property_id)
+            if not property_obj:
+                return jsonify({"error": "Property not found"}), 404
+        
+        # Update the message
+        old_property_id = message.property_id
+        message.property_id = property_id
+        db.session.commit()
+        
+        property_name = "Unassigned"
+        if property_id:
+            property_obj = db.session.get(Property, property_id)
+            property_name = property_obj.name if property_obj else f"Property {property_id}"
+        
+        app.logger.info(f"Successfully assigned message {message_id} to property {property_name} (was: {old_property_id})")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Message assigned to {property_name}",
+            "old_property_id": old_property_id,
+            "new_property_id": property_id
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error assigning property: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# Add a debug route to check message counts
+@app.route("/debug/message-counts")
+def debug_message_counts():
+    """Debug route to check message counts"""
+    try:
+        from datetime import datetime, timedelta
+        
+        total_messages = Message.query.count()
+        messages_with_content = Message.query.filter(Message.message.isnot(None), Message.message != '').count()
+        
+        # Messages from last week
+        one_week_ago = datetime.now() - timedelta(days=7)
+        recent_messages = Message.query.filter(Message.timestamp >= one_week_ago).count()
+        recent_with_content = Message.query.filter(
+            Message.timestamp >= one_week_ago,
+            Message.message.isnot(None), 
+            Message.message != ''
+        ).count()
+        
+        # Sample recent messages
+        sample_messages = Message.query.filter(
+            Message.timestamp >= one_week_ago,
+            Message.message.isnot(None)
+        ).order_by(Message.timestamp.desc()).limit(5).all()
+        
+        sample_data = []
+        for msg in sample_messages:
+            sample_data.append({
+                'id': msg.id,
+                'date': msg.timestamp.strftime('%Y-%m-%d %H:%M'),
+                'message_preview': msg.message[:100] if msg.message else 'No message',
+                'property': msg.property.name if msg.property else 'No property'
+            })
+        
+        return jsonify({
+            "total_messages": total_messages,
+            "messages_with_content": messages_with_content,
+            "recent_messages_7_days": recent_messages,
+            "recent_with_content_7_days": recent_with_content,
+            "sample_recent_messages": sample_data
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+# Test endpoint for debugging AJAX
+@app.route("/test-json", methods=["POST"])
+def test_json():
+    """Test endpoint to verify JSON responses work"""
+    try:
+        data = request.get_json()
+        app.logger.info(f"Test JSON received: {data}")
+        
+        return jsonify({
+            "success": True,
+            "received_data": data,
+            "message": "JSON endpoint working correctly"
+        })
+    except Exception as e:
+        app.logger.error(f"Test JSON error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/properties')

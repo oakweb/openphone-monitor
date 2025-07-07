@@ -271,6 +271,10 @@
         <a href="{{ url_for('galleries_overview') }}" class="btn btn-sm btn-info">
           <i class="fas fa-th"></i> All Galleries
         </a>
+        <!-- Temporary debug button -->
+        <button onclick="testAjax()" class="btn btn-sm btn-warning">
+          <i class="fas fa-bug"></i> Test AJAX
+        </button>
       </div>
     </div>
     
@@ -509,6 +513,18 @@
         })
         .then(response => {
             console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers.get('content-type'));
+            
+            // Check if response is JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error('Server returned non-JSON response');
+            }
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             return response.json();
         })
         .then(data => {
@@ -534,7 +550,7 @@
                     }, 1000);
                 }
             } else {
-                showNotification('Error: ' + data.error, 'error');
+                showNotification('Error: ' + (data.error || 'Unknown error'), 'error');
             }
         })
         .catch(error => {
@@ -545,6 +561,30 @@
             buttonElement.disabled = false;
             buttonElement.innerHTML = originalButtonText;
             selectElement.disabled = false;
+        });
+    }
+
+    // Test function to verify AJAX is working
+    function testAjax() {
+        console.log('Testing AJAX...');
+        fetch('/test-json', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ test: 'data', timestamp: new Date().toISOString() })
+        })
+        .then(response => {
+            console.log('Test response status:', response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('Test response data:', data);
+            showNotification('AJAX test successful!', 'success');
+        })
+        .catch(error => {
+            console.error('Test error:', error);
+            showNotification('AJAX test failed: ' + error.message, 'error');
         });
     }
 
