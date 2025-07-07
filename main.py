@@ -1054,6 +1054,7 @@ app.register_blueprint(webhook_bp)
 def debug_volume():
     """Check what's actually in the volume"""
     import os
+    import json  # Add this import!
     
     upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
     results = {
@@ -1084,7 +1085,6 @@ def debug_volume():
         })
     
     return f"<pre>{json.dumps(results, indent=2)}</pre>"
-
 
 
 # Print URL Map after all routes are defined
