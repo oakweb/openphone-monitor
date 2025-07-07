@@ -324,7 +324,7 @@ def messages_view():
 def ai_search_messages():
     """Use AI to search and analyze messages"""
     try:
-        import openai
+        from openai import OpenAI
         import os
         import json
         
@@ -333,7 +333,8 @@ def ai_search_messages():
         if not openai_api_key:
             return jsonify({"error": "OpenAI API key not configured"}), 400
         
-        openai.api_key = openai_api_key
+        # Initialize OpenAI client
+        client = OpenAI(api_key=openai_api_key)
         
         # Get the search query
         query = request.json.get('query', '')
@@ -373,8 +374,8 @@ def ai_search_messages():
         Provide a clear, concise answer with specific details like counts, property names, and dates.
         """
         
-        # Call OpenAI
-        response = openai.ChatCompletion.create(
+        # Call OpenAI using new API
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful property management assistant analyzing message history."},
@@ -397,8 +398,8 @@ def ai_search_messages():
     except Exception as e:
         app.logger.error(f"AI Search error: {e}")
         return jsonify({"error": str(e)}), 500
-    
-    
+        
+
 @app.route('/properties')
 def properties_list_view():
     """Displays a list of all properties."""
