@@ -111,6 +111,64 @@
       margin: 1.5rem auto;
     }
 
+    /* Statistics cards */
+    .stat-card {
+      background: linear-gradient(135deg, #6cb9d3 0%, #3a8bab 100%);
+      border: none;
+      text-align: center;
+      transition: transform 0.2s;
+      color: white;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+    }
+    .stat-card .card-body {
+      padding: 1rem;
+    }
+    .stat-card h3 {
+      margin-bottom: 0.25rem;
+      font-weight: bold;
+    }
+    .stat-card small {
+      opacity: 0.9;
+    }
+
+    /* Filter section */
+    .filter-section {
+      background-color: #1a1d20;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .filter-buttons .btn {
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Pagination */
+    .pagination {
+      margin-top: 2rem;
+    }
+    .page-link {
+      background-color: #2c3035;
+      border-color: #3a8bab;
+      color: #6cb9d3;
+    }
+    .page-link:hover {
+      background-color: #3a8bab;
+      border-color: #6cb9d3;
+      color: #fff;
+    }
+    .page-item.active .page-link {
+      background-color: #6cb9d3;
+      border-color: #6cb9d3;
+    }
+    .page-item.disabled .page-link {
+      background-color: #1e2226;
+      border-color: #495057;
+      color: #6c757d;
+    }
+
     @media (max-width: 576px) {
       /* Stack on very small screens if needed */
       .controls { flex-direction: column; }
@@ -122,6 +180,92 @@
 
 
 {% block content %}
+  <!-- Statistics Cards -->
+  <div class="row mb-4">
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card">
+        <div class="card-body">
+          <h3>{{ total_messages }}</h3>
+          <small>Total Messages</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card">
+        <div class="card-body">
+          <h3>{{ messages_with_media }}</h3>
+          <small>With Media</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card">
+        <div class="card-body">
+          <h3>{{ unsorted_media }}</h3>
+          <small>Unsorted Media</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card">
+        <div class="card-body">
+          <h3>{{ pagination.page }} / {{ pagination.pages }}</h3>
+          <small>Current Page</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter Controls -->
+  <div class="filter-section">
+    <div class="row">
+      <div class="col-md-5">
+        <h6 class="text-muted mb-2">Filter by Type:</h6>
+        <div class="filter-buttons">
+          <a href="{{ url_for('messages_view', filter='all', property_id=property_filter) }}" 
+             class="btn btn-sm {{ 'btn-primary' if filter_type == 'all' else 'btn-outline-primary' }}">
+            <i class="fas fa-list"></i> All Messages
+          </a>
+          <a href="{{ url_for('messages_view', filter='with_media', property_id=property_filter) }}" 
+             class="btn btn-sm {{ 'btn-primary' if filter_type == 'with_media' else 'btn-outline-primary' }}">
+            <i class="fas fa-images"></i> With Media
+          </a>
+          <a href="{{ url_for('messages_view', filter='unsorted_media', property_id=property_filter) }}" 
+             class="btn btn-sm {{ 'btn-warning' if filter_type == 'unsorted_media' else 'btn-outline-warning' }}">
+            <i class="fas fa-exclamation-triangle"></i> Unsorted Media
+          </a>
+          <a href="{{ url_for('messages_view', filter='no_property', property_id=property_filter) }}" 
+             class="btn btn-sm {{ 'btn-secondary' if filter_type == 'no_property' else 'btn-outline-secondary' }}">
+            <i class="fas fa-home-slash"></i> No Property
+          </a>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <h6 class="text-muted mb-2">Filter by Property:</h6>
+        <form method="GET" action="{{ url_for('messages_view') }}" class="d-inline">
+          <input type="hidden" name="filter" value="{{ filter_type }}">
+          <select name="property_id" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">All Properties</option>
+            {% for prop in properties %}
+            <option value="{{ prop.id }}" {% if property_filter == prop.id %}selected{% endif %}>
+              {{ prop.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+      <div class="col-md-3">
+        <h6 class="text-muted mb-2">Quick Actions:</h6>
+        <a href="{{ url_for('unsorted_gallery') }}" class="btn btn-sm btn-success">
+          <i class="fas fa-images"></i> Unsorted Gallery
+        </a>
+        <a href="{{ url_for('galleries_overview') }}" class="btn btn-sm btn-info">
+          <i class="fas fa-th"></i> All Galleries
+        </a>
+      </div>
+    </div>
+  </div>
+
   <div class="controls mb-3">
     <select id="sortOrder" class="form-select form-select-sm w-auto">
       <option value="newest">Newest First</option>
@@ -151,11 +295,16 @@
             {# --- Message Header --- #}
             <div class="message-header">
               <div>
+                <span class="text-muted me-2">#{{ msg.id }}</span>
                 <i class="fas {{ 'fa-arrow-down text-primary' if msg.direction == 'incoming' else 'fa-arrow-up text-success' }} me-2" title="{{ msg.direction|capitalize }}"></i> {# Direction Icon #}
                 <strong>{{ msg.contact_name or msg.phone_number }}</strong>
                 {# Show 'Unknown' badge if contact is not known #}
                 {% if not is_known %}
                     <span class="badge bg-warning text-dark ms-1">Unknown</span>
+                {% endif %}
+                {# Show media badge #}
+                {% if msg.local_media_paths and msg.local_media_paths != '[]' and msg.local_media_paths != '' %}
+                    <span class="badge bg-success ms-1"><i class="fas fa-image"></i> Media</span>
                 {% endif %}
               </div>
               <div class="text-secondary small" title="Timestamp">
@@ -170,21 +319,28 @@
                 <p class="message-text">{{ msg.message }}</p>
               {% endif %}
               {# --- Media Display --- #}
-              {# Use local_media_paths if available, otherwise fallback to media_urls (less ideal) #}
-              {% set paths_to_display = msg.local_media_paths.split(',') if msg.local_media_paths else [] %}
-              {% if paths_to_display %}
+              {# Parse local_media_paths as JSON if it starts with [ #}
+              {% if msg.local_media_paths and msg.local_media_paths != '[]' and msg.local_media_paths != '' %}
                 <div class="message-media">
+                  {% if msg.local_media_paths.startswith('[') %}
+                    {% set paths_list = msg.local_media_paths | replace("'", '"') | replace('\\', '') %}
+                    {% set paths_to_display = paths_list | safe | eval if paths_list else [] %}
+                  {% else %}
+                    {% set paths_to_display = msg.local_media_paths.split(',') %}
+                  {% endif %}
+                  
                   {% for media_path in paths_to_display %}
-                    {% set trimmed_path = media_path.strip() %}
+                    {% set trimmed_path = media_path.strip().strip('"').strip("'") %}
                     {% if trimmed_path %}
-                       {# Link to the static file directly #}
-                       <a href="{{ url_for('static', filename=trimmed_path) }}" target="_blank">
-                         <img src="{{ url_for('static', filename=trimmed_path) }}"
+                       {# Remove 'uploads/' prefix for media route #}
+                       {% set filename = trimmed_path.replace('uploads/', '') %}
+                       <a href="{{ url_for('serve_media', filename=filename) }}" target="_blank">
+                         <img src="{{ url_for('serve_media', filename=filename) }}"
                               alt="Media attachment"
-                              onerror="this.style.display='none'; console.error('Failed to load image: {{ trimmed_path }}');">
+                              onerror="this.style.display='none'; console.error('Failed to load image: {{ filename }}');">
                        </a>
                     {% endif %}
-                  {% endfor %} {# Closes inner media loop #}
+                  {% endfor %}
                 </div>
               {% elif msg.media_urls %}
                  {# Fallback to show original URLs if local paths aren't available #}
@@ -192,10 +348,10 @@
                      <small>Media URLs (not downloaded):
                          {% for url in msg.media_urls.split(',') %}
                            <a href="{{ url }}" target="_blank">{{ url[:50] }}...</a>{% if not loop.last %}, {% endif %}
-                         {% endfor %} {# Closes inner URL loop #}
+                         {% endfor %}
                      </small>
                  </div>
-              {% endif %} {# Ends media display if #}
+              {% endif %}
             </div>
 
             {# --- Add Contact Form (Conditional) --- #}
@@ -259,6 +415,35 @@
       {% endif %} {# Ends if messages #}
     </ul>
   </div>
+
+  <!-- Pagination -->
+  {% if pagination and pagination.pages > 1 %}
+  <nav aria-label="Message pagination" class="mt-4">
+    <ul class="pagination justify-content-center">
+      <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('messages_view', page=pagination.prev_num, filter=filter_type, property_id=property_filter) }}">
+          <i class="fas fa-chevron-left"></i> Previous
+        </a>
+      </li>
+      
+      {% for page_num in pagination.iter_pages(left_edge=2, left_current=2, right_current=3, right_edge=2) %}
+        {% if page_num %}
+          <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('messages_view', page=page_num, filter=filter_type, property_id=property_filter) }}">{{ page_num }}</a>
+          </li>
+        {% else %}
+          <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+      {% endfor %}
+      
+      <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('messages_view', page=pagination.next_num, filter=filter_type, property_id=property_filter) }}">
+          Next <i class="fas fa-chevron-right"></i>
+        </a>
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
 {% endblock %} {# Closes the content block #}
 
 

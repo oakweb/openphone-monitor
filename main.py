@@ -182,6 +182,8 @@ def index():
                          error=error_message)
 
 
+# Replace your messages_view route with this improved version
+
 @app.route("/messages")
 def messages_view():
     """Displays message overview or detail for a specific number."""
@@ -189,7 +191,7 @@ def messages_view():
     
     try:
         if target_phone_number:
-            # Detail view for specific phone number
+            # Detail view for specific phone number (unchanged)
             msgs_for_number = Message.query.options(
                 joinedload(Message.property),
                 joinedload(Message.contact)
@@ -217,26 +219,79 @@ def messages_view():
                                  is_known=is_known, 
                                  contact_name=contact_name)
         else:
-            # Overview of all messages
-            msgs_overview = (
-                Message.query.options(
-                    joinedload(Message.property), 
-                    joinedload(Message.contact)
-                )
-                .order_by(Message.timestamp.desc())
-                .limit(100)
-                .all()
+            # Overview of all messages with filtering and pagination
+            page = request.args.get('page', 1, type=int)
+            per_page = request.args.get('per_page', 50, type=int)
+            filter_type = request.args.get('filter', 'all')  # all, with_media, without_property
+            property_filter = request.args.get('property_id', type=int)
+            
+            # Start with base query
+            query = Message.query.options(
+                joinedload(Message.property), 
+                joinedload(Message.contact)
             )
+            
+            # Apply filters
+            if filter_type == 'with_media':
+                # Only messages with media
+                query = query.filter(
+                    Message.local_media_paths.isnot(None),
+                    Message.local_media_paths != '',
+                    Message.local_media_paths != '[]'
+                )
+            elif filter_type == 'unsorted_media':
+                # Messages with media but no property
+                query = query.filter(
+                    Message.local_media_paths.isnot(None),
+                    Message.local_media_paths != '',
+                    Message.local_media_paths != '[]',
+                    Message.property_id.is_(None)
+                )
+            elif filter_type == 'no_property':
+                # All messages without property
+                query = query.filter(Message.property_id.is_(None))
+            
+            # Property filter
+            if property_filter:
+                query = query.filter(Message.property_id == property_filter)
+            
+            # Order and paginate
+            query = query.order_by(Message.timestamp.desc())
+            pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+            
+            # Get properties for filter dropdown
             properties_list = Property.query.order_by(Property.name).all()
+            
+            # Count statistics
+            total_messages = Message.query.count()
+            messages_with_media = Message.query.filter(
+                Message.local_media_paths.isnot(None),
+                Message.local_media_paths != '',
+                Message.local_media_paths != '[]'
+            ).count()
+            unsorted_media = Message.query.filter(
+                Message.local_media_paths.isnot(None),
+                Message.local_media_paths != '',
+                Message.local_media_paths != '[]',
+                Message.property_id.is_(None)
+            ).count()
+            
             return render_template("messages_overview.html", 
-                                 messages=msgs_overview, 
-                                 properties=properties_list)
+                                 messages=pagination.items,
+                                 pagination=pagination,
+                                 properties=properties_list,
+                                 filter_type=filter_type,
+                                 property_filter=property_filter,
+                                 total_messages=total_messages,
+                                 messages_with_media=messages_with_media,
+                                 unsorted_media=unsorted_media)
                                  
     except Exception as ex:
         db.session.rollback()
         app.logger.error(f"❌ Error in messages_view: {ex}")
         flash(f"Error: {ex}", "danger")
         return redirect(url_for('index'))
+    
 
 @app.route('/properties')
 def properties_list_view():
