@@ -27,12 +27,15 @@
 
   {% if image_items %}
     <div class="gallery">
-      {% for img_item in image_items %} {# img_item is {'path': 'uploads/...', 'sender_info': ..., etc} #}
+      {% for img_item in image_items %} {# img_item is {'path': 'uploads/...', 'message': msg, 'contact': contact, 'timestamp': timestamp} #}
         <div class="image-wrapper">
-          {# *** REVERTED A HREF and IMG SRC to use url_for 'static' *** #}
-          <a href="{{ url_for('static', filename=img_item.path) }}" target="_blank" title="View full image (from {{ img_item.sender_info }})">
-            <img src="{{ url_for('static', filename=img_item.path) }}"
-                 alt="Gallery image from {{ img_item.sender_info }}" {# Updated Alt Text #}
+          {# Extract just the filename from the path #}
+          {% set filename = img_item.path.split('/')[-1] %}
+          
+          {# Use the /media/ route to serve images #}
+          <a href="{{ url_for('serve_media', filename=filename) }}" target="_blank" title="View full image (from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }})">
+            <img src="{{ url_for('serve_media', filename=filename) }}"
+                 alt="Gallery image from {{ img_item.contact.contact_name if img_item.contact else img_item.message.phone_number }}"
                  onerror="this.style.display='none'"> {# Basic onerror handling #}
           </a>
 
