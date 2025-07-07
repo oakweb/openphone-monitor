@@ -188,11 +188,7 @@
                     <h5 class="property-title">{{ property.name }}</h5>
                     <div class="property-stats">
                         <i class="fas fa-images"></i>
-                        {% set image_count = 0 %}
-                        {% for msg in property.messages if msg.local_media_paths and msg.local_media_paths != '[]' and msg.local_media_paths != '' %}
-                            {% set image_count = image_count + 1 %}
-                        {% endfor %}
-                        {{ image_count }} images available
+                        {{ property.image_count }} images available
                     </div>
                     <div class="card-actions">
                         <span class="btn btn-primary btn-sm">
