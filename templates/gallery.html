@@ -247,13 +247,14 @@ function setPropertyThumbnail(propertyId, imagePath) {
     
     console.log(`Setting thumbnail for property ${propertyId}: ${imagePath}`);
     
-    // Find the button that was clicked
-    const clickedButton = document.querySelector(`[data-image-path="${imagePath}"]`);
+    // Find the button that was clicked - use both selectors to be more specific
+    const clickedButton = document.querySelector(`[data-property-id="${propertyId}"][data-image-path="${imagePath}"]`);
     const originalButtonText = clickedButton ? clickedButton.innerHTML : '';
     
     // Debug logging
+    console.log('Looking for button with selectors:', `[data-property-id="${propertyId}"][data-image-path="${imagePath}"]`);
+    console.log('Found clicked button:', clickedButton);
     if (clickedButton) {
-        console.log('Clicked button:', clickedButton);
         console.log('Button parent:', clickedButton.parentElement);
         console.log('Image wrapper:', clickedButton.closest('.image-wrapper'));
     }
@@ -286,14 +287,16 @@ function setPropertyThumbnail(propertyId, imagePath) {
             
             // Update UI - remove current thumbnail indicators from all buttons for this property
             document.querySelectorAll(`[data-property-id="${propertyId}"]`).forEach(btn => {
-                if (btn.innerHTML.includes('Current')) {
+                console.log('Processing button:', btn, 'innerHTML:', btn.innerHTML);
+                if (btn.innerHTML.includes('Current') || btn.classList.contains('btn-warning')) {
                     btn.innerHTML = '<i class="fas fa-image"></i> Set Thumb';
                     btn.classList.remove('btn-warning');
                     btn.classList.add('btn-outline-warning');
                     btn.disabled = false;
                     // Re-attach click handler
-                    const imagePath = btn.getAttribute('data-image-path');
-                    btn.onclick = function() { setPropertyThumbnail(propertyId, imagePath); };
+                    const btnImagePath = btn.getAttribute('data-image-path');
+                    btn.onclick = function() { setPropertyThumbnail(propertyId, btnImagePath); };
+                    console.log('Reset button for path:', btnImagePath);
                 }
             });
             
@@ -304,10 +307,13 @@ function setPropertyThumbnail(propertyId, imagePath) {
                 clickedButton.classList.add('btn-warning');
                 clickedButton.disabled = true;
                 clickedButton.onclick = null;
+                console.log('Updated clicked button to Current state');
             }
             
             // Remove existing thumbnail indicators
-            document.querySelectorAll('.thumbnail-indicator').forEach(indicator => {
+            const existingIndicators = document.querySelectorAll('.thumbnail-indicator');
+            console.log('Removing existing indicators:', existingIndicators.length);
+            existingIndicators.forEach(indicator => {
                 indicator.remove();
             });
             
@@ -316,11 +322,14 @@ function setPropertyThumbnail(propertyId, imagePath) {
                 const imageWrapper = clickedButton.closest('.image-wrapper');
                 if (imageWrapper) {
                     const imageContainer = imageWrapper.querySelector('.image-container');
-                    if (imageContainer && !imageContainer.querySelector('.thumbnail-indicator')) {
+                    if (imageContainer) {
                         const indicator = document.createElement('div');
                         indicator.className = 'thumbnail-indicator';
                         indicator.innerHTML = '<i class="fas fa-star"></i> Thumbnail';
                         imageContainer.appendChild(indicator);
+                        console.log('Added thumbnail indicator to image container');
+                    } else {
+                        console.warn('Could not find image container');
                     }
                 } else {
                     console.warn('Could not find image wrapper for thumbnail indicator');
