@@ -165,3 +165,77 @@ class Message(db.Model):
 
     def __repr__(self):
         return f"<Message {self.id} from {self.contact_name or self.phone_number}>"
+
+
+# ====== NEW MODELS FOR FLEXIBLE PROPERTY INFORMATION ======
+
+class PropertyCustomField(db.Model):
+    """Flexible key-value storage for property-specific information"""
+    __tablename__ = 'property_custom_fields'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id', ondelete='CASCADE'), nullable=False)
+    category = db.Column(db.String(100), nullable=False)  # e.g., 'HOA', 'Tenant Info', 'Access', 'Neighbor'
+    field_name = db.Column(db.String(200), nullable=False)  # e.g., 'Account Number', 'Entry Checklist'
+    field_value = db.Column(db.Text)
+    field_type = db.Column(db.String(50), default='text')  # 'text', 'number', 'date', 'url', 'phone', 'email'
+    is_encrypted = db.Column(db.Boolean, default=False)  # For sensitive data
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_by = db.Column(db.String(100))  # Track who added this
+    
+    # Relationship
+    property = db.relationship('Property', backref=db.backref('custom_fields', lazy='dynamic', cascade='all, delete-orphan'))
+    
+    __table_args__ = (
+        db.UniqueConstraint('property_id', 'category', 'field_name', name='_property_category_field_uc'),
+    )
+
+    def __repr__(self):
+        return f"<PropertyCustomField {self.field_name}: {self.field_value} (Property: {self.property_id})>"
+
+
+class PropertyAttachment(db.Model):
+    """Store file attachments for properties"""
+    __tablename__ = 'property_attachments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id', ondelete='CASCADE'), nullable=False)
+    category = db.Column(db.String(100), nullable=False)  # e.g., 'HOA Documents', 'Lease', 'Maintenance', 'Photos'
+    filename = db.Column(db.String(255), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    file_size = db.Column(db.Integer)  # in bytes
+    file_type = db.Column(db.String(100))  # MIME type
+    description = db.Column(db.Text)
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    uploaded_by = db.Column(db.String(100))
+    
+    # Relationship
+    property = db.relationship('Property', backref=db.backref('attachments', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f"<PropertyAttachment {self.original_filename} (Property: {self.property_id})>"
+
+
+class PropertyContact(db.Model):
+    """Store important contacts for each property"""
+    __tablename__ = 'property_contacts'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id', ondelete='CASCADE'), nullable=False)
+    contact_type = db.Column(db.String(100), nullable=False)  # 'HOA', 'Neighbor', 'Vendor', 'Emergency', 'Utility'
+    name = db.Column(db.String(200), nullable=False)
+    phone = db.Column(db.String(20))
+    email = db.Column(db.String(200))
+    company = db.Column(db.String(200))
+    role = db.Column(db.String(100))  # e.g., 'President', 'Property Manager', 'Plumber'
+    notes = db.Column(db.Text)
+    is_primary = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationship
+    property = db.relationship('Property', backref=db.backref('contacts', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f"<PropertyContact {self.name} - {self.contact_type} (Property: {self.property_id})>"
