@@ -1167,7 +1167,167 @@ def fix_database_paths():
     </html>
     """
 
+# Add this debug route to understand the mismatch
 
+@app.route("/debug/mismatch")
+def debug_mismatch():
+    """Show mismatch between database and volume files"""
+    import os
+    import json
+    import re
+    
+    upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
+    
+    # Get files in volume
+    volume_files = set()
+    volume_msg_ids = set()
+    if os.path.exists(upload_folder):
+        for filename in os.listdir(upload_folder):
+            volume_files.add(filename)
+            # Extract message ID from filename
+            match = re.match(r'msg(\d+)_', filename)
+            if match:
+                volume_msg_ids.add(int(match.group(1)))
+    
+    # Get expected files from database
+    db_files = set()
+    db_msg_ids = set()
+    messages = Message.query.filter(
+        Message.local_media_paths.isnot(None),
+        Message.local_media_paths != '',
+        Message.local_media_paths != '[]'
+    ).limit(20).all()
+    
+    for msg in messages:
+        db_msg_ids.add(msg.id)
+        try:
+            if msg.local_media_paths.startswith('['):
+                paths = json.loads(msg.local_media_paths)
+            else:
+                paths = [msg.local_media_paths]
+            
+            for path in paths:
+                if path:
+                    # Extract filename from path
+                    filename = path.replace('uploads/', '')
+                    db_files.add(filename)
+        except:
+            pass
+    
+    results = {
+        "volume_file_count": len(volume_files),
+        "volume_msg_ids": sorted(list(volume_msg_ids))[:20],
+        "db_expecting_count": len(db_files),
+        "db_msg_ids": sorted(list(db_msg_ids))[:20],
+        "sample_volume_files": sorted(list(volume_files))[:10],
+        "sample_db_expected": sorted(list(db_files))[:10],
+        "overlapping_msg_ids": sorted(list(volume_msg_ids & db_msg_ids))[:10]
+    }
+    
+    return f"<pre>{json.dumps(results, indent=2)}</pre>"
+
+# Add this route to re-download from Google URLs
+
+@app.route("/admin/redownload-from-google", methods=["GET", "POST"])
+def redownload_from_google():
+    """Re-download images from Google Storage URLs"""
+    import json
+    import requests
+    
+    if request.method == "POST":
+        upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        success_count = 0
+        fail_count = 0
+        
+        try:
+            # Get messages with Google URLs but no local paths
+            messages = Message.query.filter(
+                Message.media_urls.isnot(None),
+                Message.media_urls != '',
+                Message.media_urls != '[]'
+            ).limit(50).all()  # Start with 50
+            
+            for msg in messages:
+                try:
+                    # Parse media URLs
+                    if msg.media_urls.startswith('['):
+                        urls = json.loads(msg.media_urls)
+                    else:
+                        urls = [msg.media_urls]
+                    
+                    local_paths = []
+                    
+                    for i, url in enumerate(urls):
+                        if not url or not url.startswith('http'):
+                            continue
+                        
+                        # Generate filename
+                        ext = 'jpg'
+                        if '.png' in url.lower():
+                            ext = 'png'
+                        elif '.gif' in url.lower():
+                            ext = 'gif'
+                        
+                        filename = f"msg{msg.id}_{i+1}_{msg.id:08x}.{ext}"
+                        filepath = os.path.join(upload_folder, filename)
+                        
+                        # Download if not exists
+                        if not os.path.exists(filepath):
+                            response = requests.get(url, timeout=30)
+                            if response.status_code == 200:
+                                with open(filepath, 'wb') as f:
+                                    f.write(response.content)
+                                success_count += 1
+                            else:
+                                fail_count += 1
+                                continue
+                        
+                        local_paths.append(f"uploads/{filename}")
+                    
+                    # Update database
+                    if local_paths:
+                        msg.local_media_paths = json.dumps(local_paths)
+                        
+                except Exception as e:
+                    app.logger.error(f"Error processing msg {msg.id}: {e}")
+                    fail_count += 1
+            
+            db.session.commit()
+            flash(f"Downloaded {success_count} images, {fail_count} failed", "success")
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {str(e)}", "danger")
+        
+        return redirect(url_for('redownload_from_google'))
+    
+    # GET - show info
+    google_url_count = Message.query.filter(
+        Message.media_urls.isnot(None),
+        Message.media_urls != '',
+        Message.media_urls != '[]'
+    ).count()
+    
+    return f"""
+    <html>
+    <head><title>Re-download from Google</title></head>
+    <body style="font-family: sans-serif; padding: 20px;">
+        <h2>Re-download Images from Google Storage</h2>
+        <p>Messages with Google URLs: <strong>{google_url_count}</strong></p>
+        
+        <form method="POST">
+            <button type="submit" style="padding: 10px 20px; font-size: 16px;">
+                Re-download First 50 Images
+            </button>
+        </form>
+        
+        <p style="color: #666;">This will download images from Google Storage URLs and save them locally.</p>
+        <p><a href="/">Back to Home</a></p>
+    </body>
+    </html>
+    """
 
 # Print URL Map after all routes are defined
 with app.app_context():
