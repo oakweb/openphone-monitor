@@ -886,13 +886,18 @@ def gallery_for_property(property_id):
         # Add thumbnail info to property object
         thumbnail_path = getattr(prop, 'thumbnail_path', None)
         prop.has_thumbnail = bool(thumbnail_path)
+        # Ensure thumbnail_path is accessible even if None
+        if not hasattr(prop, 'thumbnail_path'):
+            prop.thumbnail_path = None
         
         # Get messages with media for this property
         messages_with_media = (
             Message.query.options(joinedload(Message.contact))
             .filter(
                 Message.property_id == property_id,
-                Message.local_media_paths.isnot(None)
+                Message.local_media_paths.isnot(None),
+                Message.local_media_paths != '',
+                Message.local_media_paths != '[]'
             )
             .order_by(Message.timestamp.desc())
             .all()

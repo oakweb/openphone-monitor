@@ -124,7 +124,7 @@
     
     {% if property %}
       <div class="d-flex gap-2">
-        {% if hasattr(property, 'thumbnail_path') and property.thumbnail_path %}
+        {% if property.thumbnail_path %}
           <button class="btn btn-outline-warning btn-sm" onclick="removePropertyThumbnail({{ property.id }})">
             <i class="fas fa-times"></i> Remove Thumbnail
           </button>
@@ -140,7 +140,7 @@
         <div class="image-wrapper">
           <div class="image-container">
             {# Thumbnail indicator #}
-            {% if property and hasattr(property, 'thumbnail_path') and property.thumbnail_path == img_item.path %}
+            {% if property and property.thumbnail_path == img_item.path %}
               <div class="thumbnail-indicator">
                 <i class="fas fa-star"></i> Thumbnail
               </div>
@@ -168,7 +168,7 @@
             
             {% if property %}
               <div class="image-actions">
-                {% if hasattr(property, 'thumbnail_path') and property.thumbnail_path == img_item.path %}
+                {% if property.thumbnail_path == img_item.path %}
                   <button class="btn btn-warning btn-sm" 
                           data-property-id="{{ property.id }}"
                           data-image-path="{{ img_item.path }}"
