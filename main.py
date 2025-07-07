@@ -369,8 +369,9 @@ def ai_search_messages():
             messages_query = messages_query.filter(Message.property_id == target_property.id)
             app.logger.info(f"AI Search filtered to property: {target_property.name}")
         
-        # Get messages
-        messages = messages_query.order_by(Message.timestamp.desc()).limit(100).all()
+        # Check if query is asking for general/broad information
+        broad_query_indicators = ['general', 'all', 'any', 'overall', 'summary', 'this week', 'recent', 'lately']
+        is_broad_query = any(indicator in query_lower for indicator in broad_query_indicators)
         
         # Extract key topics/keywords from the query
         issue_keywords = []
@@ -384,31 +385,48 @@ def ai_search_messages():
             'lawn': ['lawn', 'grass', 'yard', 'landscaping', 'mowing'],
             'roof': ['roof', 'roofing', 'shingle', 'gutter'],
             'security': ['security', 'camera', 'alarm', 'lock'],
-            'repair': ['repair', 'fix', 'broken', 'maintenance', 'replace', 'install']
+            'repair': ['repair', 'fix', 'broken', 'maintenance', 'replace', 'install'],
+            'problem': ['problem', 'issue', 'trouble', 'concern', 'complaint']
         }
         
         for category, keywords in common_issues.items():
             if any(keyword in query_lower for keyword in keywords):
                 issue_keywords.extend(keywords)
         
-        # If no specific keywords found, use broader search terms from the query
-        if not issue_keywords:
+        # If no specific keywords found or it's a broad query, use broader search terms
+        if not issue_keywords or is_broad_query:
             # Extract meaningful words from query (excluding common words)
             stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'have', 'has', 'had', 'what', 'when', 'where', 'why', 'how', 'is', 'are', 'was', 'were', 'been', 'being'}
             query_words = [word.strip('.,!?') for word in query_lower.split() if len(word) > 2 and word not in stop_words]
-            issue_keywords = query_words[:5]  # Take first 5 meaningful words
+            issue_keywords.extend(query_words[:5])  # Add first 5 meaningful words
+        
+        # Get more messages for broader queries
+        message_limit = 500 if is_broad_query else 200
+        messages = messages_query.order_by(Message.timestamp.desc()).limit(message_limit).all()
         
         # Filter messages based on content relevance
         relevant_messages = []
-        for msg in messages:
-            if msg.message:
-                msg_lower = msg.message.lower()
-                # Check if message contains any of our keywords
-                if any(keyword in msg_lower for keyword in issue_keywords):
-                    relevant_messages.append(msg)
+        
+        if is_broad_query or not issue_keywords:
+            # For broad queries, include more messages
+            relevant_messages = messages[:50]  # Take recent messages without strict filtering
+        else:
+            # For specific queries, filter by keywords
+            for msg in messages:
+                if msg.message:
+                    msg_lower = msg.message.lower()
+                    # Check if message contains any of our keywords
+                    if any(keyword in msg_lower for keyword in issue_keywords):
+                        relevant_messages.append(msg)
+            
+            # If we found very few relevant messages, expand the search
+            if len(relevant_messages) < 5:
+                # Add some recent messages as context
+                recent_messages = [msg for msg in messages[:30] if msg not in relevant_messages]
+                relevant_messages.extend(recent_messages[:10])
         
         # Limit to most recent relevant messages
-        relevant_messages = relevant_messages[:20]
+        relevant_messages = relevant_messages[:30]
         
         # Build context for AI
         message_context = []
@@ -470,7 +488,9 @@ def ai_search_messages():
         
     except Exception as e:
         app.logger.error(f"AI Search error: {e}")
-        return jsonify({"error": str(e)}), 500        
+        return jsonify({"error": str(e)}), 500
+
+
 
 @app.route('/properties')
 def properties_list_view():
