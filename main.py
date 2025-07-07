@@ -184,6 +184,8 @@ def index():
 
 # Replace your messages_view route with this improved version
 
+# Replace your messages_view route with this version
+
 @app.route("/messages")
 def messages_view():
     """Displays message overview or detail for a specific number."""
@@ -224,12 +226,23 @@ def messages_view():
             per_page = request.args.get('per_page', 50, type=int)
             filter_type = request.args.get('filter', 'all')  # all, with_media, without_property
             property_filter = request.args.get('property_id', type=int)
+            search_query = request.args.get('search', '')
             
             # Start with base query
             query = Message.query.options(
                 joinedload(Message.property), 
                 joinedload(Message.contact)
             )
+            
+            # Apply search filter if provided
+            if search_query:
+                query = query.filter(
+                    db.or_(
+                        Message.message.ilike(f'%{search_query}%'),
+                        Message.phone_number.ilike(f'%{search_query}%'),
+                        Message.contact_name.ilike(f'%{search_query}%')
+                    )
+                )
             
             # Apply filters
             if filter_type == 'with_media':
@@ -259,8 +272,22 @@ def messages_view():
             query = query.order_by(Message.timestamp.desc())
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
             
+            # Parse media paths for each message
+            import json
+            for msg in pagination.items:
+                msg.parsed_media_paths = []
+                if msg.local_media_paths and msg.local_media_paths.startswith('['):
+                    try:
+                        msg.parsed_media_paths = json.loads(msg.local_media_paths)
+                    except:
+                        pass
+            
             # Get properties for filter dropdown
             properties_list = Property.query.order_by(Property.name).all()
+            
+            # Get known contact phones for the template
+            known_contacts = Contact.query.all()
+            known_contact_phones = {c.phone_number for c in known_contacts}
             
             # Count statistics
             total_messages = Message.query.count()
@@ -280,8 +307,10 @@ def messages_view():
                                  messages=pagination.items,
                                  pagination=pagination,
                                  properties=properties_list,
+                                 known_contact_phones=known_contact_phones,
                                  filter_type=filter_type,
                                  property_filter=property_filter,
+                                 search_query=search_query,
                                  total_messages=total_messages,
                                  messages_with_media=messages_with_media,
                                  unsorted_media=unsorted_media)
@@ -291,6 +320,85 @@ def messages_view():
         app.logger.error(f"❌ Error in messages_view: {ex}")
         flash(f"Error: {ex}", "danger")
         return redirect(url_for('index'))
+
+
+# New AI Search Route
+@app.route("/messages/ai-search", methods=["POST"])
+def ai_search_messages():
+    """Use AI to search and analyze messages"""
+    try:
+        import openai
+        import os
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        if not openai_api_key:
+            return jsonify({"error": "OpenAI API key not configured"}), 400
+        
+        openai.api_key = openai_api_key
+        
+        # Get the search query
+        query = request.json.get('query', '')
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+        
+        # Fetch relevant messages based on keywords
+        keywords = ['fridge', 'refrigerator', 'appliance', 'install', 'repair', 'maintenance']
+        relevant_messages = []
+        
+        # Get all messages with properties
+        messages = Message.query.options(
+            joinedload(Message.property),
+            joinedload(Message.contact)
+        ).filter(
+            Message.message.isnot(None)
+        ).all()
+        
+        # Build context for AI
+        message_context = []
+        for msg in messages:
+            if msg.message and any(keyword in msg.message.lower() for keyword in keywords):
+                message_context.append({
+                    'date': msg.timestamp.strftime('%Y-%m-%d'),
+                    'property': msg.property.name if msg.property else 'Unknown',
+                    'message': msg.message[:200],  # Truncate long messages
+                    'contact': msg.contact.contact_name if msg.contact else msg.phone_number
+                })
+        
+        # Prepare AI prompt
+        prompt = f"""
+        You are analyzing property management messages. Based on the following messages, answer this question: {query}
+        
+        Messages:
+        {json.dumps(message_context, indent=2)}
+        
+        Provide a clear, concise answer with specific details like counts, property names, and dates.
+        """
+        
+        # Call OpenAI
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful property management assistant analyzing message history."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Find specific message IDs mentioned
+        relevant_msg_ids = [msg.id for msg in messages if msg.message and any(keyword in msg.message.lower() for keyword in keywords)]
+        
+        return jsonify({
+            "response": ai_response,
+            "relevant_messages": relevant_msg_ids[:10]  # Limit to 10 most relevant
+        })
+        
+    except Exception as e:
+        app.logger.error(f"AI Search error: {e}")
+        return jsonify({"error": str(e)}), 500
     
 
 @app.route('/properties')
