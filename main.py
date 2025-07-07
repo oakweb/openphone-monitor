@@ -183,7 +183,6 @@ def index():
 
 
 # Replace your messages_view route with this improved version
-
 # Replace your messages_view route with this version
 
 @app.route("/messages")
@@ -321,6 +320,167 @@ def messages_view():
         flash(f"Error: {ex}", "danger")
         return redirect(url_for('index'))
 
+
+# New AI Search Route
+@app.route("/messages/ai-search", methods=["POST"])
+def ai_search_messages():
+    """Use AI to search and analyze messages"""
+    try:
+        import openai
+        import os
+        import json
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        if not openai_api_key:
+            return jsonify({"error": "OpenAI API key not configured"}), 400
+        
+        openai.api_key = openai_api_key
+        
+        # Get the search query
+        query = request.json.get('query', '')
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+        
+        # Fetch relevant messages based on keywords
+        keywords = ['fridge', 'refrigerator', 'appliance', 'install', 'repair', 'maintenance']
+        relevant_messages = []
+        
+        # Get all messages with properties
+        messages = Message.query.options(
+            joinedload(Message.property),
+            joinedload(Message.contact)
+        ).filter(
+            Message.message.isnot(None)
+        ).all()
+        
+        # Build context for AI
+        message_context = []
+        for msg in messages:
+            if msg.message and any(keyword in msg.message.lower() for keyword in keywords):
+                message_context.append({
+                    'date': msg.timestamp.strftime('%Y-%m-%d'),
+                    'property': msg.property.name if msg.property else 'Unknown',
+                    'message': msg.message[:200],  # Truncate long messages
+                    'contact': msg.contact.contact_name if msg.contact else msg.phone_number
+                })
+        
+        # Prepare AI prompt
+        prompt = f"""
+        You are analyzing property management messages. Based on the following messages, answer this question: {query}
+        
+        Messages:
+        {json.dumps(message_context, indent=2)}
+        
+        Provide a clear, concise answer with specific details like counts, property names, and dates.
+        """
+        
+        # Call OpenAI
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful property management assistant analyzing message history."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Find specific message IDs mentioned
+        relevant_msg_ids = [msg.id for msg in messages if msg.message and any(keyword in msg.message.lower() for keyword in keywords)]
+        
+        return jsonify({
+            "response": ai_response,
+            "relevant_messages": relevant_msg_ids[:10]  # Limit to 10 most relevant
+        })
+        
+    except Exception as e:
+        app.logger.error(f"AI Search error: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+    
+
+# New AI Search Route
+@app.route("/messages/ai-search", methods=["POST"])
+def ai_search_messages():
+    """Use AI to search and analyze messages"""
+    try:
+        import openai
+        import os
+        import json
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        if not openai_api_key:
+            return jsonify({"error": "OpenAI API key not configured"}), 400
+        
+        openai.api_key = openai_api_key
+        
+        # Get the search query
+        query = request.json.get('query', '')
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+        
+        # Fetch relevant messages based on keywords
+        keywords = ['fridge', 'refrigerator', 'appliance', 'install', 'repair', 'maintenance']
+        relevant_messages = []
+        
+        # Get all messages with properties
+        messages = Message.query.options(
+            joinedload(Message.property),
+            joinedload(Message.contact)
+        ).filter(
+            Message.message.isnot(None)
+        ).all()
+        
+        # Build context for AI
+        message_context = []
+        for msg in messages:
+            if msg.message and any(keyword in msg.message.lower() for keyword in keywords):
+                message_context.append({
+                    'date': msg.timestamp.strftime('%Y-%m-%d'),
+                    'property': msg.property.name if msg.property else 'Unknown',
+                    'message': msg.message[:200],  # Truncate long messages
+                    'contact': msg.contact.contact_name if msg.contact else msg.phone_number
+                })
+        
+        # Prepare AI prompt
+        prompt = f"""
+        You are analyzing property management messages. Based on the following messages, answer this question: {query}
+        
+        Messages:
+        {json.dumps(message_context, indent=2)}
+        
+        Provide a clear, concise answer with specific details like counts, property names, and dates.
+        """
+        
+        # Call OpenAI
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful property management assistant analyzing message history."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Find specific message IDs mentioned
+        relevant_msg_ids = [msg.id for msg in messages if msg.message and any(keyword in msg.message.lower() for keyword in keywords)]
+        
+        return jsonify({
+            "response": ai_response,
+            "relevant_messages": relevant_msg_ids[:10]  # Limit to 10 most relevant
+        })
+        
+    except Exception as e:
+        app.logger.error(f"AI Search error: {e}")
+        return jsonify({"error": str(e)}), 500
+    
 
 # New AI Search Route
 @app.route("/messages/ai-search", methods=["POST"])
