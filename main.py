@@ -774,9 +774,13 @@ def galleries_overview():
                 .all()
             )
         
-        # Get sample images for properties without thumbnails
+        # Get sample images for properties and set thumbnail info
         for prop in properties_with_galleries:
-            if not hasattr(prop, 'thumbnail_path') or not prop.thumbnail_path:
+            # Check if property has thumbnail_path attribute and value
+            thumbnail_path = getattr(prop, 'thumbnail_path', None)
+            prop.has_thumbnail = bool(thumbnail_path)
+            
+            if not thumbnail_path:
                 # Get the first available image for this property
                 sample_message = (
                     Message.query.filter(
@@ -799,12 +803,14 @@ def galleries_overview():
                         
                         if media_paths and media_paths[0]:
                             prop.sample_image = media_paths[0]
+                        else:
+                            prop.sample_image = None
                     except:
                         prop.sample_image = None
                 else:
                     prop.sample_image = None
             else:
-                prop.sample_image = prop.thumbnail_path
+                prop.sample_image = thumbnail_path
         
         # Count unsorted media
         unsorted_count = db.session.query(func.count(Message.id)).filter(
@@ -876,6 +882,10 @@ def gallery_for_property(property_id):
         if not prop:
             flash("Property not found.", "warning")
             return redirect(url_for("galleries_overview"))
+        
+        # Add thumbnail info to property object
+        thumbnail_path = getattr(prop, 'thumbnail_path', None)
+        prop.has_thumbnail = bool(thumbnail_path)
         
         # Get messages with media for this property
         messages_with_media = (

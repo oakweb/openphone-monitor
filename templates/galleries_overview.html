@@ -1,125 +1,235 @@
-{# templates/galleries_overview.html #}
 {% extends "base.html" %}
 
-{% block title %}All Galleries{% endblock %}
+{% block title %}All Galleries by Property{% endblock %}
 
 {% block head_extra %}
-  <style>
-    /* lay out all gallery tiles in a row */
-    .gallery-summaries {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      margin-bottom: 2rem; /* Add space below property galleries */
+<style>
+.property-card {
+    background: linear-gradient(135deg, #2c3035 0%, #1e2226 100%);
+    border: 1px solid #3a8bab;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    height: 100%;
+}
+
+.property-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(58, 139, 171, 0.3);
+    text-decoration: none;
+}
+
+.property-thumbnail {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    background: #1a1d20;
+    display: block;
+}
+
+.property-card-body {
+    padding: 1.5rem;
+}
+
+.property-title {
+    color: #e9ecef;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+
+.property-stats {
+    color: #adb5bd;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.thumbnail-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(252, 193, 7, 0.9);
+    color: #000;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    z-index: 10;
+}
+
+.no-thumbnail {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1d20;
+    color: #6c757d;
+    font-size: 3rem;
+    width: 100%;
+    height: 200px;
+    flex-direction: column;
+}
+
+.no-thumbnail .icon-text {
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+.unsorted-card {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    text-decoration: none;
+}
+
+.unsorted-card:hover {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+    color: white;
+    text-decoration: none;
+}
+
+.gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.property-image-container {
+    position: relative;
+    width: 100%;
+    height: 200px;
+    overflow: hidden;
+}
+
+.card-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.card-actions .btn {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
+}
+
+@media (max-width: 768px) {
+    .gallery-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
     }
-
-    /* each property‐tile is exactly 150×150 */
-    .gallery-summary {
-      position: relative;
-      flex: 0 0 auto; /* Prevent stretching */
-      width: 150px;
-      height: 150px;
-      overflow: hidden;
-      border: 1px solid #3a8bab;
-      border-radius: 4px;
-      background: #1e2226;
-      display: block; /* Make the whole div the link area */
-      text-decoration: none; /* Remove underline from link */
-      color: inherit; /* Inherit text color */
+    
+    .property-card-body {
+        padding: 1rem;
     }
-     .gallery-summary:hover {
-         border-color: #6cb9d3; /* Highlight border on hover */
-     }
-
-
-    /* placeholder when no thumbnail */
-    .gallery-summary .placeholder {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column; /* Stack icon and text */
-      align-items: center;
-      justify-content: center;
-      color: #888;
-      font-size: 1.5rem; /* Make icon larger */
-      background: #2c3035;
-    }
-    .gallery-summary .placeholder span {
-        font-size: 0.8rem; /* Smaller text below icon */
-        margin-top: 0.5rem;
-    }
-
-
-    /* caption bar at the bottom */
-    .gallery-summary .caption {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: rgba(0, 0, 0, 0.7); /* Darker caption background */
-      color: #fff;
-      font-size: 0.8rem; /* Slightly larger caption */
-      padding: 0.35rem;
-      text-align: center;
-      box-sizing: border-box;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis; /* Add ellipsis if name is too long */
-    }
-
-    /* Unsorted section styling */
-     .unsorted-link-section {
-         padding: 1rem;
-         border: 1px dashed #495057;
-         border-radius: 4px;
-         background-color: #212529;
-     }
-
-  </style>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+}
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 {% endblock %}
 
 {% block content %}
-  <h2>All Galleries by Property</h2>
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-light mb-0">
+                <i class="fas fa-images"></i> All Galleries by Property
+            </h2>
+            <p class="text-muted">Browse images organized by property</p>
+        </div>
+    </div>
 
-  {% if gallery_summaries %}
-    <div class="gallery-summaries">
-      {# Loop through the list of Property objects passed as gallery_summaries #}
-      {% for prop in gallery_summaries %}
-        {# Make the whole tile clickable #}
-        <a href="{{ url_for('gallery_for_property', property_id=prop.id) }}" class="gallery-summary" title="View gallery for {{ prop.name }}">
-            {# Always show placeholder for now, as we didn't fetch a thumbnail #}
-            <div class="placeholder">
-                <i class="fas fa-images"></i> {# FontAwesome image icon #}
-                <span>View Gallery</span>
+    <div class="gallery-grid">
+        <!-- Unsorted Media Card -->
+        <a href="{{ url_for('unsorted_gallery') }}" class="card property-card unsorted-card">
+            <div class="property-image-container">
+                <div class="no-thumbnail">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span class="icon-text">Unsorted Media</span>
+                </div>
             </div>
-            <div class="caption">
-              {{ prop.name }} {# Display property name (g IS the property object) #}
-              {# Count is not calculated by current Python code #}
+            <div class="property-card-body">
+                <h5 class="property-title">Unsorted Media</h5>
+                <div class="property-stats">
+                    <i class="fas fa-images"></i> {{ unsorted_count }} unassigned images
+                </div>
+                <div class="card-actions">
+                    <span class="btn btn-light btn-sm">
+                        <i class="fas fa-eye"></i> View Unsorted
+                    </span>
+                </div>
             </div>
         </a>
-      {% endfor %}
+
+        <!-- Property Gallery Cards -->
+        {% for property in gallery_summaries %}
+            <a href="{{ url_for('gallery_for_property', property_id=property.id) }}" class="card property-card">
+                <div class="property-image-container">
+                    {% if property.sample_image %}
+                        {% set filename = property.sample_image.replace('uploads/', '') %}
+                        <img src="{{ url_for('serve_media', filename=filename) }}" 
+                             alt="Property thumbnail" 
+                             class="property-thumbnail"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="no-thumbnail" style="display: none;">
+                            <i class="fas fa-home"></i>
+                            <span class="icon-text">No Image</span>
+                        </div>
+                        {% if property.has_thumbnail %}
+                            <div class="thumbnail-badge">
+                                <i class="fas fa-star"></i> Set Thumbnail
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="no-thumbnail">
+                            <i class="fas fa-home"></i>
+                            <span class="icon-text">No Images</span>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="property-card-body">
+                    <h5 class="property-title">{{ property.name }}</h5>
+                    <div class="property-stats">
+                        <i class="fas fa-images"></i>
+                        {% set image_count = 0 %}
+                        {% for msg in property.messages if msg.local_media_paths and msg.local_media_paths != '[]' and msg.local_media_paths != '' %}
+                            {% set image_count = image_count + 1 %}
+                        {% endfor %}
+                        {{ image_count }} images available
+                    </div>
+                    <div class="card-actions">
+                        <span class="btn btn-primary btn-sm">
+                            <i class="fas fa-eye"></i> View Gallery
+                        </span>
+                        <span class="btn btn-outline-light btn-sm">
+                            <i class="fas fa-info"></i> Details
+                        </span>
+                    </div>
+                </div>
+            </a>
+        {% endfor %}
     </div>
-  {% else %}
-    <p>No properties currently have associated image galleries.</p>
-  {% endif %}
 
-  {# Add section for unsorted images #}
-  <hr>
-  <div class="unsorted-link-section">
-      <h4>Unsorted Media</h4>
-      {% if unsorted_count > 0 %}
-          <p>There are {{ unsorted_count }} message(s) with media that have not been assigned to a property.</p>
-          {# Link to the unsorted gallery page - NOTE: unsorted_gallery route needs implementation #}
-          <a href="{{ url_for('unsorted_gallery') }}" class="btn btn-outline-secondary">View Unsorted Media</a>
-      {% else %}
-          <p class="text-muted">There are currently no unsorted messages with media.</p>
-      {% endif %}
-      {% if error %}
-         <div class="alert alert-warning mt-3" role="alert">
-           Error loading overview: {{ error }}
-         </div>
-      {% endif %}
-  </div>
+    {% if not gallery_summaries %}
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info text-center">
+                    <i class="fas fa-info-circle fa-2x mb-3"></i>
+                    <h4>No Property Galleries Found</h4>
+                    <p>No properties have images assigned yet. Start by assigning messages with media to properties!</p>
+                    <a href="{{ url_for('messages_view', filter='with_media') }}" class="btn btn-primary">
+                        <i class="fas fa-images"></i> View Messages with Media
+                    </a>
+                </div>
+            </div>
+        </div>
+    {% endif %}
 
+    {% if error %}
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error loading galleries: {{ error }}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
 {% endblock %}
