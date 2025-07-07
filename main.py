@@ -4,7 +4,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash, jso
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
-from sqlalchemy import text, func, select
+from sqlalchemy import text, func, select, inspect
 from sqlalchemy.orm import joinedload, aliased
 from werkzeug.utils import secure_filename
 
@@ -91,7 +91,8 @@ with app.app_context():
             "ALTER TABLE properties ADD COLUMN IF NOT EXISTS garage_code VARCHAR(20)",
             "ALTER TABLE properties ADD COLUMN IF NOT EXISTS wifi_network VARCHAR(100)",
             "ALTER TABLE properties ADD COLUMN IF NOT EXISTS wifi_password VARCHAR(100)",
-            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP"
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP",
+            "ALTER TABLE properties ADD COLUMN IF NOT EXISTS thumbnail_path TEXT"
         ]
         
         if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
@@ -180,10 +181,6 @@ def index():
                          summary_week=summary_week,
                          ai_summaries=[],
                          error=error_message)
-
-
-# Replace your messages_view route with this improved version
-# Replace your messages_view route with this version
 
 @app.route("/messages")
 def messages_view():
@@ -504,8 +501,6 @@ def ai_search_messages():
         app.logger.error(f"AI Search error: {e}")
         return jsonify({"error": str(e)}), 500
 
-
-# Add a route to assign property to messages (for fixing the gallery issue)
 @app.route("/messages/assign-property", methods=["POST"])
 def assign_property_to_message():
     """Assign a property to a message"""
@@ -562,8 +557,77 @@ def assign_property_to_message():
         app.logger.error(f"Error assigning property: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/property/<int:property_id>/set-thumbnail", methods=["POST"])
+def set_property_thumbnail(property_id):
+    """Set a property thumbnail from a gallery image"""
+    try:
+        app.logger.info(f"Setting thumbnail for property {property_id}")
+        
+        data = request.get_json()
+        thumbnail_path = data.get('thumbnail_path')
+        
+        if not thumbnail_path:
+            return jsonify({"error": "No thumbnail path provided"}), 400
+        
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            return jsonify({"error": "Property not found"}), 404
+        
+        # Add thumbnail_path column if it doesn't exist (for migration)
+        try:
+            # Check if the column exists
+            inspector = inspect(db.engine)
+            columns = [column['name'] for column in inspector.get_columns('properties')]
+            if 'thumbnail_path' not in columns:
+                # Add the column
+                db.session.execute(text("ALTER TABLE properties ADD COLUMN thumbnail_path TEXT"))
+                db.session.commit()
+                app.logger.info("Added thumbnail_path column to properties table")
+        except Exception as e:
+            app.logger.warning(f"Could not add thumbnail_path column: {e}")
+        
+        # Update the property thumbnail
+        property_obj.thumbnail_path = thumbnail_path
+        db.session.commit()
+        
+        app.logger.info(f"Set thumbnail for property {property_obj.name}: {thumbnail_path}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Thumbnail set for {property_obj.name}",
+            "thumbnail_path": thumbnail_path
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error setting property thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
 
-# Add a debug route to check message counts
+@app.route("/property/<int:property_id>/remove-thumbnail", methods=["POST"])
+def remove_property_thumbnail(property_id):
+    """Remove a property thumbnail"""
+    try:
+        property_obj = db.session.get(Property, property_id)
+        if not property_obj:
+            return jsonify({"error": "Property not found"}), 404
+        
+        # Remove the thumbnail
+        old_thumbnail = getattr(property_obj, 'thumbnail_path', None)
+        property_obj.thumbnail_path = None
+        db.session.commit()
+        
+        app.logger.info(f"Removed thumbnail for property {property_obj.name}: {old_thumbnail}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Thumbnail removed from {property_obj.name}"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error removing property thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/debug/message-counts")
 def debug_message_counts():
     """Debug route to check message counts"""
@@ -608,8 +672,6 @@ def debug_message_counts():
     except Exception as e:
         return jsonify({"error": str(e)})
 
-
-# Test endpoint for debugging AJAX
 @app.route("/test-json", methods=["POST"])
 def test_json():
     """Test endpoint to verify JSON responses work"""
@@ -625,7 +687,6 @@ def test_json():
     except Exception as e:
         app.logger.error(f"Test JSON error: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/properties')
 def properties_list_view():
@@ -691,7 +752,7 @@ def contacts_view():
 
 @app.route("/galleries")
 def galleries_overview():
-    """Display galleries overview."""
+    """Display galleries overview with thumbnails."""
     try:
         # Get properties that have media
         property_ids_with_media = (
@@ -712,6 +773,38 @@ def galleries_overview():
                 .order_by(Property.name)
                 .all()
             )
+        
+        # Get sample images for properties without thumbnails
+        for prop in properties_with_galleries:
+            if not hasattr(prop, 'thumbnail_path') or not prop.thumbnail_path:
+                # Get the first available image for this property
+                sample_message = (
+                    Message.query.filter(
+                        Message.property_id == prop.id,
+                        Message.local_media_paths.isnot(None),
+                        Message.local_media_paths != '',
+                        Message.local_media_paths != '[]'
+                    )
+                    .order_by(Message.timestamp.desc())
+                    .first()
+                )
+                
+                if sample_message and sample_message.local_media_paths:
+                    try:
+                        import json
+                        if sample_message.local_media_paths.startswith('['):
+                            media_paths = json.loads(sample_message.local_media_paths)
+                        else:
+                            media_paths = [sample_message.local_media_paths]
+                        
+                        if media_paths and media_paths[0]:
+                            prop.sample_image = media_paths[0]
+                    except:
+                        prop.sample_image = None
+                else:
+                    prop.sample_image = None
+            else:
+                prop.sample_image = prop.thumbnail_path
         
         # Count unsorted media
         unsorted_count = db.session.query(func.count(Message.id)).filter(
@@ -826,7 +919,6 @@ def gallery_for_property(property_id):
         flash(f"Error loading gallery: {e}", "danger")
         return redirect(url_for("galleries_overview"))
 
-# Add a route to serve uploaded media files
 @app.route("/media/<path:filename>")
 def serve_media(filename):
     """Serve uploaded media files."""
@@ -1016,21 +1108,8 @@ def notifications_view():
     
     # GET request - load properties and history
     try:
-        app.logger.info("=== DEBUGGING NOTIFICATIONS PAGE ===")
-        
-        # Check if we have any properties at all
-        property_count = Property.query.count()
-        app.logger.info(f"Total properties in database: {property_count}")
-        
         properties = Property.query.order_by(Property.name).all()
-        app.logger.info(f"Properties loaded: {len(properties)}")
-        
-        for prop in properties:
-            app.logger.info(f"  - Property: {prop.name} (ID: {prop.id})")
-        
         history = NotificationHistory.query.order_by(NotificationHistory.timestamp.desc()).limit(20).all()
-        app.logger.info(f"History records loaded: {len(history)}")
-        app.logger.info("=== END DEBUG ===")
         
     except Exception as ex:
         db.session.rollback()
@@ -1045,8 +1124,7 @@ def notifications_view():
                          history=history, 
                          error=error_message)
 
-# NEW ROUTES FOR PROPERTY CUSTOM FIELDS, CONTACTS, AND ATTACHMENTS
-
+# Property management routes
 @app.route('/property/<int:property_id>/custom-fields', methods=['GET', 'POST'])
 def property_custom_fields(property_id):
     """Manage custom fields for a property"""
@@ -1295,29 +1373,6 @@ def download_attachment(property_id, attachment_id):
         flash("Error downloading file.", "danger")
         return redirect(url_for('property_attachments', property_id=property_id))
 
-# Add debug route to test property loading
-@app.route("/debug/properties")
-def debug_properties():
-    """Simple debug route to test if properties load at all"""
-    try:
-        properties = Property.query.all()
-        return f"<h3>Properties Debug</h3><p>Found {len(properties)} properties:</p>" + \
-               "<ul>" + "".join([f"<li>{p.name} (ID: {p.id})</li>" for p in properties]) + "</ul>"
-    except Exception as e:
-        return f"<h3>Error</h3><p>{str(e)}</p>"
-
-@app.route("/assign_property", methods=["POST"])
-def assign_property():
-    """Assign property to message."""
-    try:
-        # Basic implementation - just redirect back
-        flash("Property assignment functionality coming soon.", "info")
-        return redirect(request.referrer or url_for('index'))
-    except Exception as e:
-        app.logger.error(f"Error in assign_property: {e}")
-        flash(f"Error: {e}", "danger")
-        return redirect(url_for('index'))
-
 @app.route('/property/<int:property_id>/edit', methods=['GET', 'POST'])
 def property_edit_view(property_id):
     """Edit property details."""
@@ -1427,6 +1482,29 @@ def property_edit_view(property_id):
         flash(f"Error loading property edit page: {e}", "danger")
         return redirect(url_for("properties_list_view"))
 
+# Debug and admin routes
+@app.route("/debug/properties")
+def debug_properties():
+    """Simple debug route to test if properties load at all"""
+    try:
+        properties = Property.query.all()
+        return f"<h3>Properties Debug</h3><p>Found {len(properties)} properties:</p>" + \
+               "<ul>" + "".join([f"<li>{p.name} (ID: {p.id})</li>" for p in properties]) + "</ul>"
+    except Exception as e:
+        return f"<h3>Error</h3><p>{str(e)}</p>"
+
+@app.route("/assign_property", methods=["POST"])
+def assign_property():
+    """Assign property to message."""
+    try:
+        # Basic implementation - just redirect back
+        flash("Property assignment functionality coming soon.", "info")
+        return redirect(request.referrer or url_for('index'))
+    except Exception as e:
+        app.logger.error(f"Error in assign_property: {e}")
+        flash(f"Error: {e}", "danger")
+        return redirect(url_for('index'))
+
 @app.route("/ping")
 def ping_route():
     try:
@@ -1436,16 +1514,11 @@ def ping_route():
         app.logger.error(f"DB Ping Failed: {e}")
         return f"Pong! DB Error: {e}", 503
 
-# Register webhook blueprint
-app.register_blueprint(webhook_bp)
-
-# Add this debug route to your main.py
-
 @app.route("/debug/volume")
 def debug_volume():
     """Check what's actually in the volume"""
     import os
-    import json  # Add this import!
+    import json
     
     upload_folder = app.config.get("UPLOAD_FOLDER", "/app/static/uploads")
     results = {
@@ -1476,8 +1549,6 @@ def debug_volume():
         })
     
     return f"<pre>{json.dumps(results, indent=2)}</pre>"
-
-# Add this route to fix the database paths
 
 @app.route("/admin/fix-paths", methods=["GET", "POST"])
 def fix_database_paths():
@@ -1556,8 +1627,6 @@ def fix_database_paths():
     </html>
     """
 
-# Add this debug route to understand the mismatch
-
 @app.route("/debug/mismatch")
 def debug_mismatch():
     """Show mismatch between database and volume files"""
@@ -1614,230 +1683,6 @@ def debug_mismatch():
     }
     
     return f"<pre>{json.dumps(results, indent=2)}</pre>"
-
-# Add this route to re-download from Google URLs
-
-# Add this to your main.py after the existing routes
-
-@app.route("/property/<int:property_id>/set-thumbnail", methods=["POST"])
-def set_property_thumbnail(property_id):
-    """Set a property thumbnail from a gallery image"""
-    try:
-        data = request.get_json()
-        thumbnail_path = data.get('thumbnail_path')
-        
-        if not thumbnail_path:
-            return jsonify({"error": "No thumbnail path provided"}), 400
-        
-        property_obj = db.session.get(Property, property_id)
-        if not property_obj:
-            return jsonify({"error": "Property not found"}), 404
-        
-        # Add thumbnail_path column if it doesn't exist (for migration)
-        try:
-            # Check if the column exists
-            inspector = db.inspect(db.engine)
-            columns = [column['name'] for column in inspector.get_columns('properties')]
-            if 'thumbnail_path' not in columns:
-                # Add the column
-                db.session.execute(text("ALTER TABLE properties ADD COLUMN thumbnail_path TEXT"))
-                db.session.commit()
-                app.logger.info("Added thumbnail_path column to properties table")
-        except Exception as e:
-            app.logger.warning(f"Could not add thumbnail_path column: {e}")
-        
-        # Update the property thumbnail
-        property_obj.thumbnail_path = thumbnail_path
-        db.session.commit()
-        
-        app.logger.info(f"Set thumbnail for property {property_obj.name}: {thumbnail_path}")
-        
-        return jsonify({
-            "success": True,
-            "message": f"Thumbnail set for {property_obj.name}",
-            "thumbnail_path": thumbnail_path
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Error setting property thumbnail: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/property/<int:property_id>/remove-thumbnail", methods=["POST"])
-def remove_property_thumbnail(property_id):
-    """Remove a property thumbnail"""
-    try:
-        property_obj = db.session.get(Property, property_id)
-        if not property_obj:
-            return jsonify({"error": "Property not found"}), 404
-        
-        # Remove the thumbnail
-        old_thumbnail = property_obj.thumbnail_path
-        property_obj.thumbnail_path = None
-        db.session.commit()
-        
-        app.logger.info(f"Removed thumbnail for property {property_obj.name}: {old_thumbnail}")
-        
-        return jsonify({
-            "success": True,
-            "message": f"Thumbnail removed from {property_obj.name}"
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Error removing property thumbnail: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-# Add this function to the existing galleries_overview route to include thumbnails
-# Replace your existing galleries_overview function with this updated version:
-
-# Add this to your main.py after the existing routes
-
-@app.route("/property/<int:property_id>/set-thumbnail", methods=["POST"])
-def set_property_thumbnail(property_id):
-    """Set a property thumbnail from a gallery image"""
-    try:
-        data = request.get_json()
-        thumbnail_path = data.get('thumbnail_path')
-        
-        if not thumbnail_path:
-            return jsonify({"error": "No thumbnail path provided"}), 400
-        
-        property_obj = db.session.get(Property, property_id)
-        if not property_obj:
-            return jsonify({"error": "Property not found"}), 404
-        
-        # Add thumbnail_path column if it doesn't exist (for migration)
-        try:
-            # Check if the column exists
-            inspector = db.inspect(db.engine)
-            columns = [column['name'] for column in inspector.get_columns('properties')]
-            if 'thumbnail_path' not in columns:
-                # Add the column
-                db.session.execute(text("ALTER TABLE properties ADD COLUMN thumbnail_path TEXT"))
-                db.session.commit()
-                app.logger.info("Added thumbnail_path column to properties table")
-        except Exception as e:
-            app.logger.warning(f"Could not add thumbnail_path column: {e}")
-        
-        # Update the property thumbnail
-        property_obj.thumbnail_path = thumbnail_path
-        db.session.commit()
-        
-        app.logger.info(f"Set thumbnail for property {property_obj.name}: {thumbnail_path}")
-        
-        return jsonify({
-            "success": True,
-            "message": f"Thumbnail set for {property_obj.name}",
-            "thumbnail_path": thumbnail_path
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Error setting property thumbnail: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/property/<int:property_id>/remove-thumbnail", methods=["POST"])
-def remove_property_thumbnail(property_id):
-    """Remove a property thumbnail"""
-    try:
-        property_obj = db.session.get(Property, property_id)
-        if not property_obj:
-            return jsonify({"error": "Property not found"}), 404
-        
-        # Remove the thumbnail
-        old_thumbnail = property_obj.thumbnail_path
-        property_obj.thumbnail_path = None
-        db.session.commit()
-        
-        app.logger.info(f"Removed thumbnail for property {property_obj.name}: {old_thumbnail}")
-        
-        return jsonify({
-            "success": True,
-            "message": f"Thumbnail removed from {property_obj.name}"
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Error removing property thumbnail: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-# Update your EXISTING galleries_overview function with this enhanced version:
-# Replace the existing @app.route("/galleries") function with this:
-
-@app.route("/galleries")
-def galleries_overview():
-    """Display galleries overview with thumbnails."""
-    try:
-        # Get properties that have media
-        property_ids_with_media = (
-            db.session.query(Message.property_id)
-            .filter(
-                Message.property_id.isnot(None), 
-                Message.local_media_paths.isnot(None)
-            )
-            .distinct()
-            .all()
-        )
-        prop_ids = [pid for (pid,) in property_ids_with_media]
-        
-        properties_with_galleries = []
-        if prop_ids:
-            properties_with_galleries = (
-                Property.query.filter(Property.id.in_(prop_ids))
-                .order_by(Property.name)
-                .all()
-            )
-        
-        # Get sample images for properties without thumbnails
-        for prop in properties_with_galleries:
-            if not hasattr(prop, 'thumbnail_path') or not prop.thumbnail_path:
-                # Get the first available image for this property
-                sample_message = (
-                    Message.query.filter(
-                        Message.property_id == prop.id,
-                        Message.local_media_paths.isnot(None),
-                        Message.local_media_paths != '',
-                        Message.local_media_paths != '[]'
-                    )
-                    .order_by(Message.timestamp.desc())
-                    .first()
-                )
-                
-                if sample_message and sample_message.local_media_paths:
-                    try:
-                        import json
-                        if sample_message.local_media_paths.startswith('['):
-                            media_paths = json.loads(sample_message.local_media_paths)
-                        else:
-                            media_paths = [sample_message.local_media_paths]
-                        
-                        if media_paths and media_paths[0]:
-                            prop.sample_image = media_paths[0]
-                    except:
-                        prop.sample_image = None
-                else:
-                    prop.sample_image = None
-            else:
-                prop.sample_image = prop.thumbnail_path
-        
-        # Count unsorted media
-        unsorted_count = db.session.query(func.count(Message.id)).filter(
-            Message.property_id.is_(None), 
-            Message.local_media_paths.isnot(None)
-        ).scalar() or 0
-        
-        return render_template("galleries_overview.html",
-                             gallery_summaries=properties_with_galleries,
-                             unsorted_count=unsorted_count)
-    except Exception as e:
-        app.logger.error(f"Error loading galleries: {e}")
-        flash(f"Error loading galleries: {e}", "danger")
-        return redirect(url_for('index'))
 
 @app.route("/admin/redownload-from-google", methods=["GET", "POST"])
 def redownload_from_google():
@@ -1940,6 +1785,30 @@ def redownload_from_google():
     </html>
     """
 
+# Register webhook blueprint
+app.register_blueprint(webhook_bp)
+
+# Helper functions for notifications
+def send_email(to_emails, subject, html_content, attachments=None):
+    """Send email using SendGrid - placeholder implementation"""
+    app.logger.info(f"send_email called: {to_emails}, {subject}")
+    try:
+        # Add your SendGrid implementation here
+        return True  # Placeholder - replace with actual implementation
+    except Exception as e:
+        app.logger.error(f"Email send error: {e}")
+        return False
+
+def send_openphone_sms(recipient_phone, message_body):
+    """Send SMS using OpenPhone API - placeholder implementation"""
+    app.logger.info(f"send_openphone_sms called: {recipient_phone}, {message_body}")
+    try:
+        # Add your OpenPhone implementation here
+        return True  # Placeholder - replace with actual implementation
+    except Exception as e:
+        app.logger.error(f"SMS send error: {e}")
+        return False
+
 # Print URL Map after all routes are defined
 with app.app_context():
     app.logger.info("\n--- URL MAP ---")
@@ -1948,73 +1817,6 @@ with app.app_context():
         methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
         app.logger.info(f"{rule.endpoint:30} {methods:<15} {rule.rule}")
     app.logger.info("--- END URL MAP ---\n")
-
-# Add these helper functions that your notifications route references
-def send_email(to_emails, subject, html_content, attachments=None):
-    """Send email using SendGrid - placeholder implementation"""
-    # You'll need to implement this based on your SendGrid setup
-    # This is just a placeholder to prevent errors
-    app.logger.info(f"send_email called: {to_emails}, {subject}")
-    try:
-        # Add your SendGrid implementation here
-        # Example:
-        # from sendgrid import SendGridAPIClient
-        # from sendgrid.helpers.mail import Mail
-        # 
-        # SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
-        # if not SENDGRID_API_KEY:
-        #     return False
-        # 
-        # message = Mail(
-        #     from_email='your-email@domain.com',
-        #     to_emails=to_emails,
-        #     subject=subject,
-        #     html_content=html_content
-        # )
-        # 
-        # sg = SendGridAPIClient(api_key=SENDGRID_API_KEY)
-        # response = sg.send(message)
-        # return response.status_code == 202
-        
-        return True  # Placeholder - replace with actual implementation
-    except Exception as e:
-        app.logger.error(f"Email send error: {e}")
-        return False
-
-def send_openphone_sms(recipient_phone, message_body):
-    """Send SMS using OpenPhone API - placeholder implementation"""
-    # You'll need to implement this based on your OpenPhone setup
-    # This is just a placeholder to prevent errors
-    app.logger.info(f"send_openphone_sms called: {recipient_phone}, {message_body}")
-    try:
-        # Add your OpenPhone implementation here
-        # Example:
-        # OPENPHONE_API_KEY = os.environ.get('OPENPHONE_API_KEY')
-        # if not OPENPHONE_API_KEY:
-        #     return False
-        # 
-        # headers = {
-        #     'Authorization': f'Bearer {OPENPHONE_API_KEY}',
-        #     'Content-Type': 'application/json'
-        # }
-        # 
-        # data = {
-        #     'to': recipient_phone,
-        #     'text': message_body,
-        #     'from': 'your-openphone-number'
-        # }
-        # 
-        # response = requests.post(
-        #     'https://api.openphone.com/v1/messages',
-        #     headers=headers,
-        #     json=data
-        # )
-        # return response.status_code == 200
-        
-        return True  # Placeholder - replace with actual implementation
-    except Exception as e:
-        app.logger.error(f"SMS send error: {e}")
-        return False
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
