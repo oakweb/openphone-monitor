@@ -285,55 +285,74 @@ function setPropertyThumbnail(propertyId, imagePath) {
         if (data.success) {
             showNotification('Thumbnail set successfully!', 'success');
             
-            // Update UI - remove current thumbnail indicators from all buttons for this property
-            document.querySelectorAll(`[data-property-id="${propertyId}"]`).forEach(btn => {
-                console.log('Processing button:', btn, 'innerHTML:', btn.innerHTML);
-                if (btn.innerHTML.includes('Current') || btn.classList.contains('btn-warning')) {
-                    btn.innerHTML = '<i class="fas fa-image"></i> Set Thumb';
-                    btn.classList.remove('btn-warning');
-                    btn.classList.add('btn-outline-warning');
-                    btn.disabled = false;
-                    // Re-attach click handler
-                    const btnImagePath = btn.getAttribute('data-image-path');
-                    btn.onclick = function() { setPropertyThumbnail(propertyId, btnImagePath); };
-                    console.log('Reset button for path:', btnImagePath);
-                }
-            });
+            // Try to update UI manually first
+            let uiUpdateSuccessful = false;
             
-            // Update the clicked button to show it's current
-            if (clickedButton) {
-                clickedButton.innerHTML = '<i class="fas fa-star"></i> Current';
-                clickedButton.classList.remove('btn-outline-warning');
-                clickedButton.classList.add('btn-warning');
-                clickedButton.disabled = true;
-                clickedButton.onclick = null;
-                console.log('Updated clicked button to Current state');
+            try {
+                // Update UI - remove current thumbnail indicators from all buttons for this property
+                document.querySelectorAll(`[data-property-id="${propertyId}"]`).forEach(btn => {
+                    console.log('Processing button:', btn, 'innerHTML:', btn.innerHTML);
+                    if (btn.innerHTML.includes('Current') || btn.classList.contains('btn-warning')) {
+                        btn.innerHTML = '<i class="fas fa-image"></i> Set Thumb';
+                        btn.classList.remove('btn-warning');
+                        btn.classList.add('btn-outline-warning');
+                        btn.disabled = false;
+                        // Re-attach click handler
+                        const btnImagePath = btn.getAttribute('data-image-path');
+                        btn.onclick = function() { setPropertyThumbnail(propertyId, btnImagePath); };
+                        console.log('Reset button for path:', btnImagePath);
+                    }
+                });
+                
+                // Update the clicked button to show it's current
+                if (clickedButton) {
+                    clickedButton.innerHTML = '<i class="fas fa-star"></i> Current';
+                    clickedButton.classList.remove('btn-outline-warning');
+                    clickedButton.classList.add('btn-warning');
+                    clickedButton.disabled = true;
+                    clickedButton.onclick = null;
+                    console.log('Updated clicked button to Current state');
+                    uiUpdateSuccessful = true;
+                }
+                
+                // Remove existing thumbnail indicators
+                const existingIndicators = document.querySelectorAll('.thumbnail-indicator');
+                console.log('Removing existing indicators:', existingIndicators.length);
+                existingIndicators.forEach(indicator => {
+                    indicator.remove();
+                });
+                
+                // Add thumbnail indicator to current image - WITH NULL CHECKS
+                if (clickedButton) {
+                    const imageWrapper = clickedButton.closest('.image-wrapper');
+                    if (imageWrapper) {
+                        const imageContainer = imageWrapper.querySelector('.image-container');
+                        if (imageContainer) {
+                            const indicator = document.createElement('div');
+                            indicator.className = 'thumbnail-indicator';
+                            indicator.innerHTML = '<i class="fas fa-star"></i> Thumbnail';
+                            imageContainer.appendChild(indicator);
+                            console.log('Added thumbnail indicator to image container');
+                        } else {
+                            console.warn('Could not find image container');
+                            uiUpdateSuccessful = false;
+                        }
+                    } else {
+                        console.warn('Could not find image wrapper for thumbnail indicator');
+                        uiUpdateSuccessful = false;
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating UI:', error);
+                uiUpdateSuccessful = false;
             }
             
-            // Remove existing thumbnail indicators
-            const existingIndicators = document.querySelectorAll('.thumbnail-indicator');
-            console.log('Removing existing indicators:', existingIndicators.length);
-            existingIndicators.forEach(indicator => {
-                indicator.remove();
-            });
-            
-            // Add thumbnail indicator to current image - WITH NULL CHECKS
-            if (clickedButton) {
-                const imageWrapper = clickedButton.closest('.image-wrapper');
-                if (imageWrapper) {
-                    const imageContainer = imageWrapper.querySelector('.image-container');
-                    if (imageContainer) {
-                        const indicator = document.createElement('div');
-                        indicator.className = 'thumbnail-indicator';
-                        indicator.innerHTML = '<i class="fas fa-star"></i> Thumbnail';
-                        imageContainer.appendChild(indicator);
-                        console.log('Added thumbnail indicator to image container');
-                    } else {
-                        console.warn('Could not find image container');
-                    }
-                } else {
-                    console.warn('Could not find image wrapper for thumbnail indicator');
-                }
+            // If UI update failed or as a fallback, reload the page
+            if (!uiUpdateSuccessful || !clickedButton) {
+                console.log('UI update failed or incomplete, reloading page in 1.5 seconds...');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
             }
             
         } else {
