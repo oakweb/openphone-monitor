@@ -20,6 +20,7 @@ app = Flask(__name__)
 # Logging Setup
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s : %(message)s")
 app.logger.setLevel(logging.DEBUG)
+app.logger.info("App starting - Version with vendor management fix")
 
 # Flask App Configuration
 INSTANCE = Path(app.instance_path)
