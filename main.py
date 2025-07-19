@@ -120,7 +120,12 @@ with app.app_context():
             "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS can_text BOOLEAN DEFAULT TRUE",
             "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS can_email BOOLEAN DEFAULT TRUE",
             "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS example_invoice_path VARCHAR(500)",
-            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS fax_number VARCHAR(20)"
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS fax_number VARCHAR(20)",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS phone VARCHAR(20)",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS address VARCHAR(200)",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS city VARCHAR(100)",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS state VARCHAR(50)",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS zip_code VARCHAR(20)"
         ]
         
         if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
@@ -381,7 +386,13 @@ def vendor_create():
                 can_email=can_email,
                 example_invoice_path=example_invoice_path,
                 license_number=request.form.get('license_number', '').strip(),
-                tax_id=request.form.get('tax_id', '').strip()
+                tax_id=request.form.get('tax_id', '').strip(),
+                phone=request.form.get('phone', '').strip(),
+                fax_number=request.form.get('fax_number', '').strip(),
+                address=request.form.get('address', '').strip(),
+                city=request.form.get('city', '').strip(),
+                state=request.form.get('state', '').strip(),
+                zip_code=request.form.get('zip_code', '').strip()
             )
             
             db.session.add(vendor)
@@ -422,8 +433,13 @@ def vendor_edit(vendor_id):
             vendor.status = request.form.get('status', 'active')
             vendor.preferred_payment_method = request.form.get('preferred_payment_method', '').strip()
             vendor.notes = request.form.get('notes', '')
-            vendor.fax_number = request.form.get('fax_number', '').strip()
             vendor.tax_id = request.form.get('tax_id', '').strip()
+            vendor.phone = request.form.get('phone', '').strip()
+            vendor.fax_number = request.form.get('fax_number', '').strip()
+            vendor.address = request.form.get('address', '').strip()
+            vendor.city = request.form.get('city', '').strip()
+            vendor.state = request.form.get('state', '').strip()
+            vendor.zip_code = request.form.get('zip_code', '').strip()
             
             # Update communication preferences
             vendor.can_text = request.form.get('can_text') == 'true'
@@ -510,9 +526,22 @@ def process_vendor_invoice(vendor_id):
         # Create a prompt for extraction
         prompt = f"""Extract all relevant vendor information from this invoice text. 
         Return the data as a JSON object with clear field names and values.
-        Include business license, insurance info, tax ID, addresses, phone numbers, emails, fax numbers, 
-        payment terms, and any other relevant business information.
-        If a field is not found, omit it from the response.
+        
+        Required fields to extract if available:
+        - name (company name)
+        - phone (main business phone)
+        - email
+        - address (full street address)
+        - city
+        - state (full name or abbreviation)
+        - zip_code (zip or postal code)
+        - business_license (license number)
+        - tax_id (EIN or tax ID)
+        - fax_number
+        - insurance_info
+        - payment_terms
+        
+        If you find a full address string, please parse it into separate address, city, state, and zip_code fields.
         
         Invoice text:
         {extracted_text[:4000]}  # Limit to 4000 chars for API limits
@@ -616,6 +645,11 @@ def vendor_review_invoice(vendor_id):
             vendor.license_number = request.form.get('license_number', '').strip() or vendor.license_number
             vendor.tax_id = request.form.get('tax_id', '').strip() or vendor.tax_id
             vendor.fax_number = request.form.get('fax_number', '').strip() or vendor.fax_number
+            vendor.phone = request.form.get('phone', '').strip() or vendor.phone
+            vendor.address = request.form.get('address', '').strip() or vendor.address
+            vendor.city = request.form.get('city', '').strip() or vendor.city
+            vendor.state = request.form.get('state', '').strip() or vendor.state
+            vendor.zip_code = request.form.get('zip_code', '').strip() or vendor.zip_code
             
             # Store additional fields in VendorInvoiceData
             additional_fields = request.form.get('additional_fields', '')
@@ -670,7 +704,13 @@ def vendor_review_invoice(vendor_id):
         'phone': 'phone',
         'phone_number': 'phone',
         'address': 'address',
-        'business_address': 'address'
+        'street_address': 'address',
+        'business_address': 'address',
+        'city': 'city',
+        'state': 'state',
+        'zip': 'zip_code',
+        'zip_code': 'zip_code',
+        'postal_code': 'zip_code'
     }
     
     # Prepare mapped data and additional fields

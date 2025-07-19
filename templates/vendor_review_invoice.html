@@ -242,6 +242,24 @@
                 </div>
                 {% endif %}
                 
+                <!-- Phone Number -->
+                {% if mapped_data.get('phone') %}
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-phone"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Business Phone</div>
+                        {% if vendor.phone %}
+                        <div class="current-value">Current: {{ vendor.phone }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="text" class="form-control" name="phone" 
+                           value="{{ mapped_data.get('phone', '') }}" style="max-width: 300px;">
+                </div>
+                {% endif %}
+                
                 <!-- Fax Number -->
                 {% if mapped_data.get('fax_number') %}
                 <div class="field-row">
@@ -259,6 +277,46 @@
                            value="{{ mapped_data.get('fax_number', '') }}" style="max-width: 300px;">
                 </div>
                 {% endif %}
+                
+                <!-- Address -->
+                {% if mapped_data.get('address') %}
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Street Address</div>
+                        {% if vendor.address %}
+                        <div class="current-value">Current: {{ vendor.address }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="text" class="form-control" name="address" 
+                           value="{{ mapped_data.get('address', '') }}" style="max-width: 400px;">
+                </div>
+                {% endif %}
+                
+                <!-- City, State, Zip -->
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-city"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">City, State, Zip</div>
+                        {% if vendor.city or vendor.state or vendor.zip_code %}
+                        <div class="current-value">Current: {{ vendor.city }}{% if vendor.city and vendor.state %}, {% endif %}{{ vendor.state }} {{ vendor.zip_code }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" class="form-control" name="city" 
+                               value="{{ mapped_data.get('city', '') }}" placeholder="City" style="width: 150px;">
+                        <input type="text" class="form-control" name="state" 
+                               value="{{ mapped_data.get('state', '') }}" placeholder="State" style="width: 80px;">
+                        <input type="text" class="form-control" name="zip_code" 
+                               value="{{ mapped_data.get('zip_code', '') }}" placeholder="Zip" style="width: 100px;">
+                    </div>
+                </div>
                 
                 <!-- Vendor Type (editable) -->
                 <div class="field-row">

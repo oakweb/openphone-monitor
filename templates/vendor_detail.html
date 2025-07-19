@@ -348,6 +348,35 @@
         </div>
         {% endif %}
         
+        {% if vendor.phone %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-phone-alt"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Business Phone</div>
+                <div class="info-value">{{ vendor.phone }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if vendor.address or vendor.city or vendor.state or vendor.zip_code %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-map-marker-alt"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Address</div>
+                <div class="info-value">
+                    {% if vendor.address %}{{ vendor.address }}<br>{% endif %}
+                    {% if vendor.city %}{{ vendor.city }}{% endif %}{% if vendor.city and vendor.state %}, {% endif %}
+                    {% if vendor.state %}{{ vendor.state }}{% endif %}
+                    {% if vendor.zip_code %} {{ vendor.zip_code }}{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         <div class="info-item">
             <div class="info-icon">
                 <i class="fas fa-comments"></i>

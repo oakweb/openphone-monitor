@@ -265,6 +265,14 @@ class Vendor(db.Model):
     can_email = db.Column(db.Boolean, default=True)  # Whether vendor accepts emails
     example_invoice_path = db.Column(db.String(500))  # Path to uploaded example invoice
     fax_number = db.Column(db.String(20))  # Fax number extracted from invoice or manually added
+    
+    # Address fields
+    phone = db.Column(db.String(20))  # Business phone number
+    address = db.Column(db.String(200))  # Street address
+    city = db.Column(db.String(100))
+    state = db.Column(db.String(50))
+    zip_code = db.Column(db.String(20))
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
