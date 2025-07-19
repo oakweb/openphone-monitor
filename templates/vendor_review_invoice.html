@@ -296,7 +296,7 @@
                 </div>
                 {% endif %}
                 
-                <!-- City, State, Zip -->
+                <!-- City, State, Zip - Always show even if not extracted -->
                 <div class="field-row">
                     <div class="field-icon">
                         <i class="fas fa-city"></i>
@@ -305,6 +305,9 @@
                         <div class="field-label">City, State, Zip</div>
                         {% if vendor.city or vendor.state or vendor.zip_code %}
                         <div class="current-value">Current: {{ vendor.city }}{% if vendor.city and vendor.state %}, {% endif %}{{ vendor.state }} {{ vendor.zip_code }}</div>
+                        {% endif %}
+                        {% if not mapped_data.get('city') and not mapped_data.get('state') and not mapped_data.get('zip_code') %}
+                        <div class="text-warning small">⚠️ No vendor address found - service address was excluded</div>
                         {% endif %}
                     </div>
                     <i class="fas fa-arrow-right arrow-icon"></i>

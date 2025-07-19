@@ -536,32 +536,42 @@ def process_vendor_invoice(vendor_id):
         prompt = f"""Extract all relevant VENDOR/COMPANY information from this invoice text. 
         Return the data as a JSON object with clear field names and values.
         
-        IMPORTANT: Extract the VENDOR'S business address, NOT the service/property address.
-        Look for:
-        - Company letterhead or header information
-        - "From:" or "Bill From:" sections
-        - Company contact information section
-        - Footer with company details
+        CRITICAL RULES FOR ADDRESS EXTRACTION:
+        1. NEVER extract addresses that appear after "Service Address:", "Property:", "Location:", "Job Site:", or "Bill To:"
+        2. ONLY extract addresses from:
+           - Company letterhead at the top of invoice
+           - "Remit to:" or "Mail payments to:" sections
+           - Company footer information
+           - "From:" or vendor info boxes
         
-        DO NOT extract these property/service addresses (these are customer locations, not vendor addresses):
-        {', '.join(property_addresses[:10])}  # Show first 10 as examples
+        3. If you see "4365 N Campbell Rd" or any of these addresses, DO NOT use them as vendor address:
+        {', '.join(property_addresses[:10])}
+        
+        4. Common patterns to AVOID:
+           - Service Address: [address] <- This is WHERE work was done, not vendor location
+           - Bill To: Sin City Rentals [address] <- This is customer address
+           - Property: [address] <- This is customer property
+        
+        5. Common patterns to EXTRACT:
+           - [Company Name]\\n[Address] <- At top of invoice (letterhead)
+           - From: [Company]\\n[Address] <- Vendor info box
+           - Remit Payment to: [Address] <- Where to send payment
         
         Required fields to extract if available:
-        - name (vendor/company name from letterhead or "from" section)
-        - phone (vendor's main business phone)
+        - name (vendor/company name - look at top of invoice)
+        - phone (vendor's business phone - often in header/footer)
         - email (vendor's email)
-        - address (vendor's business street address - NOT the service address)
+        - address (vendor's BUSINESS address - NOT where service was performed)
         - city (vendor's city)
         - state (vendor's state)
         - zip_code (vendor's zip code)
-        - business_license (license number)
+        - business_license (often starts with "License #" or "Lic #")
         - tax_id (EIN or tax ID)
         - fax_number
         - insurance_info
         - payment_terms
         
-        If you see both a "Bill To" and "From" address, extract the "From" address as that's the vendor.
-        If you find a full address string, please parse it into separate address, city, state, and zip_code fields.
+        If address contains "4365 N Campbell" or matches a known property, leave address fields empty.
         
         Invoice text:
         {extracted_text[:3500]}  # Reduced to make room for property list
@@ -583,6 +593,19 @@ def process_vendor_invoice(vendor_id):
         
         # Log extracted data for debugging
         app.logger.info(f"Extracted vendor data: {extracted_data}")
+        
+        # Validate extracted address isn't a property address
+        if 'address' in extracted_data:
+            extracted_addr_lower = extracted_data['address'].lower()
+            for prop_addr in property_addresses:
+                if prop_addr in extracted_addr_lower or extracted_addr_lower in prop_addr:
+                    app.logger.warning(f"Detected property address in extraction, removing: {extracted_data['address']}")
+                    # Remove address fields if they match a property
+                    extracted_data.pop('address', None)
+                    extracted_data.pop('city', None)
+                    extracted_data.pop('state', None)
+                    extracted_data.pop('zip_code', None)
+                    break
         
         # Clear existing invoice data for this vendor
         VendorInvoiceData.query.filter_by(vendor_id=vendor_id).delete()
