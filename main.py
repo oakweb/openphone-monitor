@@ -12,7 +12,7 @@ load_dotenv()
 
 # Import local modules
 from extensions import db
-from models import Contact, Message, Property, Tenant, NotificationHistory, PropertyCustomField, PropertyAttachment, PropertyContact
+from models import Contact, Message, Property, Tenant, NotificationHistory, PropertyCustomField, PropertyAttachment, PropertyContact, Vendor, VendorJob
 from webhook_route import webhook_bp
 
 app = Flask(__name__)
@@ -181,6 +181,194 @@ def index():
                          summary_week=summary_week,
                          ai_summaries=[],
                          error=error_message)
+
+@app.route("/vendors")
+def vendors_list():
+    """Display list of vendors with filtering"""
+    status_filter = request.args.get('status', 'active')  # active, inactive, all
+    vendor_type = request.args.get('type', '')
+    
+    try:
+        # Base query
+        query = Vendor.query.options(
+            joinedload(Vendor.contact),
+            joinedload(Vendor.jobs)
+        )
+        
+        # Apply status filter
+        if status_filter != 'all':
+            query = query.filter_by(status=status_filter)
+        
+        # Apply type filter
+        if vendor_type:
+            query = query.filter_by(vendor_type=vendor_type)
+        
+        # Get all vendors
+        vendors = query.order_by(Vendor.company_name).all()
+        
+        # Get vendor types for filter dropdown
+        vendor_types = db.session.query(Vendor.vendor_type).distinct().filter(
+            Vendor.vendor_type.isnot(None)
+        ).order_by(Vendor.vendor_type).all()
+        vendor_types = [vt[0] for vt in vendor_types]
+        
+        # Calculate statistics
+        active_count = Vendor.query.filter_by(status='active').count()
+        inactive_count = Vendor.query.filter_by(status='inactive').count()
+        
+        return render_template('vendors_list.html',
+                             vendors=vendors,
+                             vendor_types=vendor_types,
+                             status_filter=status_filter,
+                             vendor_type_filter=vendor_type,
+                             active_count=active_count,
+                             inactive_count=inactive_count)
+    
+    except Exception as e:
+        app.logger.error(f"Error in vendors_list: {e}")
+        flash(f"Error loading vendors: {e}", "danger")
+        return redirect(url_for('index'))
+
+
+@app.route("/vendor/<int:vendor_id>")
+def vendor_detail(vendor_id):
+    """Display vendor profile with job history"""
+    try:
+        vendor = Vendor.query.options(
+            joinedload(Vendor.contact),
+            joinedload(Vendor.jobs).joinedload(VendorJob.property)
+        ).get_or_404(vendor_id)
+        
+        # Get job statistics
+        jobs_by_property = db.session.query(
+            Property.name,
+            Property.id,
+            func.count(VendorJob.id).label('job_count'),
+            func.sum(VendorJob.cost).label('total_cost'),
+            func.max(VendorJob.job_date).label('last_job')
+        ).join(
+            VendorJob, VendorJob.property_id == Property.id
+        ).filter(
+            VendorJob.vendor_id == vendor_id
+        ).group_by(Property.id, Property.name).all()
+        
+        # Get recent messages
+        recent_messages = Message.query.filter_by(
+            phone_number=vendor.contact_id
+        ).order_by(Message.timestamp.desc()).limit(10).all()
+        
+        return render_template('vendor_detail.html',
+                             vendor=vendor,
+                             jobs_by_property=jobs_by_property,
+                             recent_messages=recent_messages)
+    
+    except Exception as e:
+        app.logger.error(f"Error in vendor_detail: {e}")
+        flash(f"Error loading vendor: {e}", "danger")
+        return redirect(url_for('vendors_list'))
+
+
+@app.route("/vendor/create", methods=["GET", "POST"])
+def vendor_create():
+    """Create a new vendor"""
+    if request.method == "POST":
+        try:
+            # Get form data
+            phone_number = request.form.get('phone_number', '').strip()
+            contact_name = request.form.get('contact_name', '').strip()
+            company_name = request.form.get('company_name', '').strip()
+            vendor_type = request.form.get('vendor_type', '').strip()
+            email = request.form.get('email', '').strip()
+            hourly_rate = request.form.get('hourly_rate', type=float)
+            
+            # Validate phone number
+            if not phone_number:
+                flash("Phone number is required", "danger")
+                return redirect(url_for('vendor_create'))
+            
+            # Check if vendor already exists
+            existing_vendor = Vendor.query.filter_by(contact_id=phone_number).first()
+            if existing_vendor:
+                flash("A vendor with this phone number already exists", "warning")
+                return redirect(url_for('vendor_detail', vendor_id=existing_vendor.id))
+            
+            # Create or update contact
+            contact = Contact.query.filter_by(phone_number=phone_number).first()
+            if not contact:
+                contact = Contact(
+                    phone_number=phone_number,
+                    contact_name=contact_name or company_name
+                )
+                db.session.add(contact)
+            elif contact_name and not contact.contact_name:
+                contact.contact_name = contact_name
+            
+            # Create vendor
+            vendor = Vendor(
+                contact_id=phone_number,
+                company_name=company_name,
+                vendor_type=vendor_type,
+                email=email,
+                hourly_rate=hourly_rate,
+                status='active',
+                notes=request.form.get('notes', '')
+            )
+            
+            db.session.add(vendor)
+            db.session.commit()
+            
+            flash(f"Vendor '{company_name or contact_name}' created successfully", "success")
+            return redirect(url_for('vendor_detail', vendor_id=vendor.id))
+            
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error creating vendor: {e}")
+            flash(f"Error creating vendor: {e}", "danger")
+    
+    # GET request - show form
+    # Get contacts that aren't already vendors
+    existing_vendor_phones = [v.contact_id for v in Vendor.query.all()]
+    available_contacts = Contact.query.filter(
+        ~Contact.phone_number.in_(existing_vendor_phones)
+    ).order_by(Contact.contact_name).all()
+    
+    return render_template('vendor_create.html', available_contacts=available_contacts)
+
+
+@app.route("/vendor/<int:vendor_id>/edit", methods=["GET", "POST"])
+def vendor_edit(vendor_id):
+    """Edit vendor information"""
+    vendor = Vendor.query.get_or_404(vendor_id)
+    
+    if request.method == "POST":
+        try:
+            # Update vendor fields
+            vendor.company_name = request.form.get('company_name', '').strip()
+            vendor.vendor_type = request.form.get('vendor_type', '').strip()
+            vendor.email = request.form.get('email', '').strip()
+            vendor.license_number = request.form.get('license_number', '').strip()
+            vendor.insurance_info = request.form.get('insurance_info', '').strip()
+            vendor.hourly_rate = request.form.get('hourly_rate', type=float)
+            vendor.status = request.form.get('status', 'active')
+            vendor.preferred_payment_method = request.form.get('preferred_payment_method', '').strip()
+            vendor.notes = request.form.get('notes', '')
+            
+            # Update contact name if provided
+            contact_name = request.form.get('contact_name', '').strip()
+            if contact_name and vendor.contact:
+                vendor.contact.contact_name = contact_name
+            
+            db.session.commit()
+            flash("Vendor updated successfully", "success")
+            return redirect(url_for('vendor_detail', vendor_id=vendor_id))
+            
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error updating vendor: {e}")
+            flash(f"Error updating vendor: {e}", "danger")
+    
+    return render_template('vendor_edit.html', vendor=vendor)
+
 
 @app.route("/contact/update", methods=["POST"])
 def update_contact():

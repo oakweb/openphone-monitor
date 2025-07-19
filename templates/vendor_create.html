@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Vendor{% endblock %}
+
+{% block head_extra %}
+<style>
+    .form-card {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .form-section {
+        margin-bottom: 2rem;
+    }
+    
+    .form-section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #6cb9d3;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(108, 185, 211, 0.2);
+    }
+    
+    .form-label {
+        color: #adb5bd;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }
+    
+    .form-control, .form-select {
+        background-color: rgba(30, 40, 50, 0.7);
+        border: 1px solid rgba(108, 185, 211, 0.3);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+    }
+    
+    .form-control:focus, .form-select:focus {
+        background-color: rgba(40, 50, 60, 0.8);
+        border-color: #6cb9d3;
+        color: #fff;
+        box-shadow: 0 0 0 0.25rem rgba(108, 185, 211, 0.25);
+    }
+    
+    .form-control::placeholder {
+        color: #6c757d;
+    }
+    
+    .form-text {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+    
+    .btn-group-custom {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    
+    .existing-contact-option {
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        background-color: rgba(108, 185, 211, 0.05);
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .existing-contact-option:hover {
+        background-color: rgba(108, 185, 211, 0.1);
+        border-color: #6cb9d3;
+    }
+    
+    .existing-contact-option input[type="radio"] {
+        margin-right: 0.75rem;
+    }
+    
+    .contact-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .contact-name {
+        font-weight: 500;
+        color: #fff;
+    }
+    
+    .contact-phone {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    
+    .vendor-types-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    
+    .vendor-type-suggestion {
+        padding: 0.25rem 0.75rem;
+        background-color: rgba(108, 185, 211, 0.1);
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 20px;
+        font-size: 0.875rem;
+        color: #6cb9d3;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .vendor-type-suggestion:hover {
+        background-color: rgba(108, 185, 211, 0.2);
+        border-color: #6cb9d3;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <h2 class="mb-4">Create New Vendor</h2>
+        
+        <form method="POST" action="{{ url_for('vendor_create') }}">
+            <!-- Contact Selection -->
+            <div class="form-card">
+                <h3 class="form-section-title">Contact Information</h3>
+                
+                {% if available_contacts %}
+                    <div class="mb-3">
+                        <label class="form-label">Select Existing Contact</label>
+                        <div class="existing-contacts-list">
+                            <div class="existing-contact-option">
+                                <input type="radio" name="contact_type" value="new" id="new_contact" checked>
+                                <label for="new_contact" style="cursor: pointer; margin: 0;">
+                                    <strong>Create New Contact</strong>
+                                </label>
+                            </div>
+                            {% for contact in available_contacts %}
+                                <div class="existing-contact-option">
+                                    <input type="radio" name="contact_type" value="existing" id="contact_{{ loop.index }}">
+                                    <label for="contact_{{ loop.index }}" style="cursor: pointer; margin: 0; flex: 1;">
+                                        <div class="contact-info">
+                                            <span class="contact-name">{{ contact.contact_name or 'Unknown' }}</span>
+                                            <span class="contact-phone">{{ contact.phone_number }}</span>
+                                        </div>
+                                    </label>
+                                    <input type="hidden" name="existing_phone_{{ loop.index }}" value="{{ contact.phone_number }}">
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+                
+                <div id="new_contact_fields">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="phone_number" class="form-label">Phone Number <span class="text-danger">*</span></label>
+                            <input type="tel" class="form-control" id="phone_number" name="phone_number" 
+                                   placeholder="+1234567890" pattern="^\+?[0-9]{10,15}$">
+                            <div class="form-text">Include country code (e.g., +17025551234)</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="contact_name" class="form-label">Contact Name</label>
+                            <input type="text" class="form-control" id="contact_name" name="contact_name" 
+                                   placeholder="John Smith">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Vendor Information -->
+            <div class="form-card">
+                <h3 class="form-section-title">Vendor Information</h3>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="company_name" class="form-label">Company Name</label>
+                        <input type="text" class="form-control" id="company_name" name="company_name" 
+                               placeholder="ABC Plumbing Services">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="vendor_type" class="form-label">Vendor Type</label>
+                        <input type="text" class="form-control" id="vendor_type" name="vendor_type" 
+                               placeholder="Plumber">
+                        <div class="vendor-types-list">
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Plumber')">Plumber</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Electrician')">Electrician</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('HVAC')">HVAC</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Landscaper')">Landscaper</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Handyman')">Handyman</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Cleaner')">Cleaner</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Roofer')">Roofer</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Painter')">Painter</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" 
+                               placeholder="vendor@example.com">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="hourly_rate" class="form-label">Hourly Rate</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="hourly_rate" name="hourly_rate" 
+                                   step="0.01" min="0" placeholder="75.00">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="3" 
+                              placeholder="Any additional information about this vendor..."></textarea>
+                </div>
+            </div>
+            
+            <!-- Form Actions -->
+            <div class="btn-group-custom">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Create Vendor
+                </button>
+                <a href="{{ url_for('vendors_list') }}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Handle contact type selection
+document.addEventListener('DOMContentLoaded', function() {
+    const contactRadios = document.querySelectorAll('input[name="contact_type"]');
+    const newContactFields = document.getElementById('new_contact_fields');
+    
+    contactRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'new' && this.checked) {
+                newContactFields.style.display = 'block';
+                document.getElementById('phone_number').required = true;
+            } else if (this.value === 'existing' && this.checked) {
+                newContactFields.style.display = 'none';
+                document.getElementById('phone_number').required = false;
+                
+                // Get the selected contact's phone number
+                const index = this.id.split('_')[1];
+                const phoneInput = document.querySelector(`input[name="existing_phone_${index}"]`);
+                if (phoneInput) {
+                    // Set the phone number in a hidden field
+                    let hiddenPhone = document.getElementById('selected_phone');
+                    if (!hiddenPhone) {
+                        hiddenPhone = document.createElement('input');
+                        hiddenPhone.type = 'hidden';
+                        hiddenPhone.id = 'selected_phone';
+                        hiddenPhone.name = 'phone_number';
+                        this.form.appendChild(hiddenPhone);
+                    }
+                    hiddenPhone.value = phoneInput.value;
+                }
+            }
+        });
+    });
+});
+
+// Set vendor type from suggestions
+function setVendorType(type) {
+    document.getElementById('vendor_type').value = type;
+}
+</script>
+{% endblock %}

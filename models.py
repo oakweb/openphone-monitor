@@ -239,3 +239,91 @@ class PropertyContact(db.Model):
 
     def __repr__(self):
         return f"<PropertyContact {self.name} - {self.contact_type} (Property: {self.property_id})>"
+
+
+# ====== VENDOR MANAGEMENT MODELS ======
+
+class Vendor(db.Model):
+    """Vendor information and profile"""
+    __tablename__ = "vendors"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(db.String(20), db.ForeignKey('contacts.phone_number'), unique=True, nullable=False)
+    company_name = db.Column(db.String(200))
+    vendor_type = db.Column(db.String(100))  # Plumber, Electrician, Landscaper, etc.
+    status = db.Column(db.String(20), default='active')  # active/inactive
+    email = db.Column(db.String(200))
+    license_number = db.Column(db.String(100))
+    insurance_info = db.Column(db.Text)
+    insurance_expiry = db.Column(db.Date)
+    hourly_rate = db.Column(db.Numeric(10,2))
+    rating = db.Column(db.Numeric(2,1))  # 1.0-5.0 stars
+    notes = db.Column(db.Text)
+    preferred_payment_method = db.Column(db.String(50))  # cash, check, venmo, zelle, etc.
+    tax_id = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    contact = db.relationship('Contact', backref=db.backref('vendor_profile', uselist=False))
+    jobs = db.relationship('VendorJob', backref='vendor', lazy='dynamic', cascade='all, delete-orphan')
+    
+    @property
+    def total_jobs(self):
+        """Total number of jobs for this vendor"""
+        return self.jobs.count()
+    
+    @property
+    def completed_jobs(self):
+        """Number of completed jobs"""
+        return self.jobs.filter_by(status='completed').count()
+    
+    @property
+    def total_revenue(self):
+        """Total revenue from this vendor"""
+        return db.session.query(db.func.sum(VendorJob.cost)).filter(
+            VendorJob.vendor_id == self.id,
+            VendorJob.status == 'completed'
+        ).scalar() or 0
+    
+    @property
+    def average_job_rating(self):
+        """Average rating across all jobs"""
+        avg = db.session.query(db.func.avg(VendorJob.rating)).filter(
+            VendorJob.vendor_id == self.id,
+            VendorJob.rating.isnot(None)
+        ).scalar()
+        return round(avg, 1) if avg else None
+    
+    def __repr__(self):
+        return f"<Vendor {self.company_name or self.contact.contact_name}>"
+
+
+class VendorJob(db.Model):
+    """Track vendor work at properties"""
+    __tablename__ = "vendor_jobs"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    job_date = db.Column(db.Date, default=datetime.utcnow)
+    job_type = db.Column(db.String(100))  # Repair, Maintenance, Installation, etc.
+    job_description = db.Column(db.Text)
+    cost = db.Column(db.Numeric(10,2))
+    status = db.Column(db.String(50), default='scheduled')  # scheduled, in-progress, completed, cancelled
+    invoice_number = db.Column(db.String(100))
+    payment_status = db.Column(db.String(50), default='pending')  # pending, paid, partial
+    notes = db.Column(db.Text)
+    rating = db.Column(db.Integer)  # 1-5 stars for this specific job
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+    
+    # Message thread tracking
+    message_thread_start = db.Column(db.DateTime)
+    message_thread_end = db.Column(db.DateTime)
+    
+    # Relationships
+    property = db.relationship('Property', backref='vendor_jobs')
+    
+    def __repr__(self):
+        return f"<VendorJob {self.vendor.company_name} at {self.property.name} - {self.status}>"

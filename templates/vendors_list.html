@@ -1,0 +1,397 @@
+{% extends 'base.html' %}
+
+{% block title %}Vendors{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Vendor List Styles */
+    .vendor-tabs {
+        background-color: #1a1d20;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .tab-btn {
+        padding: 0.5rem 1.5rem;
+        border: 1px solid rgba(108, 185, 211, 0.3);
+        background-color: transparent;
+        color: #6cb9d3;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .tab-btn:hover {
+        background-color: rgba(108, 185, 211, 0.1);
+        border-color: #6cb9d3;
+        color: #6cb9d3;
+        text-decoration: none;
+    }
+    
+    .tab-btn.active {
+        background-color: #3a8bab;
+        border-color: #3a8bab;
+        color: #fff;
+    }
+    
+    .vendor-stats {
+        margin-left: auto;
+        display: flex;
+        gap: 2rem;
+        font-size: 0.9rem;
+    }
+    
+    .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .stat-label {
+        color: #6c757d;
+    }
+    
+    .stat-value {
+        font-weight: 600;
+        color: #fff;
+    }
+    
+    /* Vendor Cards */
+    .vendor-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .vendor-card {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        transition: all 0.2s;
+        cursor: pointer;
+        position: relative;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+    
+    .vendor-card:hover {
+        border-color: #6cb9d3;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        text-decoration: none;
+        color: inherit;
+    }
+    
+    .vendor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+    
+    .vendor-name {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 0.25rem;
+    }
+    
+    .vendor-type {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        background-color: rgba(108, 185, 211, 0.2);
+        color: #6cb9d3;
+        border-radius: 20px;
+        font-size: 0.85rem;
+    }
+    
+    .vendor-status {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .vendor-status.active {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: #28a745;
+    }
+    
+    .vendor-status.inactive {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: #dc3545;
+    }
+    
+    .vendor-details {
+        display: grid;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .vendor-detail-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #adb5bd;
+    }
+    
+    .vendor-detail-item i {
+        width: 20px;
+        text-align: center;
+        color: #6cb9d3;
+    }
+    
+    .vendor-stats-row {
+        display: flex;
+        gap: 2rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(108, 185, 211, 0.1);
+    }
+    
+    .vendor-stat {
+        flex: 1;
+        text-align: center;
+    }
+    
+    .vendor-stat-value {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #fff;
+    }
+    
+    .vendor-stat-label {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+    
+    /* Filters */
+    .filters-row {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        align-items: center;
+    }
+    
+    .filter-select {
+        background-color: rgba(30, 40, 50, 0.7);
+        border: 1px solid rgba(108, 185, 211, 0.3);
+        color: #fff;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        min-width: 150px;
+    }
+    
+    .add-vendor-btn {
+        margin-left: auto;
+        background: linear-gradient(90deg, #3a8bab, #6cb9d3);
+        border: none;
+        color: #fff;
+        padding: 0.5rem 1.5rem;
+        border-radius: 6px;
+        font-weight: 600;
+        transition: all 0.2s;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .add-vendor-btn:hover {
+        background: linear-gradient(90deg, #357d9a, #5eaac4);
+        transform: translateY(-2px);
+        color: #fff;
+        text-decoration: none;
+    }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: #6c757d;
+    }
+    
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    .empty-state h3 {
+        color: #adb5bd;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Rating Stars */
+    .rating-stars {
+        color: #ffc107;
+        font-size: 0.9rem;
+    }
+    
+    .rating-stars .empty {
+        color: #495057;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Vendors</h2>
+</div>
+
+<!-- Tabs and Stats -->
+<div class="vendor-tabs">
+    <a href="{{ url_for('vendors_list', status='active') }}" 
+       class="tab-btn {% if status_filter == 'active' %}active{% endif %}">
+        <i class="fas fa-check-circle"></i> Active
+    </a>
+    <a href="{{ url_for('vendors_list', status='inactive') }}" 
+       class="tab-btn {% if status_filter == 'inactive' %}active{% endif %}">
+        <i class="fas fa-times-circle"></i> Inactive
+    </a>
+    <a href="{{ url_for('vendors_list', status='all') }}" 
+       class="tab-btn {% if status_filter == 'all' %}active{% endif %}">
+        <i class="fas fa-list"></i> All
+    </a>
+    
+    <div class="vendor-stats">
+        <div class="stat-item">
+            <span class="stat-label">Active:</span>
+            <span class="stat-value">{{ active_count }}</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Inactive:</span>
+            <span class="stat-value">{{ inactive_count }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="filters-row">
+    <select class="filter-select" onchange="filterByType(this.value)">
+        <option value="">All Types</option>
+        {% for vtype in vendor_types %}
+            <option value="{{ vtype }}" {% if vendor_type_filter == vtype %}selected{% endif %}>
+                {{ vtype }}
+            </option>
+        {% endfor %}
+    </select>
+    
+    <a href="{{ url_for('vendor_create') }}" class="add-vendor-btn">
+        <i class="fas fa-plus"></i> Add Vendor
+    </a>
+</div>
+
+<!-- Vendor Grid -->
+{% if vendors %}
+    <div class="vendor-grid">
+        {% for vendor in vendors %}
+            <a href="{{ url_for('vendor_detail', vendor_id=vendor.id) }}" class="vendor-card">
+                <div class="vendor-status {{ vendor.status }}">
+                    {{ vendor.status|upper }}
+                </div>
+                
+                <div class="vendor-header">
+                    <div>
+                        <h3 class="vendor-name">
+                            {{ vendor.company_name or vendor.contact.contact_name or 'Unknown' }}
+                        </h3>
+                        {% if vendor.vendor_type %}
+                            <span class="vendor-type">{{ vendor.vendor_type }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="vendor-details">
+                    <div class="vendor-detail-item">
+                        <i class="fas fa-phone"></i>
+                        <span>{{ vendor.contact.phone_number }}</span>
+                    </div>
+                    {% if vendor.email %}
+                        <div class="vendor-detail-item">
+                            <i class="fas fa-envelope"></i>
+                            <span>{{ vendor.email }}</span>
+                        </div>
+                    {% endif %}
+                    {% if vendor.hourly_rate %}
+                        <div class="vendor-detail-item">
+                            <i class="fas fa-dollar-sign"></i>
+                            <span>${{ "%.2f"|format(vendor.hourly_rate) }}/hour</span>
+                        </div>
+                    {% endif %}
+                    {% if vendor.average_job_rating %}
+                        <div class="vendor-detail-item">
+                            <i class="fas fa-star"></i>
+                            <span class="rating-stars">
+                                {% for i in range(1, 6) %}
+                                    {% if i <= vendor.average_job_rating|round|int %}
+                                        <i class="fas fa-star"></i>
+                                    {% else %}
+                                        <i class="far fa-star empty"></i>
+                                    {% endif %}
+                                {% endfor %}
+                                <span style="color: #adb5bd; margin-left: 0.5rem;">
+                                    ({{ vendor.average_job_rating }})
+                                </span>
+                            </span>
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="vendor-stats-row">
+                    <div class="vendor-stat">
+                        <div class="vendor-stat-value">{{ vendor.total_jobs }}</div>
+                        <div class="vendor-stat-label">Total Jobs</div>
+                    </div>
+                    <div class="vendor-stat">
+                        <div class="vendor-stat-value">{{ vendor.completed_jobs }}</div>
+                        <div class="vendor-stat-label">Completed</div>
+                    </div>
+                    <div class="vendor-stat">
+                        <div class="vendor-stat-value">${{ "%.2f"|format(vendor.total_revenue) }}</div>
+                        <div class="vendor-stat-label">Revenue</div>
+                    </div>
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="empty-state">
+        <i class="fas fa-users"></i>
+        <h3>No vendors found</h3>
+        <p>{% if status_filter != 'all' %}No {{ status_filter }} vendors.{% else %}Start by adding your first vendor.{% endif %}</p>
+        <a href="{{ url_for('vendor_create') }}" class="btn btn-primary mt-3">
+            <i class="fas fa-plus"></i> Add Your First Vendor
+        </a>
+    </div>
+{% endif %}
+
+<script>
+function filterByType(type) {
+    const currentUrl = new URL(window.location.href);
+    if (type) {
+        currentUrl.searchParams.set('type', type);
+    } else {
+        currentUrl.searchParams.delete('type');
+    }
+    window.location.href = currentUrl.toString();
+}
+</script>
+{% endblock %}

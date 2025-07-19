@@ -1,0 +1,541 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ vendor.company_name or vendor.contact.contact_name }} - Vendor Details{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Vendor Detail Styles */
+    .vendor-header {
+        background-color: #1a1d20;
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+    }
+    
+    .vendor-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1.5rem;
+    }
+    
+    .vendor-title {
+        font-size: 2rem;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 0.5rem;
+    }
+    
+    .vendor-type-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background-color: rgba(108, 185, 211, 0.2);
+        color: #6cb9d3;
+        border-radius: 20px;
+        font-size: 1rem;
+        margin-left: 1rem;
+    }
+    
+    .vendor-status-badge {
+        padding: 0.5rem 1.5rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    
+    .vendor-status-badge.active {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: #28a745;
+    }
+    
+    .vendor-status-badge.inactive {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: #dc3545;
+    }
+    
+    .vendor-actions {
+        display: flex;
+        gap: 1rem;
+    }
+    
+    .action-btn {
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        border: 1px solid rgba(108, 185, 211, 0.3);
+        background-color: transparent;
+        color: #6cb9d3;
+        text-decoration: none;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .action-btn:hover {
+        background-color: rgba(108, 185, 211, 0.1);
+        border-color: #6cb9d3;
+        color: #6cb9d3;
+        text-decoration: none;
+    }
+    
+    .action-btn.primary {
+        background: linear-gradient(90deg, #3a8bab, #6cb9d3);
+        border: none;
+        color: #fff;
+    }
+    
+    .action-btn.primary:hover {
+        background: linear-gradient(90deg, #357d9a, #5eaac4);
+        color: #fff;
+    }
+    
+    /* Info Grid */
+    .vendor-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    
+    .info-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    
+    .info-icon {
+        width: 40px;
+        height: 40px;
+        background-color: rgba(108, 185, 211, 0.1);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6cb9d3;
+    }
+    
+    .info-content {
+        flex: 1;
+    }
+    
+    .info-label {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-bottom: 0.25rem;
+    }
+    
+    .info-value {
+        font-size: 1rem;
+        color: #fff;
+        font-weight: 500;
+    }
+    
+    /* Statistics Cards */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #6cb9d3;
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-label {
+        font-size: 0.9rem;
+        color: #adb5bd;
+    }
+    
+    /* Property Jobs Section */
+    .section-card {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    
+    .property-jobs-table {
+        width: 100%;
+        color: #fff;
+    }
+    
+    .property-jobs-table th {
+        background-color: rgba(108, 185, 211, 0.1);
+        padding: 0.75rem;
+        text-align: left;
+        font-weight: 600;
+        color: #6cb9d3;
+        border-bottom: 2px solid rgba(108, 185, 211, 0.2);
+    }
+    
+    .property-jobs-table td {
+        padding: 1rem 0.75rem;
+        border-bottom: 1px solid rgba(108, 185, 211, 0.1);
+    }
+    
+    .property-jobs-table tr:hover {
+        background-color: rgba(108, 185, 211, 0.05);
+    }
+    
+    .property-name {
+        font-weight: 500;
+        color: #fff;
+    }
+    
+    /* Messages Preview */
+    .message-item {
+        padding: 1rem;
+        border-bottom: 1px solid rgba(108, 185, 211, 0.1);
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .message-item:last-child {
+        border-bottom: none;
+    }
+    
+    .message-direction {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .message-direction.incoming {
+        background-color: rgba(23, 162, 184, 0.2);
+        color: #17a2b8;
+    }
+    
+    .message-direction.outgoing {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: #28a745;
+    }
+    
+    .message-content {
+        flex: 1;
+    }
+    
+    .message-time {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-bottom: 0.25rem;
+    }
+    
+    .message-text {
+        color: #e9ecef;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    /* Notes Section */
+    .notes-box {
+        background-color: rgba(108, 185, 211, 0.05);
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 6px;
+        padding: 1rem;
+        color: #e9ecef;
+        white-space: pre-wrap;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 2rem;
+        color: #6c757d;
+    }
+    
+    .empty-state i {
+        font-size: 3rem;
+        opacity: 0.5;
+        margin-bottom: 1rem;
+    }
+    
+    /* Rating Display */
+    .rating-display {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1.25rem;
+    }
+    
+    .rating-stars {
+        color: #ffc107;
+    }
+    
+    .rating-stars .empty {
+        color: #495057;
+    }
+    
+    .rating-number {
+        color: #adb5bd;
+        font-size: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Vendor Header -->
+<div class="vendor-header">
+    <div class="vendor-title-row">
+        <div>
+            <h1 class="vendor-title">
+                {{ vendor.company_name or vendor.contact.contact_name or 'Unknown Vendor' }}
+                {% if vendor.vendor_type %}
+                    <span class="vendor-type-badge">{{ vendor.vendor_type }}</span>
+                {% endif %}
+            </h1>
+            <span class="vendor-status-badge {{ vendor.status }}">
+                {{ vendor.status|upper }}
+            </span>
+        </div>
+        <div class="vendor-actions">
+            <a href="{{ url_for('vendor_edit', vendor_id=vendor.id) }}" class="action-btn">
+                <i class="fas fa-edit"></i> Edit
+            </a>
+            <a href="{{ url_for('messages_view', view='conversation') }}" class="action-btn primary">
+                <i class="fas fa-comments"></i> View Conversations
+            </a>
+        </div>
+    </div>
+    
+    <div class="vendor-info-grid">
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-phone"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Phone</div>
+                <div class="info-value">{{ vendor.contact.phone_number }}</div>
+            </div>
+        </div>
+        
+        {% if vendor.email %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-envelope"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Email</div>
+                <div class="info-value">{{ vendor.email }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if vendor.hourly_rate %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-dollar-sign"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Hourly Rate</div>
+                <div class="info-value">${{ "%.2f"|format(vendor.hourly_rate) }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if vendor.license_number %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-certificate"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">License</div>
+                <div class="info-value">{{ vendor.license_number }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if vendor.preferred_payment_method %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-credit-card"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Payment Method</div>
+                <div class="info-value">{{ vendor.preferred_payment_method|title }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if vendor.average_job_rating %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-star"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Average Rating</div>
+                <div class="info-value">
+                    <div class="rating-display">
+                        <span class="rating-stars">
+                            {% for i in range(1, 6) %}
+                                {% if i <= vendor.average_job_rating|round|int %}
+                                    <i class="fas fa-star"></i>
+                                {% else %}
+                                    <i class="far fa-star empty"></i>
+                                {% endif %}
+                            {% endfor %}
+                        </span>
+                        <span class="rating-number">({{ vendor.average_job_rating }})</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Statistics -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ vendor.total_jobs }}</div>
+        <div class="stat-label">Total Jobs</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ vendor.completed_jobs }}</div>
+        <div class="stat-label">Completed Jobs</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">${{ "%.2f"|format(vendor.total_revenue) }}</div>
+        <div class="stat-label">Total Revenue</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ jobs_by_property|length }}</div>
+        <div class="stat-label">Properties Serviced</div>
+    </div>
+</div>
+
+<!-- Property History -->
+<div class="section-card">
+    <h2 class="section-title">
+        <i class="fas fa-home"></i> Property History
+    </h2>
+    
+    {% if jobs_by_property %}
+        <table class="property-jobs-table">
+            <thead>
+                <tr>
+                    <th>Property</th>
+                    <th>Jobs</th>
+                    <th>Total Cost</th>
+                    <th>Last Service</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs_by_property %}
+                    <tr>
+                        <td class="property-name">{{ job.name }}</td>
+                        <td>{{ job.job_count }}</td>
+                        <td>${{ "%.2f"|format(job.total_cost or 0) }}</td>
+                        <td>{{ job.last_job.strftime('%b %d, %Y') if job.last_job else 'N/A' }}</td>
+                        <td>
+                            <a href="{{ url_for('property_detail_view', property_id=job.id) }}" class="action-btn" style="padding: 0.25rem 0.75rem; font-size: 0.85rem;">
+                                View Property
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-clipboard-list"></i>
+            <p>No job history yet</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Recent Messages -->
+<div class="section-card">
+    <h2 class="section-title">
+        <i class="fas fa-comments"></i> Recent Messages
+    </h2>
+    
+    {% if recent_messages %}
+        {% for msg in recent_messages %}
+            <div class="message-item">
+                <div class="message-direction {{ msg.direction }}">
+                    {% if msg.direction == 'incoming' %}
+                        <i class="fas fa-arrow-down"></i>
+                    {% else %}
+                        <i class="fas fa-arrow-up"></i>
+                    {% endif %}
+                </div>
+                <div class="message-content">
+                    <div class="message-time">
+                        {{ msg.timestamp.strftime('%b %d, %Y at %I:%M %p') }}
+                        {% if msg.property %}
+                            • {{ msg.property.name }}
+                        {% endif %}
+                    </div>
+                    <div class="message-text">{{ msg.message or '(No text content)' }}</div>
+                </div>
+            </div>
+        {% endfor %}
+        
+        <div style="text-align: center; margin-top: 1rem;">
+            <a href="{{ url_for('messages_view', phone_number=vendor.contact_id) }}" class="action-btn">
+                View All Messages
+            </a>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-comments"></i>
+            <p>No messages yet</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Notes -->
+{% if vendor.notes %}
+<div class="section-card">
+    <h2 class="section-title">
+        <i class="fas fa-sticky-note"></i> Notes
+    </h2>
+    <div class="notes-box">{{ vendor.notes }}</div>
+</div>
+{% endif %}
+
+<!-- Insurance Info -->
+{% if vendor.insurance_info %}
+<div class="section-card">
+    <h2 class="section-title">
+        <i class="fas fa-shield-alt"></i> Insurance Information
+    </h2>
+    <div class="notes-box">{{ vendor.insurance_info }}</div>
+    {% if vendor.insurance_expiry %}
+        <p class="mt-2" style="color: #6c757d;">
+            <i class="fas fa-calendar-alt"></i> Expires: {{ vendor.insurance_expiry.strftime('%B %d, %Y') }}
+        </p>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

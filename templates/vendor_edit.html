@@ -1,0 +1,268 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Vendor - {{ vendor.company_name or vendor.contact.contact_name }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    .form-card {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .form-section {
+        margin-bottom: 2rem;
+    }
+    
+    .form-section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #6cb9d3;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(108, 185, 211, 0.2);
+    }
+    
+    .form-label {
+        color: #adb5bd;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }
+    
+    .form-control, .form-select {
+        background-color: rgba(30, 40, 50, 0.7);
+        border: 1px solid rgba(108, 185, 211, 0.3);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+    }
+    
+    .form-control:focus, .form-select:focus {
+        background-color: rgba(40, 50, 60, 0.8);
+        border-color: #6cb9d3;
+        color: #fff;
+        box-shadow: 0 0 0 0.25rem rgba(108, 185, 211, 0.25);
+    }
+    
+    .form-control::placeholder {
+        color: #6c757d;
+    }
+    
+    .form-text {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+    
+    .btn-group-custom {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    
+    .vendor-types-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    
+    .vendor-type-suggestion {
+        padding: 0.25rem 0.75rem;
+        background-color: rgba(108, 185, 211, 0.1);
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 20px;
+        font-size: 0.875rem;
+        color: #6cb9d3;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .vendor-type-suggestion:hover {
+        background-color: rgba(108, 185, 211, 0.2);
+        border-color: #6cb9d3;
+    }
+    
+    .contact-info-display {
+        background-color: rgba(108, 185, 211, 0.05);
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 6px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .danger-zone {
+        background-color: rgba(220, 53, 69, 0.1);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+    }
+    
+    .danger-zone-title {
+        color: #dc3545;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <h2 class="mb-4">Edit Vendor</h2>
+        
+        <form method="POST" action="{{ url_for('vendor_edit', vendor_id=vendor.id) }}">
+            <!-- Contact Information (Read-only display) -->
+            <div class="form-card">
+                <h3 class="form-section-title">Contact Information</h3>
+                
+                <div class="contact-info-display">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Phone:</strong> {{ vendor.contact.phone_number }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Contact Name:</strong> 
+                            <input type="text" class="form-control form-control-sm d-inline-block" 
+                                   style="width: auto; margin-left: 0.5rem;"
+                                   name="contact_name" 
+                                   value="{{ vendor.contact.contact_name or '' }}"
+                                   placeholder="Enter name">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Vendor Information -->
+            <div class="form-card">
+                <h3 class="form-section-title">Vendor Information</h3>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="company_name" class="form-label">Company Name</label>
+                        <input type="text" class="form-control" id="company_name" name="company_name" 
+                               value="{{ vendor.company_name or '' }}"
+                               placeholder="ABC Plumbing Services">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="vendor_type" class="form-label">Vendor Type</label>
+                        <input type="text" class="form-control" id="vendor_type" name="vendor_type" 
+                               value="{{ vendor.vendor_type or '' }}"
+                               placeholder="Plumber">
+                        <div class="vendor-types-list">
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Plumber')">Plumber</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Electrician')">Electrician</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('HVAC')">HVAC</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Landscaper')">Landscaper</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Handyman')">Handyman</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Cleaner')">Cleaner</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Roofer')">Roofer</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Painter')">Painter</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" 
+                               value="{{ vendor.email or '' }}"
+                               placeholder="vendor@example.com">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="hourly_rate" class="form-label">Hourly Rate</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="hourly_rate" name="hourly_rate" 
+                                   value="{{ vendor.hourly_rate or '' }}"
+                                   step="0.01" min="0" placeholder="75.00">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="license_number" class="form-label">License Number</label>
+                        <input type="text" class="form-control" id="license_number" name="license_number" 
+                               value="{{ vendor.license_number or '' }}"
+                               placeholder="LIC-123456">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="preferred_payment_method" class="form-label">Preferred Payment Method</label>
+                        <select class="form-select" id="preferred_payment_method" name="preferred_payment_method">
+                            <option value="">Select...</option>
+                            <option value="cash" {% if vendor.preferred_payment_method == 'cash' %}selected{% endif %}>Cash</option>
+                            <option value="check" {% if vendor.preferred_payment_method == 'check' %}selected{% endif %}>Check</option>
+                            <option value="venmo" {% if vendor.preferred_payment_method == 'venmo' %}selected{% endif %}>Venmo</option>
+                            <option value="zelle" {% if vendor.preferred_payment_method == 'zelle' %}selected{% endif %}>Zelle</option>
+                            <option value="paypal" {% if vendor.preferred_payment_method == 'paypal' %}selected{% endif %}>PayPal</option>
+                            <option value="bank_transfer" {% if vendor.preferred_payment_method == 'bank_transfer' %}selected{% endif %}>Bank Transfer</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="insurance_info" class="form-label">Insurance Information</label>
+                    <textarea class="form-control" id="insurance_info" name="insurance_info" rows="2" 
+                              placeholder="Insurance carrier, policy number, etc.">{{ vendor.insurance_info or '' }}</textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="3" 
+                              placeholder="Any additional information about this vendor...">{{ vendor.notes or '' }}</textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="active" {% if vendor.status == 'active' %}selected{% endif %}>Active</option>
+                        <option value="inactive" {% if vendor.status == 'inactive' %}selected{% endif %}>Inactive</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Form Actions -->
+            <div class="btn-group-custom">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+                <a href="{{ url_for('vendor_detail', vendor_id=vendor.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+            </div>
+        </form>
+        
+        <!-- Danger Zone -->
+        <div class="danger-zone">
+            <h4 class="danger-zone-title">Danger Zone</h4>
+            <p class="text-muted mb-3">
+                Deleting a vendor will remove their profile but keep all messages and job history for record-keeping.
+            </p>
+            <button class="btn btn-danger" onclick="confirmDelete()">
+                <i class="fas fa-trash"></i> Delete Vendor
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Set vendor type from suggestions
+function setVendorType(type) {
+    document.getElementById('vendor_type').value = type;
+}
+
+// Confirm vendor deletion
+function confirmDelete() {
+    if (confirm('Are you sure you want to delete this vendor? This action cannot be undone.')) {
+        // You would implement the delete functionality here
+        alert('Delete functionality not yet implemented');
+    }
+}
+</script>
+{% endblock %}
