@@ -111,6 +111,29 @@ with app.app_context():
                 db.session.rollback()
                 app.logger.error(f"❌ Error adding enhanced fields: {e}")
         
+        # Add vendor enhancement columns
+        vendor_columns = [
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS can_text BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS can_email BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS example_invoice_path VARCHAR(500)",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS fax_number VARCHAR(20)"
+        ]
+        
+        if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+            for sql in vendor_columns:
+                try:
+                    db.session.execute(text(sql))
+                    app.logger.info(f"✅ {sql}")
+                except Exception as e:
+                    app.logger.warning(f"⚠️ {sql} - {e}")
+            
+            try:
+                db.session.commit()
+                app.logger.info("✅ Vendor enhancement fields added to production database.")
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"❌ Error adding vendor enhancement fields: {e}")
+        
         # Add message tracking fields for tenant communications
         message_tracking_columns = [
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type VARCHAR(50) DEFAULT 'sms'",  # 'sms', 'email', 'notification'
