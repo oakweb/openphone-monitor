@@ -635,9 +635,12 @@ function processInvoice(vendorId) {
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            alert(`Successfully extracted ${data.fields_updated.length} fields from invoice!`);
-            location.reload(); // Reload to show the extracted data
+        if (data.success && data.redirect) {
+            // Redirect to review page
+            window.location.href = data.redirect;
+        } else if (data.success) {
+            alert(`Successfully extracted data from invoice!`);
+            location.reload();
         } else {
             alert('Error: ' + (data.error || 'Unknown error occurred'));
             btn.disabled = false;

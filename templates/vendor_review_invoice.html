@@ -1,0 +1,322 @@
+{% extends 'base.html' %}
+
+{% block title %}Review Extracted Invoice Data - {{ vendor.company_name or vendor.contact.contact_name }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    .review-card {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .review-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid rgba(108, 185, 211, 0.2);
+    }
+    
+    .review-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #6cb9d3;
+    }
+    
+    .extracted-badge {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: #28a745;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+    
+    .field-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        background-color: rgba(108, 185, 211, 0.05);
+        border-radius: 6px;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+    }
+    
+    .field-row:hover {
+        border-color: rgba(108, 185, 211, 0.3);
+        background-color: rgba(108, 185, 211, 0.08);
+    }
+    
+    .field-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(108, 185, 211, 0.2);
+        border-radius: 50%;
+        margin-right: 1rem;
+        color: #6cb9d3;
+    }
+    
+    .field-info {
+        flex: 1;
+    }
+    
+    .field-label {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-bottom: 0.25rem;
+    }
+    
+    .current-value {
+        font-size: 0.875rem;
+        color: #adb5bd;
+        font-style: italic;
+    }
+    
+    .arrow-icon {
+        color: #6cb9d3;
+        margin: 0 1rem;
+        font-size: 1.25rem;
+    }
+    
+    .form-control {
+        background-color: rgba(30, 40, 50, 0.7);
+        border: 1px solid rgba(108, 185, 211, 0.3);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+    }
+    
+    .form-control:focus {
+        background-color: rgba(40, 50, 60, 0.8);
+        border-color: #6cb9d3;
+        color: #fff;
+        box-shadow: 0 0 0 0.25rem rgba(108, 185, 211, 0.25);
+    }
+    
+    .additional-fields {
+        background-color: rgba(255, 193, 7, 0.1);
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+    }
+    
+    .additional-fields-title {
+        color: #ffc107;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .additional-field {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 193, 7, 0.1);
+    }
+    
+    .additional-field:last-child {
+        border-bottom: none;
+    }
+    
+    .btn-group-review {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+        justify-content: flex-end;
+    }
+    
+    .raw-data {
+        background-color: rgba(108, 185, 211, 0.05);
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 6px;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 0.875rem;
+        color: #adb5bd;
+        margin-top: 1rem;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="review-header">
+            <div>
+                <h1 class="review-title">Review Extracted Invoice Data</h1>
+                <p class="text-muted mb-0">Review and edit the extracted information before updating {{ vendor.company_name or vendor.contact.contact_name }}</p>
+            </div>
+            <span class="extracted-badge">
+                <i class="fas fa-check-circle"></i> Data Extracted
+            </span>
+        </div>
+        
+        <form method="POST" action="{{ url_for('vendor_review_invoice', vendor_id=vendor.id) }}">
+            <div class="review-card">
+                <h3 class="mb-4" style="color: #6cb9d3;">
+                    <i class="fas fa-user-tie"></i> Vendor Information
+                </h3>
+                
+                <!-- Company Name -->
+                {% if mapped_data.get('company_name') %}
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-building"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Company Name</div>
+                        {% if vendor.company_name %}
+                        <div class="current-value">Current: {{ vendor.company_name }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="text" class="form-control" name="company_name" 
+                           value="{{ mapped_data.get('company_name', '') }}" style="max-width: 300px;">
+                </div>
+                {% endif %}
+                
+                <!-- Email -->
+                {% if mapped_data.get('email') %}
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-envelope"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Email Address</div>
+                        {% if vendor.email %}
+                        <div class="current-value">Current: {{ vendor.email }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="email" class="form-control" name="email" 
+                           value="{{ mapped_data.get('email', '') }}" style="max-width: 300px;">
+                </div>
+                {% endif %}
+                
+                <!-- License Number -->
+                {% if mapped_data.get('license_number') %}
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-certificate"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Business License</div>
+                        {% if vendor.license_number %}
+                        <div class="current-value">Current: {{ vendor.license_number }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="text" class="form-control" name="license_number" 
+                           value="{{ mapped_data.get('license_number', '') }}" style="max-width: 300px;">
+                </div>
+                {% endif %}
+                
+                <!-- Tax ID -->
+                {% if mapped_data.get('tax_id') %}
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Tax ID / EIN</div>
+                        {% if vendor.tax_id %}
+                        <div class="current-value">Current: {{ vendor.tax_id }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="text" class="form-control" name="tax_id" 
+                           value="{{ mapped_data.get('tax_id', '') }}" style="max-width: 300px;">
+                </div>
+                {% endif %}
+                
+                <!-- Fax Number -->
+                {% if mapped_data.get('fax_number') %}
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-fax"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Fax Number</div>
+                        {% if vendor.fax_number %}
+                        <div class="current-value">Current: {{ vendor.fax_number }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="text" class="form-control" name="fax_number" 
+                           value="{{ mapped_data.get('fax_number', '') }}" style="max-width: 300px;">
+                </div>
+                {% endif %}
+                
+                <!-- Vendor Type (editable) -->
+                <div class="field-row">
+                    <div class="field-icon">
+                        <i class="fas fa-wrench"></i>
+                    </div>
+                    <div class="field-info">
+                        <div class="field-label">Vendor Type</div>
+                        {% if vendor.vendor_type %}
+                        <div class="current-value">Current: {{ vendor.vendor_type }}</div>
+                        {% endif %}
+                    </div>
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <input type="text" class="form-control" name="vendor_type" 
+                           value="{{ vendor.vendor_type or '' }}" 
+                           placeholder="e.g., Plumber, Electrician" style="max-width: 300px;">
+                </div>
+            </div>
+            
+            <!-- Additional Fields -->
+            {% if additional_data %}
+            <div class="additional-fields">
+                <h4 class="additional-fields-title">
+                    <i class="fas fa-info-circle"></i> Additional Extracted Information
+                </h4>
+                <p class="text-muted mb-3">These fields were extracted but don't have dedicated database fields. They will be stored for reference.</p>
+                
+                {% for key, value in additional_data.items() %}
+                <div class="additional-field">
+                    <span style="font-weight: 500;">{{ key|replace('_', ' ')|title }}:</span>
+                    <span>{{ value }}</span>
+                </div>
+                {% endfor %}
+                
+                <input type="hidden" name="additional_fields" value="{{ additional_data|tojson|e }}">
+            </div>
+            {% endif %}
+            
+            <!-- Raw Data Display -->
+            <details class="mt-4">
+                <summary style="cursor: pointer; color: #6cb9d3;">
+                    <i class="fas fa-code"></i> View Raw Extracted Data
+                </summary>
+                <div class="raw-data">
+                    {{ all_data|tojson(indent=2) }}
+                </div>
+            </details>
+            
+            <!-- Action Buttons -->
+            <div class="btn-group-review">
+                <a href="{{ url_for('vendor_detail', vendor_id=vendor.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save Reviewed Data
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

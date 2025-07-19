@@ -1,7 +1,7 @@
 import os
 import logging
 import json
-from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, send_file
+from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, send_file, session
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
@@ -17,6 +17,9 @@ from models import Contact, Message, Property, Tenant, NotificationHistory, Prop
 from webhook_route import webhook_bp
 
 app = Flask(__name__)
+
+# Set secret key for sessions
+app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 # Logging Setup
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s : %(message)s")
@@ -580,11 +583,14 @@ def process_vendor_invoice(vendor_id):
         
         db.session.commit()
         
+        # Store the extracted data in session for review
+        session['extracted_invoice_data'] = extracted_data
+        session['vendor_id'] = vendor_id
+        
         return jsonify({
             "success": True,
             "message": f"Extracted {len(extracted_data)} fields from invoice",
-            "fields_updated": fields_updated,
-            "all_data": extracted_data
+            "redirect": url_for('vendor_review_invoice', vendor_id=vendor_id)
         })
         
     except json.JSONDecodeError as e:
@@ -594,6 +600,102 @@ def process_vendor_invoice(vendor_id):
         db.session.rollback()
         app.logger.error(f"Error processing invoice: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vendor/<int:vendor_id>/review-invoice", methods=["GET", "POST"])
+def vendor_review_invoice(vendor_id):
+    """Review and confirm extracted invoice data before updating vendor"""
+    vendor = Vendor.query.get_or_404(vendor_id)
+    
+    if request.method == "POST":
+        try:
+            # Update vendor with reviewed data
+            vendor.company_name = request.form.get('company_name', '').strip() or vendor.company_name
+            vendor.vendor_type = request.form.get('vendor_type', '').strip() or vendor.vendor_type
+            vendor.email = request.form.get('email', '').strip() or vendor.email
+            vendor.license_number = request.form.get('license_number', '').strip() or vendor.license_number
+            vendor.tax_id = request.form.get('tax_id', '').strip() or vendor.tax_id
+            vendor.fax_number = request.form.get('fax_number', '').strip() or vendor.fax_number
+            
+            # Store additional fields in VendorInvoiceData
+            additional_fields = request.form.get('additional_fields', '')
+            if additional_fields:
+                additional_data = json.loads(additional_fields)
+                
+                # Clear existing invoice data
+                VendorInvoiceData.query.filter_by(vendor_id=vendor_id).delete()
+                
+                # Store all data including additional fields
+                for field_name, field_value in additional_data.items():
+                    if field_value and str(field_value).strip():
+                        invoice_data = VendorInvoiceData(
+                            vendor_id=vendor_id,
+                            field_name=field_name,
+                            field_value=str(field_value),
+                            confidence=0.9,
+                            source=vendor.example_invoice_path
+                        )
+                        db.session.add(invoice_data)
+            
+            db.session.commit()
+            flash("Vendor information updated successfully from invoice", "success")
+            return redirect(url_for('vendor_detail', vendor_id=vendor_id))
+            
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error updating vendor from invoice: {e}")
+            flash(f"Error updating vendor: {e}", "danger")
+            return redirect(url_for('vendor_detail', vendor_id=vendor_id))
+    
+    # GET request - show review form
+    extracted_data = session.get('extracted_invoice_data', {})
+    if not extracted_data:
+        flash("No extracted data found. Please process the invoice first.", "warning")
+        return redirect(url_for('vendor_detail', vendor_id=vendor_id))
+    
+    # Map extracted fields to vendor fields
+    field_mapping = {
+        'name': 'company_name',
+        'company_name': 'company_name',
+        'business_name': 'company_name',
+        'email': 'email',
+        'email_address': 'email',
+        'fax': 'fax_number',
+        'fax_number': 'fax_number',
+        'license': 'license_number',
+        'business_license': 'license_number',
+        'license_number': 'license_number',
+        'tax_id': 'tax_id',
+        'ein': 'tax_id',
+        'phone': 'phone',
+        'phone_number': 'phone',
+        'address': 'address',
+        'business_address': 'address'
+    }
+    
+    # Prepare mapped data and additional fields
+    mapped_data = {}
+    additional_data = {}
+    
+    for key, value in extracted_data.items():
+        mapped = False
+        for extract_key, vendor_field in field_mapping.items():
+            if extract_key in key.lower():
+                mapped_data[vendor_field] = value
+                mapped = True
+                break
+        
+        if not mapped:
+            additional_data[key] = value
+    
+    # Clear session data
+    session.pop('extracted_invoice_data', None)
+    
+    return render_template('vendor_review_invoice.html', 
+                         vendor=vendor, 
+                         mapped_data=mapped_data,
+                         additional_data=additional_data,
+                         all_data=extracted_data)
 
 
 @app.route("/contact/update", methods=["POST"])
