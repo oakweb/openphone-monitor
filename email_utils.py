@@ -23,8 +23,119 @@ from sendgrid.helpers.mail import (
 )
 
 def wrap_email_html(content: str) -> str:
-    """Basic HTML wrapper."""
-    return content if content.strip() else "<p>(No text content)</p>"
+    """Enhanced HTML wrapper with conversation-style design."""
+    html_template = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #f5f5f5;
+            }
+            .email-container {
+                max-width: 600px;
+                margin: 20px auto;
+                background-color: #ffffff;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+                background: linear-gradient(135deg, #3a8bab 0%, #6cb9d3 100%);
+                color: white;
+                padding: 20px;
+                text-align: center;
+            }
+            .header h2 {
+                margin: 0;
+                font-size: 24px;
+                font-weight: 600;
+            }
+            .header p {
+                margin: 5px 0 0 0;
+                font-size: 14px;
+                opacity: 0.9;
+            }
+            .content {
+                padding: 30px 20px;
+            }
+            .message-box {
+                background-color: #f8f9fa;
+                border-left: 4px solid #6cb9d3;
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 4px;
+            }
+            .message-text {
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                margin: 0;
+                color: #333;
+                line-height: 1.6;
+            }
+            .info-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 10px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #e9ecef;
+            }
+            .info-label {
+                font-weight: 600;
+                color: #495057;
+            }
+            .info-value {
+                color: #212529;
+            }
+            .attachment-notice {
+                background-color: #e7f3ff;
+                border: 1px solid #b3d9ff;
+                padding: 12px;
+                border-radius: 4px;
+                margin-top: 20px;
+                color: #0056b3;
+            }
+            .footer {
+                background-color: #f8f9fa;
+                padding: 20px;
+                text-align: center;
+                font-size: 12px;
+                color: #6c757d;
+                border-top: 1px solid #e9ecef;
+            }
+            .footer a {
+                color: #3a8bab;
+                text-decoration: none;
+            }
+            pre {
+                margin: 0;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="header">
+                <h2>Sin City Rentals</h2>
+                <p>New Message Notification</p>
+            </div>
+            <div class="content">
+                {content}
+            </div>
+            <div class="footer">
+                <p>This is an automated message from Sin City Rentals OpenPhone system.</p>
+                <p>© 2025 Sin City Rentals. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return html_template.replace("{content}", content) if content.strip() else html_template.replace("{content}", "<p>(No text content)</p>")
 
 def _send_via_smtp(
     to_address: str,

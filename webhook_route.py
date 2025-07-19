@@ -225,13 +225,51 @@ def webhook():
                 # email_plain_content = text or f"Message from {contact.contact_name} with {len(attachments)} attachment(s)." # Removed
                 # Ensure HTML is escaped properly if `text` contains HTML
                 # Using a simple pre-wrap for now. Consider html.escape if needed.
+                # Get property information if available
+                property_info = ""
+                if msg.property:
+                    property_info = f"""
+                    <div class="info-row">
+                        <span class="info-label">Property:</span>
+                        <span class="info-value">{msg.property.name} - {msg.property.address}</span>
+                    </div>
+                    """
+                
                 email_html_content = wrap_email_html(f"""
-                    <h3>New Message from {contact.contact_name}</h3>
-                    <p><strong>From:</strong> {phone} (Contact Key: {key})</p>
-                    <p><strong>Message ID:</strong> {msg.id} (SID: {sid})</p>
-                    <p><strong>Message:</strong></p>
-                    <pre style="white-space: pre-wrap; background-color: #f0f0f0; padding: 10px; border-radius: 5px;">{text or '(No text content)'}</pre>
-                    {f'<p><strong>{len(attachments)} Attachment(s) included.</strong></p>' if attachments else '<p>No attachments included or saved.</p>'}
+                    <h3 style="color: #212529; margin-bottom: 20px;">New Message from {contact.contact_name}</h3>
+                    
+                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                        <div class="info-row">
+                            <span class="info-label">From:</span>
+                            <span class="info-value">{contact.contact_name} ({phone})</span>
+                        </div>
+                        {property_info}
+                        <div class="info-row">
+                            <span class="info-label">Time:</span>
+                            <span class="info-value">{msg.timestamp.strftime('%B %d, %Y at %I:%M %p')}</span>
+                        </div>
+                        <div class="info-row" style="border-bottom: none;">
+                            <span class="info-label">Message ID:</span>
+                            <span class="info-value">#{msg.id}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="message-box">
+                        <h4 style="margin: 0 0 10px 0; color: #495057; font-size: 14px;">Message Content:</h4>
+                        <p class="message-text">{text or '(No text content)'}</p>
+                    </div>
+                    
+                    {f'<div class="attachment-notice"><strong>📎 {len(attachments)} Attachment(s) included</strong></div>' if attachments else ''}
+                    
+                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e9ecef;">
+                        <p style="color: #6c757d; font-size: 14px; margin: 0;">
+                            <strong>Quick Actions:</strong><br>
+                            View this conversation in your dashboard: 
+                            <a href="https://openphone-monitor-production.up.railway.app/messages?view=conversation" style="color: #3a8bab;">
+                                Open Conversation View
+                            </a>
+                        </p>
+                    </div>
                 """)
 
                 try:

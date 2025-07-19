@@ -1234,11 +1234,50 @@ def notifications_view():
                 
                 for email in emails_to_send:
                     try:
+                        # Import wrap_email_html for better formatting
+                        from email_utils import wrap_email_html
+                        
+                        # Get property names for this email recipient
+                        tenant_properties = []
+                        for prop_id in property_ids:
+                            prop = Property.query.get(prop_id)
+                            if prop:
+                                tenant_properties.append(f"{prop.name} - {prop.address}")
+                        
+                        properties_html = "<br>".join(tenant_properties) if tenant_properties else "All Properties"
+                        
+                        # Format the email content
+                        html_content = wrap_email_html(f"""
+                            <h3 style="color: #212529; margin-bottom: 20px;">Property Management Notification</h3>
+                            
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                                <div class="info-row">
+                                    <span class="info-label">Properties:</span>
+                                    <span class="info-value">{properties_html}</span>
+                                </div>
+                                <div class="info-row" style="border-bottom: none;">
+                                    <span class="info-label">Date:</span>
+                                    <span class="info-value">{datetime.now().strftime('%B %d, %Y at %I:%M %p')}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="message-box">
+                                <h4 style="margin: 0 0 10px 0; color: #495057; font-size: 14px;">Message:</h4>
+                                <p class="message-text">{message_body}</p>
+                            </div>
+                            
+                            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e9ecef;">
+                                <p style="color: #6c757d; font-size: 14px; margin: 0;">
+                                    This notification was sent via the Sin City Rentals property management system.
+                                </p>
+                            </div>
+                        """)
+                        
                         # Use your existing send_email function
                         email_sent_successfully = send_email(
                             to_emails=[email], 
                             subject=email_subject, 
-                            html_content=f"<p>{message_body.replace(os.linesep, '<br>')}</p>",
+                            html_content=html_content,
                             attachments=[]  # Handle attachments later if needed
                         )
                         if email_sent_successfully:
