@@ -1,5 +1,6 @@
 import os
 import logging
+import json
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, send_file
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -492,11 +493,13 @@ def process_vendor_invoice(vendor_id):
             extracted_text = "[Image processing not yet implemented]"
         
         # Use OpenAI to extract structured data
-        import openai
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+        from openai import OpenAI
         
-        if not openai.api_key:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
             return jsonify({"error": "OpenAI API key not configured"}), 500
+            
+        client = OpenAI(api_key=api_key)
         
         # Create a prompt for extraction
         prompt = f"""Extract all relevant vendor information from this invoice text. 
@@ -510,7 +513,7 @@ def process_vendor_invoice(vendor_id):
         
         Return only valid JSON, no other text."""
         
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a data extraction assistant. Extract vendor information from invoices and return only valid JSON."},
@@ -521,7 +524,6 @@ def process_vendor_invoice(vendor_id):
         )
         
         # Parse the extracted data
-        import json
         extracted_data = json.loads(response.choices[0].message.content)
         
         # Clear existing invoice data for this vendor
