@@ -287,6 +287,10 @@ def vendor_create():
             email = request.form.get('email', '').strip()
             hourly_rate = request.form.get('hourly_rate', type=float)
             
+            # Get communication preferences
+            can_text = request.form.get('can_text') == 'true'
+            can_email = request.form.get('can_email') == 'true'
+            
             # Validate phone number
             if not phone_number:
                 flash("Phone number is required", "danger")
@@ -309,6 +313,27 @@ def vendor_create():
             elif contact_name and not contact.contact_name:
                 contact.contact_name = contact_name
             
+            # Handle file upload for example invoice
+            example_invoice_path = None
+            if 'example_invoice' in request.files:
+                file = request.files['example_invoice']
+                if file and file.filename:
+                    from werkzeug.utils import secure_filename
+                    import uuid
+                    
+                    # Generate unique filename
+                    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'pdf'
+                    filename = f"vendor_invoice_{uuid.uuid4().hex[:8]}.{ext}"
+                    
+                    # Save file
+                    upload_folder = app.config.get('UPLOAD_FOLDER', '/app/static/uploads')
+                    os.makedirs(upload_folder, exist_ok=True)
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    example_invoice_path = f"uploads/{filename}"
+                    
+                    # TODO: Extract information from invoice using AI
+            
             # Create vendor
             vendor = Vendor(
                 contact_id=phone_number,
@@ -317,7 +342,10 @@ def vendor_create():
                 email=email,
                 hourly_rate=hourly_rate,
                 status='active',
-                notes=request.form.get('notes', '')
+                notes=request.form.get('notes', ''),
+                can_text=can_text,
+                can_email=can_email,
+                example_invoice_path=example_invoice_path
             )
             
             db.session.add(vendor)
@@ -358,6 +386,31 @@ def vendor_edit(vendor_id):
             vendor.status = request.form.get('status', 'active')
             vendor.preferred_payment_method = request.form.get('preferred_payment_method', '').strip()
             vendor.notes = request.form.get('notes', '')
+            vendor.fax_number = request.form.get('fax_number', '').strip()
+            
+            # Update communication preferences
+            vendor.can_text = request.form.get('can_text') == 'true'
+            vendor.can_email = request.form.get('can_email') == 'true'
+            
+            # Handle file upload for example invoice
+            if 'example_invoice' in request.files:
+                file = request.files['example_invoice']
+                if file and file.filename:
+                    from werkzeug.utils import secure_filename
+                    import uuid
+                    
+                    # Generate unique filename
+                    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'pdf'
+                    filename = f"vendor_invoice_{vendor.id}_{uuid.uuid4().hex[:8]}.{ext}"
+                    
+                    # Save file
+                    upload_folder = app.config.get('UPLOAD_FOLDER', '/app/static/uploads')
+                    os.makedirs(upload_folder, exist_ok=True)
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    vendor.example_invoice_path = f"uploads/{filename}"
+                    
+                    # TODO: Extract information from invoice using AI
             
             # Update contact name if provided
             contact_name = request.form.get('contact_name', '').strip()

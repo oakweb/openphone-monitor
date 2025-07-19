@@ -348,6 +348,47 @@
         </div>
         {% endif %}
         
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-comments"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Communication</div>
+                <div class="info-value">
+                    {% if vendor.can_text %}<span class="badge bg-success">Text OK</span>{% else %}<span class="badge bg-warning">No Text</span>{% endif %}
+                    {% if vendor.can_email %}<span class="badge bg-success ms-2">Email OK</span>{% else %}<span class="badge bg-warning ms-2">No Email</span>{% endif %}
+                </div>
+            </div>
+        </div>
+        
+        {% if vendor.fax_number %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-fax"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Fax</div>
+                <div class="info-value">{{ vendor.fax_number }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if vendor.example_invoice_path %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-file-invoice"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Example Invoice</div>
+                <div class="info-value">
+                    <a href="{{ url_for('static', filename=vendor.example_invoice_path) }}" target="_blank" class="text-info">
+                        View Invoice
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         {% if vendor.hourly_rate %}
         <div class="info-item">
             <div class="info-icon">

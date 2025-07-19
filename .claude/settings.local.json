@@ -7,7 +7,8 @@
       "Bash(grep:*)",
       "Bash(git reset:*)",
       "Bash(python:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git rm:*)"
     ],
     "deny": []
   }

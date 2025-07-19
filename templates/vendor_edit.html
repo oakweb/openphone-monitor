@@ -113,7 +113,7 @@
     <div class="col-lg-8">
         <h2 class="mb-4">Edit Vendor</h2>
         
-        <form method="POST" action="{{ url_for('vendor_edit', vendor_id=vendor.id) }}">
+        <form method="POST" action="{{ url_for('vendor_edit', vendor_id=vendor.id) }}" enctype="multipart/form-data">
             <!-- Contact Information (Read-only display) -->
             <div class="form-card">
                 <h3 class="form-section-title">Contact Information</h3>
@@ -156,6 +156,7 @@
                             <span class="vendor-type-suggestion" onclick="setVendorType('Cleaner')">Cleaner</span>
                             <span class="vendor-type-suggestion" onclick="setVendorType('Roofer')">Roofer</span>
                             <span class="vendor-type-suggestion" onclick="setVendorType('Painter')">Painter</span>
+                            <span class="vendor-type-suggestion" onclick="setVendorType('Gate Repair')">Gate Repair</span>
                         </div>
                     </div>
                 </div>
@@ -205,6 +206,47 @@
                     <label for="insurance_info" class="form-label">Insurance Information</label>
                     <textarea class="form-control" id="insurance_info" name="insurance_info" rows="2" 
                               placeholder="Insurance carrier, policy number, etc.">{{ vendor.insurance_info or '' }}</textarea>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Communication Preferences</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="can_text" name="can_text" value="true" 
+                                   {% if vendor.can_text %}checked{% endif %}>
+                            <label class="form-check-label" for="can_text">
+                                Can receive text messages
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="can_email" name="can_email" value="true" 
+                                   {% if vendor.can_email %}checked{% endif %}>
+                            <label class="form-check-label" for="can_email">
+                                Can receive emails
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="example_invoice" class="form-label">Example Invoice</label>
+                        {% if vendor.example_invoice_path %}
+                            <div class="alert alert-info mb-2">
+                                <i class="fas fa-file-invoice"></i> Existing invoice on file
+                            </div>
+                        {% endif %}
+                        <input type="file" class="form-control" id="example_invoice" name="example_invoice" 
+                               accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="form-text">Upload an example invoice to auto-populate vendor information</div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="fax_number" class="form-label">Fax Number</label>
+                        <input type="text" class="form-control" id="fax_number" name="fax_number" 
+                               value="{{ vendor.fax_number or '' }}"
+                               placeholder="+1234567890">
+                    </div>
                 </div>
                 
                 <div class="mb-3">

@@ -261,6 +261,10 @@ class Vendor(db.Model):
     notes = db.Column(db.Text)
     preferred_payment_method = db.Column(db.String(50))  # cash, check, venmo, zelle, etc.
     tax_id = db.Column(db.String(50))
+    can_text = db.Column(db.Boolean, default=True)  # Whether vendor accepts text messages
+    can_email = db.Column(db.Boolean, default=True)  # Whether vendor accepts emails
+    example_invoice_path = db.Column(db.String(500))  # Path to uploaded example invoice
+    fax_number = db.Column(db.String(20))  # Fax number extracted from invoice or manually added
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

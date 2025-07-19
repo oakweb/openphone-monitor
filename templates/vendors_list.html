@@ -323,6 +323,8 @@
                     <div class="vendor-detail-item">
                         <i class="fas fa-phone"></i>
                         <span>{{ vendor.contact.phone_number }}</span>
+                        {% if not vendor.can_text %}<span class="badge bg-warning ms-2" style="font-size: 0.7rem;" title="Cannot receive text messages">No Text</span>{% endif %}
+                        {% if not vendor.can_email %}<span class="badge bg-info ms-2" style="font-size: 0.7rem;" title="Cannot receive emails">No Email</span>{% endif %}
                     </div>
                     {% if vendor.email %}
                         <div class="vendor-detail-item">
