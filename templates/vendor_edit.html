@@ -189,6 +189,15 @@
                     </div>
                     
                     <div class="col-md-6 mb-3">
+                        <label for="tax_id" class="form-label">Tax ID / EIN</label>
+                        <input type="text" class="form-control" id="tax_id" name="tax_id" 
+                               value="{{ vendor.tax_id or '' }}"
+                               placeholder="12-3456789">
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
                         <label for="preferred_payment_method" class="form-label">Preferred Payment Method</label>
                         <select class="form-select" id="preferred_payment_method" name="preferred_payment_method">
                             <option value="">Select...</option>

@@ -376,7 +376,9 @@ def vendor_create():
                 notes=request.form.get('notes', ''),
                 can_text=can_text,
                 can_email=can_email,
-                example_invoice_path=example_invoice_path
+                example_invoice_path=example_invoice_path,
+                license_number=request.form.get('license_number', '').strip(),
+                tax_id=request.form.get('tax_id', '').strip()
             )
             
             db.session.add(vendor)
@@ -418,6 +420,7 @@ def vendor_edit(vendor_id):
             vendor.preferred_payment_method = request.form.get('preferred_payment_method', '').strip()
             vendor.notes = request.form.get('notes', '')
             vendor.fax_number = request.form.get('fax_number', '').strip()
+            vendor.tax_id = request.form.get('tax_id', '').strip()
             
             # Update communication preferences
             vendor.can_text = request.form.get('can_text') == 'true'
@@ -535,17 +538,21 @@ def process_vendor_invoice(vendor_id):
             if field_value and str(field_value).strip():
                 # Check if this maps to a standard vendor field
                 standard_fields = {
+                    'name': 'company_name',
                     'company_name': 'company_name',
                     'business_name': 'company_name',
                     'email': 'email',
+                    'email_address': 'email',
                     'fax': 'fax_number',
                     'fax_number': 'fax_number',
                     'license': 'license_number',
                     'business_license': 'license_number',
+                    'license_number': 'license_number',
                     'tax_id': 'tax_id',
                     'ein': 'tax_id',
                     'insurance': 'insurance_info',
-                    'insurance_info': 'insurance_info'
+                    'insurance_info': 'insurance_info',
+                    'insurance_policy': 'insurance_info'
                 }
                 
                 # Update standard fields

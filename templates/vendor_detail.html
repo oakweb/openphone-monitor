@@ -416,6 +416,18 @@
         </div>
         {% endif %}
         
+        {% if vendor.tax_id %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-file-invoice-dollar"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Tax ID / EIN</div>
+                <div class="info-value">{{ vendor.tax_id }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
         {% if vendor.preferred_payment_method %}
         <div class="info-item">
             <div class="info-icon">
