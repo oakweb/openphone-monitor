@@ -189,10 +189,9 @@ def vendors_list():
     vendor_type = request.args.get('type', '')
     
     try:
-        # Base query
+        # Base query - removed joinedload for jobs since it's a dynamic relationship
         query = Vendor.query.options(
-            joinedload(Vendor.contact),
-            joinedload(Vendor.jobs)
+            joinedload(Vendor.contact)
         )
         
         # Apply status filter
@@ -235,8 +234,7 @@ def vendor_detail(vendor_id):
     """Display vendor profile with job history"""
     try:
         vendor = Vendor.query.options(
-            joinedload(Vendor.contact),
-            joinedload(Vendor.jobs).joinedload(VendorJob.property)
+            joinedload(Vendor.contact)
         ).get_or_404(vendor_id)
         
         # Get job statistics
