@@ -182,6 +182,53 @@ def index():
                          ai_summaries=[],
                          error=error_message)
 
+@app.route("/contact/update", methods=["POST"])
+def update_contact():
+    """Update contact name for a phone number."""
+    try:
+        data = request.get_json()
+        phone_number = data.get('phone_number')
+        new_name = data.get('name', '').strip()
+        
+        if not phone_number:
+            return jsonify({"success": False, "error": "Phone number required"}), 400
+            
+        if not new_name:
+            return jsonify({"success": False, "error": "Contact name required"}), 400
+        
+        # Check if contact exists
+        contact = Contact.query.filter_by(phone_number=phone_number).first()
+        
+        if contact:
+            # Update existing contact
+            old_name = contact.contact_name
+            contact.contact_name = new_name
+            app.logger.info(f"Updated contact {phone_number}: '{old_name}' -> '{new_name}'")
+        else:
+            # Create new contact
+            contact = Contact(
+                phone_number=phone_number,
+                contact_name=new_name
+            )
+            db.session.add(contact)
+            app.logger.info(f"Created new contact {phone_number}: '{new_name}'")
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True, 
+            "message": f"Contact updated successfully",
+            "contact": {
+                "phone_number": phone_number,
+                "name": new_name
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error updating contact: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/messages")
 def messages_view():
     """Displays message overview or detail for a specific number."""

@@ -85,17 +85,83 @@
       background-color: #2c3035;
       border-bottom: 1px solid rgba(108, 185, 211, 0.2);
       border-radius: 8px 8px 0 0;
+      position: relative;
     }
     
     .chat-header h4 {
       margin: 0;
       color: #fff;
+      display: inline-block;
     }
     
     .chat-header .property-info {
       font-size: 0.9rem;
       color: #6cb9d3;
       margin-top: 0.25rem;
+    }
+    
+    .edit-contact-btn {
+      position: absolute;
+      right: 1.25rem;
+      top: 1.25rem;
+      padding: 0.25rem 0.75rem;
+      font-size: 0.85rem;
+      background-color: rgba(108, 185, 211, 0.2);
+      border: 1px solid rgba(108, 185, 211, 0.4);
+      color: #6cb9d3;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .edit-contact-btn:hover {
+      background-color: rgba(108, 185, 211, 0.3);
+      border-color: #6cb9d3;
+    }
+    
+    .edit-contact-form {
+      display: none;
+      margin-top: 1rem;
+      padding: 1rem;
+      background-color: rgba(108, 185, 211, 0.1);
+      border-radius: 4px;
+    }
+    
+    .edit-contact-form input {
+      background-color: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(108, 185, 211, 0.3);
+      color: #fff;
+      padding: 0.5rem;
+      border-radius: 4px;
+      width: 250px;
+      margin-right: 0.5rem;
+    }
+    
+    .edit-contact-form button {
+      padding: 0.5rem 1rem;
+      margin-right: 0.5rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    
+    .save-btn {
+      background-color: #6cb9d3;
+      color: #fff;
+    }
+    
+    .save-btn:hover {
+      background-color: #5eaac4;
+    }
+    
+    .cancel-btn {
+      background-color: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+    
+    .cancel-btn:hover {
+      background-color: rgba(255, 255, 255, 0.3);
     }
     
     .chat-messages {
@@ -342,7 +408,15 @@
       <div class="chat-container">
         <div class="chat-header" id="chatHeader">
           <h4 id="chatContactName">Select a conversation</h4>
+          <button class="edit-contact-btn" id="editContactBtn" style="display:none;" onclick="showEditForm()">
+            <i class="fas fa-edit"></i> Edit
+          </button>
           <div class="property-info" id="chatPropertyInfo"></div>
+          <div class="edit-contact-form" id="editContactForm">
+            <input type="text" id="newContactName" placeholder="Enter contact name">
+            <button class="save-btn" onclick="saveContactName()">Save</button>
+            <button class="cancel-btn" onclick="hideEditForm()">Cancel</button>
+          </div>
         </div>
         
         <div class="chat-messages" id="chatMessages">
@@ -382,11 +456,100 @@
       
       // Update header
       document.getElementById('chatContactName').textContent = contactName;
+      document.getElementById('editContactBtn').style.display = 'inline-block';
       const propertyInfo = convItem.querySelector('.property-name')?.textContent || '';
       document.getElementById('chatPropertyInfo').innerHTML = propertyInfo ? `<i class="fas fa-home"></i> ${propertyInfo}` : '';
       
+      // Hide edit form when switching conversations
+      hideEditForm();
+      
       // Render messages
       renderMessages(messages);
+    }
+    
+    function showEditForm() {
+      const currentName = document.getElementById('chatContactName').textContent;
+      document.getElementById('newContactName').value = currentName === 'Unknown' ? '' : currentName;
+      document.getElementById('editContactForm').style.display = 'block';
+      document.getElementById('newContactName').focus();
+    }
+    
+    function hideEditForm() {
+      document.getElementById('editContactForm').style.display = 'none';
+    }
+    
+    function saveContactName() {
+      const newName = document.getElementById('newContactName').value.trim();
+      
+      if (!newName) {
+        alert('Please enter a contact name');
+        return;
+      }
+      
+      if (!currentPhone) {
+        alert('No phone number selected');
+        return;
+      }
+      
+      // Send update request
+      fetch('/contact/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone_number: currentPhone,
+          name: newName
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Update UI
+          document.getElementById('chatContactName').textContent = newName;
+          
+          // Update conversation list
+          const convItem = document.querySelector(`[data-phone="${currentPhone}"]`);
+          if (convItem) {
+            convItem.dataset.contact = newName;
+            const nameElem = convItem.querySelector('.contact-name');
+            if (nameElem) {
+              nameElem.textContent = newName;
+            }
+          }
+          
+          // Update messages array
+          if (allMessages[currentPhone]) {
+            allMessages[currentPhone].forEach(msg => {
+              msg.contact_name = newName;
+            });
+          }
+          
+          // Hide form
+          hideEditForm();
+          
+          // Show success message
+          showNotification('Contact updated successfully', 'success');
+        } else {
+          alert('Error updating contact: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to update contact');
+      });
+    }
+    
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.className = `alert alert-${type} notification`;
+      notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 400px;';
+      notification.textContent = message;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 3000);
     }
     
     function renderMessages(messages) {
