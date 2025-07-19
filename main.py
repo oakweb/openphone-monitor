@@ -948,12 +948,136 @@ def serve_media(filename):
 
 @app.route("/ask", methods=["GET", "POST"])
 def ask_view():
-    """Display Ask AI page."""
+    """Display Ask AI page and handle AI queries."""
     try:
+        if request.method == "POST":
+            from openai import OpenAI
+            
+            # Get the query from form
+            query = request.form.get('query', '').strip()
+            if not query:
+                flash("Please enter a question.", "warning")
+                return render_template('ask.html')
+            
+            # Get OpenAI API key
+            openai_api_key = os.getenv('OPENAI_API_KEY')
+            if not openai_api_key:
+                flash("OpenAI API key not configured.", "danger")
+                return render_template('ask.html')
+            
+            try:
+                # Initialize OpenAI client
+                client = OpenAI(api_key=openai_api_key)
+                
+                app.logger.info(f"Ask AI Query: '{query}'")
+                
+                # Extract time context
+                query_lower = query.lower()
+                time_indicators = ['today', 'yesterday', 'week', 'recent', 'lately', 'past', 'last']
+                is_time_query = any(indicator in query_lower for indicator in time_indicators)
+                
+                # Determine time range
+                if 'today' in query_lower:
+                    time_filter = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    time_desc = "today"
+                elif 'yesterday' in query_lower:
+                    time_filter = (datetime.now() - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    time_desc = "yesterday"
+                elif 'week' in query_lower:
+                    time_filter = datetime.now() - timedelta(days=7)
+                    time_desc = "the past week"
+                elif is_time_query:
+                    time_filter = datetime.now() - timedelta(days=14)
+                    time_desc = "the past two weeks"
+                else:
+                    time_filter = datetime.now() - timedelta(days=30)
+                    time_desc = "the past month"
+                
+                # Get relevant data based on query
+                messages_query = Message.query.options(
+                    joinedload(Message.property),
+                    joinedload(Message.contact)
+                ).filter(
+                    Message.timestamp >= time_filter,
+                    Message.message.isnot(None)
+                )
+                
+                # Check if asking about properties
+                if any(word in query_lower for word in ['property', 'properties', 'unit', 'units', 'tenant', 'tenants']):
+                    properties = Property.query.all()
+                    property_info = []
+                    for prop in properties:
+                        tenant_count = PropertyContact.query.filter_by(
+                            property_id=prop.id,
+                            contact_type='tenant'
+                        ).count()
+                        message_count = Message.query.filter_by(property_id=prop.id).filter(
+                            Message.timestamp >= time_filter
+                        ).count()
+                        property_info.append({
+                            'name': prop.name,
+                            'address': prop.address,
+                            'tenants': tenant_count,
+                            'recent_messages': message_count
+                        })
+                    
+                    # Create property summary
+                    property_summary = f"Property Overview for {time_desc}:\n\n"
+                    for info in property_info:
+                        property_summary += f"• {info['name']} ({info['address']})\n"
+                        property_summary += f"  - {info['tenants']} tenant(s)\n"
+                        property_summary += f"  - {info['recent_messages']} message(s)\n\n"
+                    
+                    response = property_summary
+                else:
+                    # Get messages for analysis
+                    messages = messages_query.order_by(Message.timestamp.desc()).limit(50).all()
+                    
+                    if not messages:
+                        response = f"No messages found for {time_desc}."
+                    else:
+                        # Prepare context for AI
+                        message_context = f"Analyzing {len(messages)} messages from {time_desc}:\n\n"
+                        for msg in messages[:20]:  # Limit context size
+                            contact_name = msg.contact.name if msg.contact else "Unknown"
+                            property_name = msg.property.name if msg.property else "No Property"
+                            timestamp = msg.timestamp.strftime("%Y-%m-%d %H:%M")
+                            direction = "from" if msg.direction == "incoming" else "to"
+                            message_context += f"[{timestamp}] {direction} {contact_name} (Property: {property_name}): {msg.message[:100]}...\n"
+                        
+                        # Ask AI to analyze
+                        ai_prompt = f"""Based on these recent messages, answer this question: {query}
+                        
+Context:
+{message_context}
+
+Provide a helpful, concise answer focusing on the specific question asked."""
+                        
+                        completion = client.chat.completions.create(
+                            model="gpt-3.5-turbo",
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant analyzing property management messages. Be concise and specific."},
+                                {"role": "user", "content": ai_prompt}
+                            ],
+                            temperature=0.3,
+                            max_tokens=500
+                        )
+                        
+                        response = completion.choices[0].message.content.strip()
+                
+                return render_template('ask.html', response=response)
+                
+            except Exception as ai_error:
+                app.logger.error(f"AI processing error: {ai_error}")
+                flash(f"Error processing your question: {str(ai_error)}", "danger")
+                return render_template('ask.html')
+        
+        # GET request - just show the form
         return render_template('ask.html')
+        
     except Exception as e:
-        app.logger.error(f"Error loading ask page: {e}")
-        flash(f"Error loading ask page: {e}", "danger")
+        app.logger.error(f"Error in ask_view: {e}")
+        flash(f"Error: {e}", "danger")
         return redirect(url_for('index'))
 
 @app.route("/notifications", methods=["GET", "POST"])
