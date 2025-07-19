@@ -523,35 +523,55 @@ def process_vendor_invoice(vendor_id):
             
         client = OpenAI(api_key=api_key)
         
+        # Get list of property addresses to exclude
+        properties = Property.query.all()
+        property_addresses = []
+        for prop in properties:
+            if prop.address:
+                property_addresses.append(prop.address.lower())
+            if prop.name:
+                property_addresses.append(prop.name.lower())
+        
         # Create a prompt for extraction
-        prompt = f"""Extract all relevant vendor information from this invoice text. 
+        prompt = f"""Extract all relevant VENDOR/COMPANY information from this invoice text. 
         Return the data as a JSON object with clear field names and values.
         
+        IMPORTANT: Extract the VENDOR'S business address, NOT the service/property address.
+        Look for:
+        - Company letterhead or header information
+        - "From:" or "Bill From:" sections
+        - Company contact information section
+        - Footer with company details
+        
+        DO NOT extract these property/service addresses (these are customer locations, not vendor addresses):
+        {', '.join(property_addresses[:10])}  # Show first 10 as examples
+        
         Required fields to extract if available:
-        - name (company name)
-        - phone (main business phone)
-        - email
-        - address (full street address)
-        - city
-        - state (full name or abbreviation)
-        - zip_code (zip or postal code)
+        - name (vendor/company name from letterhead or "from" section)
+        - phone (vendor's main business phone)
+        - email (vendor's email)
+        - address (vendor's business street address - NOT the service address)
+        - city (vendor's city)
+        - state (vendor's state)
+        - zip_code (vendor's zip code)
         - business_license (license number)
         - tax_id (EIN or tax ID)
         - fax_number
         - insurance_info
         - payment_terms
         
+        If you see both a "Bill To" and "From" address, extract the "From" address as that's the vendor.
         If you find a full address string, please parse it into separate address, city, state, and zip_code fields.
         
         Invoice text:
-        {extracted_text[:4000]}  # Limit to 4000 chars for API limits
+        {extracted_text[:3500]}  # Reduced to make room for property list
         
         Return only valid JSON, no other text."""
         
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a data extraction assistant. Extract vendor information from invoices and return only valid JSON."},
+                {"role": "system", "content": "You are a data extraction assistant specializing in vendor invoices. Extract the VENDOR/COMPANY information (not customer/service location). Look for letterhead, 'From' sections, company info. Return only valid JSON."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
@@ -560,6 +580,9 @@ def process_vendor_invoice(vendor_id):
         
         # Parse the extracted data
         extracted_data = json.loads(response.choices[0].message.content)
+        
+        # Log extracted data for debugging
+        app.logger.info(f"Extracted vendor data: {extracted_data}")
         
         # Clear existing invoice data for this vendor
         VendorInvoiceData.query.filter_by(vendor_id=vendor_id).delete()

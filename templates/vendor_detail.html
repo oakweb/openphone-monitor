@@ -368,7 +368,8 @@
             <div class="info-content">
                 <div class="info-label">Address</div>
                 <div class="info-value">
-                    {% if vendor.address %}{{ vendor.address }}<br>{% endif %}
+                    {% if vendor.address %}{{ vendor.address }}{% endif %}
+                    {% if vendor.address and (vendor.city or vendor.state or vendor.zip_code) %}<br>{% endif %}
                     {% if vendor.city %}{{ vendor.city }}{% endif %}{% if vendor.city and vendor.state %}, {% endif %}
                     {% if vendor.state %}{{ vendor.state }}{% endif %}
                     {% if vendor.zip_code %} {{ vendor.zip_code }}{% endif %}
