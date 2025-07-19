@@ -303,6 +303,30 @@ class Vendor(db.Model):
         return f"<Vendor {self.company_name or self.contact.contact_name}>"
 
 
+class VendorInvoiceData(db.Model):
+    """Store extracted data from vendor invoices"""
+    __tablename__ = "vendor_invoice_data"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False)
+    field_name = db.Column(db.String(100), nullable=False)  # e.g., 'business_license', 'insurance_policy'
+    field_value = db.Column(db.Text)
+    field_type = db.Column(db.String(50), default='text')  # text, number, date, email, phone
+    confidence = db.Column(db.Numeric(3,2))  # 0.00-1.00 confidence score
+    extracted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    source = db.Column(db.String(200))  # filename that data was extracted from
+    
+    # Relationship
+    vendor = db.relationship('Vendor', backref=db.backref('invoice_data', lazy='dynamic', cascade='all, delete-orphan'))
+    
+    __table_args__ = (
+        db.UniqueConstraint('vendor_id', 'field_name', name='_vendor_field_uc'),
+    )
+    
+    def __repr__(self):
+        return f"<VendorInvoiceData {self.field_name}: {self.field_value}>"
+
+
 class VendorJob(db.Model):
     """Track vendor work at properties"""
     __tablename__ = "vendor_jobs"

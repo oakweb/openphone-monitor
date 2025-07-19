@@ -12,7 +12,7 @@ load_dotenv()
 
 # Import local modules
 from extensions import db
-from models import Contact, Message, Property, Tenant, NotificationHistory, PropertyCustomField, PropertyAttachment, PropertyContact, Vendor, VendorJob
+from models import Contact, Message, Property, Tenant, NotificationHistory, PropertyCustomField, PropertyAttachment, PropertyContact, Vendor, VendorJob, VendorInvoiceData
 from webhook_route import webhook_bp
 
 app = Flask(__name__)
@@ -133,6 +133,13 @@ with app.app_context():
             except Exception as e:
                 db.session.rollback()
                 app.logger.error(f"❌ Error adding vendor enhancement fields: {e}")
+        
+        # Create VendorInvoiceData table if it doesn't exist
+        try:
+            db.create_all()  # This will create any missing tables
+            app.logger.info("✅ All database tables verified/created.")
+        except Exception as e:
+            app.logger.error(f"❌ Error creating tables: {e}")
         
         # Add message tracking fields for tenant communications
         message_tracking_columns = [
@@ -450,6 +457,134 @@ def vendor_edit(vendor_id):
             flash(f"Error updating vendor: {e}", "danger")
     
     return render_template('vendor_edit.html', vendor=vendor)
+
+
+@app.route("/vendor/<int:vendor_id>/process-invoice", methods=["POST"])
+def process_vendor_invoice(vendor_id):
+    """Process vendor invoice with AI to extract information"""
+    vendor = Vendor.query.get_or_404(vendor_id)
+    
+    if not vendor.example_invoice_path:
+        return jsonify({"error": "No invoice uploaded for this vendor"}), 400
+    
+    try:
+        # Get the invoice file path
+        upload_folder = app.config.get('UPLOAD_FOLDER', '/app/static/uploads')
+        invoice_path = os.path.join(upload_folder, vendor.example_invoice_path.replace('uploads/', ''))
+        
+        # Check if file exists
+        if not os.path.exists(invoice_path):
+            return jsonify({"error": "Invoice file not found"}), 404
+        
+        # Process the invoice based on file type
+        extracted_text = ""
+        file_ext = invoice_path.lower().rsplit('.', 1)[1] if '.' in invoice_path else ''
+        
+        if file_ext == 'pdf':
+            # Extract text from PDF
+            import PyPDF2
+            with open(invoice_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                for page in pdf_reader.pages:
+                    extracted_text += page.extract_text() + "\n"
+        else:
+            # For images, we'll need OCR (placeholder for now)
+            extracted_text = "[Image processing not yet implemented]"
+        
+        # Use OpenAI to extract structured data
+        import openai
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        
+        if not openai.api_key:
+            return jsonify({"error": "OpenAI API key not configured"}), 500
+        
+        # Create a prompt for extraction
+        prompt = f"""Extract all relevant vendor information from this invoice text. 
+        Return the data as a JSON object with clear field names and values.
+        Include business license, insurance info, tax ID, addresses, phone numbers, emails, fax numbers, 
+        payment terms, and any other relevant business information.
+        If a field is not found, omit it from the response.
+        
+        Invoice text:
+        {extracted_text[:4000]}  # Limit to 4000 chars for API limits
+        
+        Return only valid JSON, no other text."""
+        
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a data extraction assistant. Extract vendor information from invoices and return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=1000
+        )
+        
+        # Parse the extracted data
+        import json
+        extracted_data = json.loads(response.choices[0].message.content)
+        
+        # Clear existing invoice data for this vendor
+        VendorInvoiceData.query.filter_by(vendor_id=vendor_id).delete()
+        
+        # Store extracted data in the database
+        fields_updated = []
+        for field_name, field_value in extracted_data.items():
+            if field_value and str(field_value).strip():
+                # Check if this maps to a standard vendor field
+                standard_fields = {
+                    'company_name': 'company_name',
+                    'business_name': 'company_name',
+                    'email': 'email',
+                    'fax': 'fax_number',
+                    'fax_number': 'fax_number',
+                    'license': 'license_number',
+                    'business_license': 'license_number',
+                    'tax_id': 'tax_id',
+                    'ein': 'tax_id',
+                    'insurance': 'insurance_info',
+                    'insurance_info': 'insurance_info'
+                }
+                
+                # Update standard fields
+                standard_field = None
+                for key, attr in standard_fields.items():
+                    if key in field_name.lower():
+                        standard_field = attr
+                        break
+                
+                if standard_field and hasattr(vendor, standard_field):
+                    current_value = getattr(vendor, standard_field)
+                    if not current_value or current_value == '':
+                        setattr(vendor, standard_field, str(field_value))
+                        fields_updated.append(f"{standard_field}: {field_value}")
+                
+                # Store all extracted data
+                invoice_data = VendorInvoiceData(
+                    vendor_id=vendor_id,
+                    field_name=field_name,
+                    field_value=str(field_value),
+                    confidence=0.9,  # High confidence for now
+                    source=vendor.example_invoice_path
+                )
+                db.session.add(invoice_data)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Extracted {len(extracted_data)} fields from invoice",
+            "fields_updated": fields_updated,
+            "all_data": extracted_data
+        })
+        
+    except json.JSONDecodeError as e:
+        app.logger.error(f"JSON decode error: {e}")
+        return jsonify({"error": "Failed to parse AI response"}), 500
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error processing invoice: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/contact/update", methods=["POST"])
