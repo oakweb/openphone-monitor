@@ -162,7 +162,7 @@
                         <div class="col-md-6 mb-3">
                             <label for="phone_number" class="form-label">Phone Number <span class="text-danger">*</span></label>
                             <input type="tel" class="form-control" id="phone_number" name="phone_number" 
-                                   placeholder="+1234567890" pattern="^\+?[0-9]{10,15}$">
+                                   placeholder="+1234567890" pattern="^\+?[0-9]{10,15}$" required>
                             <div class="form-text">Include country code (e.g., +17025551234)</div>
                         </div>
                         
@@ -243,35 +243,47 @@
 <script>
 // Handle contact type selection
 document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
     const contactRadios = document.querySelectorAll('input[name="contact_type"]');
     const newContactFields = document.getElementById('new_contact_fields');
+    const phoneNumberField = document.getElementById('phone_number');
+    
+    // Add hidden field for selected phone number
+    const hiddenPhone = document.createElement('input');
+    hiddenPhone.type = 'hidden';
+    hiddenPhone.id = 'selected_phone';
+    hiddenPhone.name = 'selected_phone_number';
+    form.appendChild(hiddenPhone);
     
     contactRadios.forEach(radio => {
         radio.addEventListener('change', function() {
             if (this.value === 'new' && this.checked) {
                 newContactFields.style.display = 'block';
-                document.getElementById('phone_number').required = true;
+                phoneNumberField.required = true;
+                hiddenPhone.value = '';
             } else if (this.value === 'existing' && this.checked) {
                 newContactFields.style.display = 'none';
-                document.getElementById('phone_number').required = false;
+                phoneNumberField.required = false;
+                phoneNumberField.value = ''; // Clear the field
                 
                 // Get the selected contact's phone number
                 const index = this.id.split('_')[1];
                 const phoneInput = document.querySelector(`input[name="existing_phone_${index}"]`);
                 if (phoneInput) {
-                    // Set the phone number in a hidden field
-                    let hiddenPhone = document.getElementById('selected_phone');
-                    if (!hiddenPhone) {
-                        hiddenPhone = document.createElement('input');
-                        hiddenPhone.type = 'hidden';
-                        hiddenPhone.id = 'selected_phone';
-                        hiddenPhone.name = 'phone_number';
-                        this.form.appendChild(hiddenPhone);
-                    }
                     hiddenPhone.value = phoneInput.value;
                 }
             }
         });
+    });
+    
+    // Form submission handler
+    form.addEventListener('submit', function(e) {
+        const contactType = document.querySelector('input[name="contact_type"]:checked');
+        if (contactType && contactType.value === 'existing' && !hiddenPhone.value) {
+            e.preventDefault();
+            alert('Please select an existing contact');
+            return false;
+        }
     });
 });
 

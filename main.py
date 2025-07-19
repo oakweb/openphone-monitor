@@ -273,7 +273,14 @@ def vendor_create():
     if request.method == "POST":
         try:
             # Get form data
-            phone_number = request.form.get('phone_number', '').strip()
+            contact_type = request.form.get('contact_type', 'new')
+            
+            # Get phone number based on contact type
+            if contact_type == 'existing':
+                phone_number = request.form.get('selected_phone_number', '').strip()
+            else:
+                phone_number = request.form.get('phone_number', '').strip()
+            
             contact_name = request.form.get('contact_name', '').strip()
             company_name = request.form.get('company_name', '').strip()
             vendor_type = request.form.get('vendor_type', '').strip()

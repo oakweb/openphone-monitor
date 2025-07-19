@@ -124,12 +124,7 @@
                             <strong>Phone:</strong> {{ vendor.contact.phone_number }}
                         </div>
                         <div class="col-md-6">
-                            <strong>Contact Name:</strong> 
-                            <input type="text" class="form-control form-control-sm d-inline-block" 
-                                   style="width: auto; margin-left: 0.5rem;"
-                                   name="contact_name" 
-                                   value="{{ vendor.contact.contact_name or '' }}"
-                                   placeholder="Enter name">
+                            <strong>Contact Name:</strong> {{ vendor.contact.contact_name or 'Not set' }}
                         </div>
                     </div>
                 </div>
