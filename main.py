@@ -1039,7 +1039,7 @@ def ask_view():
                         # Prepare context for AI
                         message_context = f"Analyzing {len(messages)} messages from {time_desc}:\n\n"
                         for msg in messages[:20]:  # Limit context size
-                            contact_name = msg.contact.name if msg.contact else "Unknown"
+                            contact_name = msg.contact.contact_name if msg.contact else "Unknown"
                             property_name = msg.property.name if msg.property else "No Property"
                             timestamp = msg.timestamp.strftime("%Y-%m-%d %H:%M")
                             direction = "from" if msg.direction == "incoming" else "to"
