@@ -523,9 +523,20 @@ def process_vendor_invoice(vendor_id):
             
         client = OpenAI(api_key=api_key)
         
-        # Get list of property addresses to exclude
+        # Hardcoded list of YOUR property addresses to ALWAYS exclude
+        BLOCKED_ADDRESSES = [
+            "4365 n campbell rd",
+            "4365 n campbell",
+            "4365 campbell",
+            "4365 n. campbell",
+            "4365 north campbell",
+            "las vegas, nv 89129",  # Add zip codes that are for your properties
+            # Add more of your property addresses here as needed
+        ]
+        
+        # Also get any additional property addresses from database
         properties = Property.query.all()
-        property_addresses = []
+        property_addresses = BLOCKED_ADDRESSES.copy()
         for prop in properties:
             if prop.address:
                 property_addresses.append(prop.address.lower())
@@ -544,8 +555,11 @@ def process_vendor_invoice(vendor_id):
            - Company footer information
            - "From:" or vendor info boxes
         
-        3. If you see "4365 N Campbell Rd" or any of these addresses, DO NOT use them as vendor address:
-        {', '.join(property_addresses[:10])}
+        3. CRITICAL: These addresses are PROPERTY/SERVICE addresses and MUST NEVER be extracted as vendor addresses:
+        - 4365 N Campbell Rd (or any variation like 4365 Campbell, 4365 N. Campbell, etc)
+        - Any address that appears as "Service Address" or "Property Address"
+        - Any address under "Job Site" or "Work Location"
+        {'; '.join(property_addresses[:10])}
         
         4. Common patterns to AVOID:
            - Service Address: [address] <- This is WHERE work was done, not vendor location
@@ -571,7 +585,7 @@ def process_vendor_invoice(vendor_id):
         - insurance_info
         - payment_terms
         
-        If address contains "4365 N Campbell" or matches a known property, leave address fields empty.
+        IMPORTANT: If ANY address contains "4365" in any form, DO NOT extract it. Leave all address fields empty instead.
         
         Invoice text:
         {extracted_text[:3500]}  # Reduced to make room for property list
@@ -597,10 +611,32 @@ def process_vendor_invoice(vendor_id):
         # Validate extracted address isn't a property address
         if 'address' in extracted_data:
             extracted_addr_lower = extracted_data['address'].lower()
-            for prop_addr in property_addresses:
-                if prop_addr in extracted_addr_lower or extracted_addr_lower in prop_addr:
-                    app.logger.warning(f"Detected property address in extraction, removing: {extracted_data['address']}")
-                    # Remove address fields if they match a property
+            
+            # AGGRESSIVE CHECK: If address contains "4365" in any form, remove it
+            if '4365' in extracted_addr_lower:
+                app.logger.warning(f"Detected '4365' in address, removing: {extracted_data['address']}")
+                extracted_data.pop('address', None)
+                extracted_data.pop('city', None)
+                extracted_data.pop('state', None)
+                extracted_data.pop('zip_code', None)
+            else:
+                # Also check against all property addresses
+                for prop_addr in property_addresses:
+                    if prop_addr in extracted_addr_lower or extracted_addr_lower in prop_addr:
+                        app.logger.warning(f"Detected property address in extraction, removing: {extracted_data['address']}")
+                        # Remove address fields if they match a property
+                        extracted_data.pop('address', None)
+                        extracted_data.pop('city', None)
+                        extracted_data.pop('state', None)
+                        extracted_data.pop('zip_code', None)
+                        break
+        
+        # Also check city/state/zip independently for "4365" or blocked patterns
+        for field in ['city', 'state', 'zip_code']:
+            if field in extracted_data and extracted_data[field]:
+                field_value = str(extracted_data[field]).lower()
+                if '4365' in field_value:
+                    app.logger.warning(f"Detected '4365' in {field}, removing all address fields")
                     extracted_data.pop('address', None)
                     extracted_data.pop('city', None)
                     extracted_data.pop('state', None)
