@@ -186,6 +186,7 @@ def index():
 def messages_view():
     """Displays message overview or detail for a specific number."""
     target_phone_number = request.args.get("phone_number")
+    view_type = request.args.get("view", "list")  # list or conversation
     
     try:
         if target_phone_number:
@@ -299,6 +300,80 @@ def messages_view():
                 Message.property_id.is_(None)
             ).count()
             
+            # Check if conversation view is requested
+            if view_type == "conversation":
+                # Group messages by phone number for conversation view
+                from collections import defaultdict
+                conversations = []
+                
+                # Get all unique phone numbers with their latest message
+                phone_numbers = db.session.query(
+                    Message.phone_number,
+                    func.max(Message.timestamp).label('last_message_time')
+                ).group_by(Message.phone_number)
+                
+                # Apply property filter if needed
+                if property_filter:
+                    phone_numbers = phone_numbers.filter(Message.property_id == property_filter)
+                
+                phone_numbers = phone_numbers.all()
+                
+                for phone, last_time in phone_numbers:
+                    # Get all messages for this phone number
+                    conv_messages = Message.query.filter_by(phone_number=phone).options(
+                        joinedload(Message.property),
+                        joinedload(Message.contact)
+                    ).order_by(Message.timestamp.asc()).all()
+                    
+                    if conv_messages:
+                        last_msg = conv_messages[-1]
+                        contact = last_msg.contact
+                        
+                        # Format messages for JavaScript
+                        formatted_messages = []
+                        for msg in conv_messages:
+                            formatted_msg = {
+                                'id': msg.id,
+                                'message': msg.message,
+                                'timestamp': msg.timestamp.isoformat(),
+                                'direction': msg.direction,
+                                'contact_name': contact.contact_name if contact else None,
+                                'media_urls': []
+                            }
+                            
+                            # Parse media URLs
+                            if msg.local_media_paths and msg.local_media_paths.startswith('['):
+                                try:
+                                    import json
+                                    media_paths = json.loads(msg.local_media_paths)
+                                    formatted_msg['media_urls'] = [url_for('serve_media', filename=path.replace('\\', '/')) for path in media_paths]
+                                except:
+                                    pass
+                            
+                            formatted_messages.append(formatted_msg)
+                        
+                        conversation = {
+                            'phone_number': phone,
+                            'contact_name': contact.contact_name if contact else None,
+                            'property_name': last_msg.property.name if last_msg.property else None,
+                            'property_id': last_msg.property_id,
+                            'last_message': (last_msg.message[:50] + '...') if last_msg.message and len(last_msg.message) > 50 else last_msg.message,
+                            'last_message_time': last_msg.timestamp.strftime('%I:%M %p'),
+                            'last_direction': last_msg.direction,
+                            'unread_count': 0,  # You can implement unread logic later
+                            'messages': formatted_messages
+                        }
+                        conversations.append(conversation)
+                
+                # Sort conversations by last message time
+                conversations.sort(key=lambda x: x['messages'][-1]['timestamp'], reverse=True)
+                
+                return render_template("messages_conversation.html",
+                                     conversations=conversations,
+                                     properties=properties_list,
+                                     property_filter=property_filter)
+            
+            # Default list view
             return render_template("messages_overview.html", 
                                  messages=pagination.items,
                                  pagination=pagination,
