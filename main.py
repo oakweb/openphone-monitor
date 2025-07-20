@@ -613,9 +613,16 @@ def process_vendor_invoice(vendor_id):
         CRITICAL: These are the CUSTOMER (not vendor) - NEVER extract these:
         - Company: "Sin City Rentals" or "Sin City Rentals LLC" 
         - Email: "sincityrentalsllc@gmail.com"
-        - Any info under "Bill To:" or "Customer:" sections
+        - Phone: "7028199266" or "(702)8199266" or "702-819-9266"
+        - Any info under "BILL TO:", "Bill To:", "Customer:", "Bill 2:" sections
+        - Any info that appears AFTER or UNDER these headers
         
         The VENDOR is the company PROVIDING the service (e.g., Victor Iron Gates, Swift Garage Doors, etc.)
+        Look for vendor info in:
+        - Company letterhead (usually top-left of invoice)
+        - "From:" section
+        - Left side of invoice (before any "Bill To" section)
+        - Company logo area
         
         CRITICAL RULES FOR ADDRESS EXTRACTION:
         1. NEVER extract addresses that appear after "Service Address:", "Property:", "Location:", "Job Site:", or "Bill To:"
@@ -641,11 +648,16 @@ def process_vendor_invoice(vendor_id):
            - From: [Company]\\n[Address] <- Vendor info box
            - Remit Payment to: [Address] <- Where to send payment
         
+        Invoice Layout Understanding:
+        - LEFT SIDE: Usually contains VENDOR info (company providing service)
+        - RIGHT SIDE: Usually contains CUSTOMER info (Bill To, Sin City Rentals)
+        - Focus on LEFT SIDE vendor information ONLY
+        
         Required fields to extract if available:
-        - name (vendor/company name - look at top of invoice)
-        - phone (vendor's business phone - often in header/footer)
-        - email (vendor's email)
-        - address (vendor's BUSINESS address - NOT where service was performed)
+        - name (vendor/company name - from LEFT side or top of invoice)
+        - phone (vendor's phone - NOT 702-819-9266)
+        - email (vendor's email - NOT sincityrentalsllc@gmail.com)
+        - address (vendor's BUSINESS address - from LEFT side, NOT Bill To address)
         - city (vendor's city)
         - state (vendor's state)
         - zip_code (vendor's zip code)
@@ -696,6 +708,12 @@ def process_vendor_invoice(vendor_id):
             if extracted_data['email'].lower() == 'sincityrentalsllc@gmail.com':
                 app.logger.warning("Detected Sin City Rentals email, removing")
                 extracted_data.pop('email', None)
+        
+        if 'phone' in extracted_data:
+            phone_digits = ''.join(filter(str.isdigit, extracted_data['phone']))
+            if phone_digits in ['7028199266', '17028199266']:
+                app.logger.warning("Detected Sin City Rentals phone, removing")
+                extracted_data.pop('phone', None)
         
         # Validate extracted address isn't a property address
         if 'address' in extracted_data:
