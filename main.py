@@ -2399,6 +2399,27 @@ def property_contacts(property_id):
                 db.session.rollback()
                 flash(f"Error adding contact: {e}", "danger")
         
+        elif action == 'edit':
+            try:
+                contact_id = request.form.get('contact_id')
+                if contact_id:
+                    contact = db.session.get(PropertyContact, contact_id)
+                    if contact and contact.property_id == property_id:
+                        contact.contact_type = request.form.get('contact_type', contact.contact_type)
+                        contact.name = request.form.get('name', contact.name)
+                        contact.phone = request.form.get('phone', contact.phone)
+                        contact.email = request.form.get('email', contact.email)
+                        contact.company = request.form.get('company', contact.company)
+                        contact.role = request.form.get('role', contact.role)
+                        contact.address = request.form.get('address', contact.address)
+                        contact.notes = request.form.get('notes', contact.notes)
+                        contact.is_primary = request.form.get('is_primary') == 'on'
+                        db.session.commit()
+                        flash("Contact updated successfully!", "success")
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error updating contact: {e}", "danger")
+        
         elif action == 'delete':
             contact_id = request.form.get('contact_id')
             if contact_id:
