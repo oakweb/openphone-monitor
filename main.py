@@ -525,13 +525,76 @@ def process_vendor_invoice(vendor_id):
         
         # Hardcoded list of YOUR property addresses to ALWAYS exclude
         BLOCKED_ADDRESSES = [
+            # Primary variations of problem addresses
             "4365 n campbell rd",
             "4365 n campbell",
             "4365 campbell",
             "4365 n. campbell",
             "4365 north campbell",
-            "las vegas, nv 89129",  # Add zip codes that are for your properties
-            # Add more of your property addresses here as needed
+            "4365 north campbell road",
+            
+            # All property addresses from your list
+            "4321 west flamingo road",
+            "704 lacey tree st",
+            "900 south las vegas blvd",
+            "900 s las vegas blvd",
+            "42 gulf pines avenue",
+            "113 woodley street",
+            "113 woodley st",
+            "711 bonita avenue",
+            "711 bonita ave",
+            "1007 francis avenue",
+            "1007 francis ave",
+            "1030 bracken ave",
+            "1051 east oakey boulevard",
+            "1051 e oakey blvd",
+            "1053 creeping zinnia court",
+            "1067 sweeney avenue",
+            "1524 stonefield street",
+            "1524 stonefield st",
+            "2113 santa ynez drive",
+            "2208 glen heather way",
+            "2208 sunland ave",
+            "3540 cactus shadow st",
+            "4701 leilani ln",
+            "4750 north jensen",
+            "4750 n jensen",
+            "4801 jay ave",
+            "5108 del rey avenue",
+            "5300 byron nelson court",
+            "5300 byron nelson lane",
+            "5491 indian cedar drive",
+            "5625 auborn ave",
+            "5625 west auborn avenue",
+            "5625 w auborn ave",
+            "6351 maratea avenue",
+            "7649 sierra paseo lane",
+            "8008 ducharme avenue",
+            "8008 ducharme ave",
+            "8516 copper knoll avenue",
+            "8516 copper knoll ave",
+            "10650 calico mountain ave",
+            "11509 crimson rose avenue",
+            "11509 crimson rose ave",
+            
+            # Common zip codes for your properties
+            "las vegas, nv 89103",
+            "las vegas, nv 89145",
+            "las vegas, nv 89101",
+            "las vegas, nv 89148",
+            "las vegas, nv 89106",
+            "las vegas, nv 89104",
+            "las vegas, nv 89138",
+            "las vegas, nv 89144",
+            "las vegas, nv 89102",
+            "las vegas, nv 89129",
+            "las vegas, nv 89130",
+            "las vegas, nv 89146",
+            "las vegas, nv 89149",
+            "las vegas, nv 89135",
+            "las vegas, nv 89108",
+            "las vegas, nv 89128",
+            "bonita springs, fl 34134",
         ]
         
         # Also get any additional property addresses from database
@@ -556,10 +619,10 @@ def process_vendor_invoice(vendor_id):
            - "From:" or vendor info boxes
         
         3. CRITICAL: These addresses are PROPERTY/SERVICE addresses and MUST NEVER be extracted as vendor addresses:
-        - 4365 N Campbell Rd (or any variation like 4365 Campbell, 4365 N. Campbell, etc)
+        - ANY address containing: 4365, 4321, 704, 900, 42 gulf, 113, 711, 1007, 1030, 1051, 1053, 1067, 1524, 2113, 2208, 3540, 4701, 4750, 4801, 5108, 5300, 5491, 5625, 6351, 7649, 8008, 8516, 10650, 11509
+        - ANY address with these street names: Campbell, Flamingo, Lacey Tree, Las Vegas Blvd, Gulf Pines, Woodley, Bonita, Francis, Bracken, Oakey, Creeping Zinnia, Sweeney, Stonefield, Santa Ynez, Glen Heather, Sunland, Cactus Shadow, Leilani, Jensen, Jay, Del Rey, Byron Nelson, Indian Cedar, Auborn, Maratea, Sierra Paseo, Ducharme, Copper Knoll, Calico Mountain, Crimson Rose
         - Any address that appears as "Service Address" or "Property Address"
         - Any address under "Job Site" or "Work Location"
-        {'; '.join(property_addresses[:10])}
         
         4. Common patterns to AVOID:
            - Service Address: [address] <- This is WHERE work was done, not vendor location
@@ -612,13 +675,24 @@ def process_vendor_invoice(vendor_id):
         if 'address' in extracted_data:
             extracted_addr_lower = extracted_data['address'].lower()
             
-            # AGGRESSIVE CHECK: If address contains "4365" in any form, remove it
-            if '4365' in extracted_addr_lower:
-                app.logger.warning(f"Detected '4365' in address, removing: {extracted_data['address']}")
-                extracted_data.pop('address', None)
-                extracted_data.pop('city', None)
-                extracted_data.pop('state', None)
-                extracted_data.pop('zip_code', None)
+            # AGGRESSIVE CHECK: If address contains any blocked patterns
+            blocked_patterns = ['4365', '4321 west flamingo', '704 lacey', '900 south las vegas', 
+                               '42 gulf pines', '113 woodley', '711 bonita', '1007 francis',
+                               '1030 bracken', '1051 east oakey', '1051 e oakey', '1053 creeping',
+                               '1067 sweeney', '1524 stonefield', '2113 santa ynez', '2208 glen heather',
+                               '2208 sunland', '3540 cactus', '4701 leilani', '4750 north jensen',
+                               '4750 n jensen', '4801 jay', '5108 del rey', '5300 byron', '5491 indian',
+                               '5625 auborn', '6351 maratea', '7649 sierra', '8008 ducharme',
+                               '8516 copper', '10650 calico', '11509 crimson']
+            
+            for pattern in blocked_patterns:
+                if pattern in extracted_addr_lower:
+                    app.logger.warning(f"Detected blocked pattern '{pattern}' in address, removing: {extracted_data['address']}")
+                    extracted_data.pop('address', None)
+                    extracted_data.pop('city', None)
+                    extracted_data.pop('state', None)
+                    extracted_data.pop('zip_code', None)
+                    break
             else:
                 # Also check against all property addresses
                 for prop_addr in property_addresses:
