@@ -381,5 +381,39 @@ document.addEventListener('DOMContentLoaded', function() {
 function setVendorType(type) {
     document.getElementById('vendor_type').value = type;
 }
+
+// Pre-fill form fields from URL parameters
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if we have pre-filled data
+    {% if prefilled_phone %}
+        // Set to new contact mode
+        const newContactRadio = document.querySelector('input[name="contact_type"][value="new"]');
+        if (newContactRadio) {
+            newContactRadio.checked = true;
+            newContactRadio.dispatchEvent(new Event('change'));
+        }
+        
+        // Pre-fill phone number
+        const phoneField = document.getElementById('phone_number');
+        if (phoneField) {
+            phoneField.value = '{{ prefilled_phone }}';
+        }
+        
+        // Pre-fill contact name and company name
+        {% if prefilled_name %}
+            const contactNameField = document.getElementById('contact_name');
+            const companyNameField = document.getElementById('company_name');
+            
+            if (contactNameField) {
+                contactNameField.value = '{{ prefilled_name }}';
+            }
+            
+            // Also pre-fill company name if it's empty
+            if (companyNameField && !companyNameField.value) {
+                companyNameField.value = '{{ prefilled_name }}';
+            }
+        {% endif %}
+    {% endif %}
+});
 </script>
 {% endblock %}

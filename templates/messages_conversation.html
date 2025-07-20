@@ -411,6 +411,9 @@
           <button class="edit-contact-btn" id="editContactBtn" style="display:none;" onclick="showEditForm()">
             <i class="fas fa-edit"></i> Edit
           </button>
+          <button class="edit-contact-btn" id="createVendorBtn" style="display:none; margin-left: 0.5rem; background-color: rgba(40, 167, 69, 0.2); border-color: rgba(40, 167, 69, 0.4); color: #28a745;" onclick="createVendor()">
+            <i class="fas fa-user-tie"></i> Create Vendor
+          </button>
           <div class="property-info" id="chatPropertyInfo"></div>
           <div class="edit-contact-form" id="editContactForm">
             <input type="text" id="newContactName" placeholder="Enter contact name">
@@ -457,6 +460,7 @@
       // Update header
       document.getElementById('chatContactName').textContent = contactName;
       document.getElementById('editContactBtn').style.display = 'inline-block';
+      document.getElementById('createVendorBtn').style.display = 'inline-block';
       const propertyInfo = convItem.querySelector('.property-name')?.textContent || '';
       document.getElementById('chatPropertyInfo').innerHTML = propertyInfo ? `<i class="fas fa-home"></i> ${propertyInfo}` : '';
       
@@ -619,5 +623,24 @@
         firstConv.click();
       }
     });
+    
+    function createVendor() {
+      if (!currentPhone) {
+        alert('No phone number selected');
+        return;
+      }
+      
+      // Get the current contact name
+      const contactName = document.getElementById('chatContactName').textContent;
+      
+      // Redirect to vendor create page with phone number and name pre-filled
+      const url = new URL('/vendor/create', window.location.origin);
+      url.searchParams.append('phone', currentPhone);
+      if (contactName && contactName !== 'Unknown') {
+        url.searchParams.append('name', contactName);
+      }
+      
+      window.location.href = url.toString();
+    }
   </script>
 {% endblock %}

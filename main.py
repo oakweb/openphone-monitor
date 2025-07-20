@@ -125,7 +125,8 @@ with app.app_context():
             "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS address VARCHAR(200)",
             "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS city VARCHAR(100)",
             "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS state VARCHAR(50)",
-            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS zip_code VARCHAR(20)"
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS zip_code VARCHAR(20)",
+            "ALTER TABLE vendors ADD COLUMN IF NOT EXISTS aka_business_name VARCHAR(200)"
         ]
         
         if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
@@ -441,13 +442,20 @@ def vendor_create():
             flash(f"Error creating vendor: {e}", "danger")
     
     # GET request - show form
+    # Get pre-filled data from query parameters
+    prefilled_phone = request.args.get('phone', '').strip()
+    prefilled_name = request.args.get('name', '').strip()
+    
     # Get contacts that aren't already vendors
     existing_vendor_phones = [v.contact_id for v in Vendor.query.all()]
     available_contacts = Contact.query.filter(
         ~Contact.phone_number.in_(existing_vendor_phones)
     ).order_by(Contact.contact_name).all()
     
-    return render_template('vendor_create.html', available_contacts=available_contacts)
+    return render_template('vendor_create.html', 
+                         available_contacts=available_contacts,
+                         prefilled_phone=prefilled_phone,
+                         prefilled_name=prefilled_name)
 
 
 @app.route("/vendor/<int:vendor_id>/edit", methods=["GET", "POST"])
