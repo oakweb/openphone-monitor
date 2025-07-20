@@ -173,6 +173,39 @@ with app.app_context():
                 db.session.rollback()
                 app.logger.error(f"❌ Error adding message tracking fields: {e}")
         
+        # Add vendor migrations for production
+        try:
+            # Add aka_business_name column if it doesn't exist
+            db.session.execute(text("ALTER TABLE vendors ADD COLUMN aka_business_name VARCHAR(200)"))
+            db.session.commit()
+            app.logger.info("✅ Added vendors.aka_business_name column.")
+        except Exception as e:
+            db.session.rollback()
+            if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                app.logger.info("✅ vendors.aka_business_name column already exists.")
+            else:
+                app.logger.warning(f"⚠️ Could not add 'aka_business_name' column: {e}")
+                
+        # Create vendor_comments table if it doesn't exist
+        try:
+            db.session.execute(text("""
+                CREATE TABLE IF NOT EXISTS vendor_comments (
+                    id SERIAL PRIMARY KEY,
+                    vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+                    comment TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    created_by VARCHAR(100)
+                )
+            """))
+            db.session.commit()
+            app.logger.info("✅ Created vendor_comments table.")
+        except Exception as e:
+            db.session.rollback()
+            if "already exists" in str(e).lower():
+                app.logger.info("✅ vendor_comments table already exists.")
+            else:
+                app.logger.warning(f"⚠️ Could not create vendor_comments table: {e}")
+            
         app.logger.info("✅ Database initialization complete.")
     except Exception as e:
         db.session.rollback()
