@@ -1206,57 +1206,57 @@ def messages_view():
                         phone_numbers = phone_numbers.filter(Message.property_id == property_filter)
                     
                     phone_numbers = phone_numbers.limit(100).all()  # Limit to 100 conversations for performance
-                
-                for phone, last_time in phone_numbers:
-                    # Get all messages for this phone number (limit to last 50 for performance)
-                    conv_messages = Message.query.filter_by(phone_number=phone).options(
-                        joinedload(Message.property),
-                        joinedload(Message.contact)
-                    ).order_by(Message.timestamp.desc()).limit(50).all()
                     
-                    # Reverse to get chronological order
-                    conv_messages.reverse()
-                    
-                    if conv_messages:
-                        last_msg = conv_messages[-1]
-                        contact = last_msg.contact
+                    for phone, last_time in phone_numbers:
+                        # Get all messages for this phone number (limit to last 50 for performance)
+                        conv_messages = Message.query.filter_by(phone_number=phone).options(
+                            joinedload(Message.property),
+                            joinedload(Message.contact)
+                        ).order_by(Message.timestamp.desc()).limit(50).all()
                         
-                        # Format messages for JavaScript
-                        formatted_messages = []
-                        for msg in conv_messages:
-                            formatted_msg = {
-                                'id': msg.id,
-                                'message': msg.message or '',
-                                'timestamp': msg.timestamp.isoformat(),
-                                'direction': msg.direction,
+                        # Reverse to get chronological order
+                        conv_messages.reverse()
+                        
+                        if conv_messages:
+                            last_msg = conv_messages[-1]
+                            contact = last_msg.contact
+                            
+                            # Format messages for JavaScript
+                            formatted_messages = []
+                            for msg in conv_messages:
+                                formatted_msg = {
+                                    'id': msg.id,
+                                    'message': msg.message or '',
+                                    'timestamp': msg.timestamp.isoformat(),
+                                    'direction': msg.direction,
+                                    'contact_name': contact.contact_name if contact and contact.contact_name else phone,
+                                    'media_urls': []
+                                }
+                                
+                                # Parse media URLs
+                                if msg.local_media_paths and msg.local_media_paths.startswith('['):
+                                    try:
+                                        import json
+                                        media_paths = json.loads(msg.local_media_paths)
+                                        formatted_msg['media_urls'] = [url_for('serve_media', filename=path.replace('\\', '/')) for path in media_paths]
+                                    except:
+                                        pass
+                                
+                                formatted_messages.append(formatted_msg)
+                            
+                            conversation = {
+                                'phone_number': phone,
                                 'contact_name': contact.contact_name if contact and contact.contact_name else phone,
-                                'media_urls': []
+                                'property_name': last_msg.property.name if last_msg.property else None,
+                                'property_id': last_msg.property_id,
+                                'last_message': (last_msg.message[:50] + '...') if last_msg.message and len(last_msg.message) > 50 else last_msg.message or '',
+                                'last_message_time': last_msg.timestamp.strftime('%I:%M %p'),
+                                'last_direction': last_msg.direction,
+                                'unread_count': 0,  # You can implement unread logic later
+                                'messages': formatted_messages
                             }
-                            
-                            # Parse media URLs
-                            if msg.local_media_paths and msg.local_media_paths.startswith('['):
-                                try:
-                                    import json
-                                    media_paths = json.loads(msg.local_media_paths)
-                                    formatted_msg['media_urls'] = [url_for('serve_media', filename=path.replace('\\', '/')) for path in media_paths]
-                                except:
-                                    pass
-                            
-                            formatted_messages.append(formatted_msg)
-                        
-                        conversation = {
-                            'phone_number': phone,
-                            'contact_name': contact.contact_name if contact and contact.contact_name else phone,
-                            'property_name': last_msg.property.name if last_msg.property else None,
-                            'property_id': last_msg.property_id,
-                            'last_message': (last_msg.message[:50] + '...') if last_msg.message and len(last_msg.message) > 50 else last_msg.message or '',
-                            'last_message_time': last_msg.timestamp.strftime('%I:%M %p'),
-                            'last_direction': last_msg.direction,
-                            'unread_count': 0,  # You can implement unread logic later
-                            'messages': formatted_messages
-                        }
-                        conversations.append(conversation)
-                
+                            conversations.append(conversation)
+                    
                     # Sort conversations by last message time
                     conversations.sort(key=lambda x: x['messages'][-1]['timestamp'], reverse=True)
                     
