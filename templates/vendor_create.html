@@ -124,14 +124,20 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <h2 class="mb-4">Create New Vendor</h2>
+        <h2 class="mb-4">
+            {% if prefilled_phone %}
+                Create Vendor for {{ prefilled_name or prefilled_phone }}
+            {% else %}
+                Create New Vendor
+            {% endif %}
+        </h2>
         
         <form method="POST" action="{{ url_for('vendor_create') }}" enctype="multipart/form-data">
             <!-- Contact Selection -->
             <div class="form-card">
                 <h3 class="form-section-title">Contact Information</h3>
                 
-                {% if available_contacts %}
+                {% if available_contacts and not prefilled_phone %}
                     <div class="mb-3">
                         <label class="form-label">Select Existing Contact</label>
                         <div class="existing-contacts-list">
@@ -155,6 +161,9 @@
                             {% endfor %}
                         </div>
                     </div>
+                {% else %}
+                    <!-- Hidden input to ensure contact_type is always set to 'new' when pre-filled -->
+                    <input type="hidden" name="contact_type" value="new">
                 {% endif %}
                 
                 <div id="new_contact_fields">
@@ -334,7 +343,7 @@
 // Handle contact type selection and pre-filling
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.querySelector('form');
-    const contactRadios = document.querySelectorAll('input[name="contact_type"]');
+    const contactRadios = document.querySelectorAll('input[name="contact_type"][type="radio"]');
     const newContactFields = document.getElementById('new_contact_fields');
     const phoneNumberField = document.getElementById('phone_number');
     
@@ -345,50 +354,47 @@ document.addEventListener('DOMContentLoaded', function() {
     hiddenPhone.name = 'selected_phone_number';
     form.appendChild(hiddenPhone);
     
-    contactRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            if (this.value === 'new' && this.checked) {
-                newContactFields.style.display = 'block';
-                phoneNumberField.required = true;
-                hiddenPhone.value = '';
-            } else if (this.value === 'existing' && this.checked) {
-                newContactFields.style.display = 'none';
-                phoneNumberField.required = false;
-                phoneNumberField.value = ''; // Clear the field
-                
-                // Get the selected contact's phone number
-                const index = this.id.split('_')[1];
-                const phoneInput = document.querySelector(`input[name="existing_phone_${index}"]`);
-                if (phoneInput) {
-                    hiddenPhone.value = phoneInput.value;
+    // Only set up radio handlers if radios exist (not pre-filled)
+    if (contactRadios.length > 0) {
+        contactRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'new' && this.checked) {
+                    newContactFields.style.display = 'block';
+                    phoneNumberField.required = true;
+                    hiddenPhone.value = '';
+                } else if (this.value === 'existing' && this.checked) {
+                    newContactFields.style.display = 'none';
+                    phoneNumberField.required = false;
+                    phoneNumberField.value = ''; // Clear the field
+                    
+                    // Get the selected contact's phone number
+                    const index = this.id.split('_')[1];
+                    const phoneInput = document.querySelector(`input[name="existing_phone_${index}"]`);
+                    if (phoneInput) {
+                        hiddenPhone.value = phoneInput.value;
+                    }
                 }
+            });
+        });
+        
+        // Form submission handler
+        form.addEventListener('submit', function(e) {
+            const contactType = document.querySelector('input[name="contact_type"]:checked');
+            if (contactType && contactType.value === 'existing' && !hiddenPhone.value) {
+                e.preventDefault();
+                alert('Please select an existing contact');
+                return false;
             }
         });
-    });
-    
-    // Form submission handler
-    form.addEventListener('submit', function(e) {
-        const contactType = document.querySelector('input[name="contact_type"]:checked');
-        if (contactType && contactType.value === 'existing' && !hiddenPhone.value) {
-            e.preventDefault();
-            alert('Please select an existing contact');
-            return false;
-        }
-    });
+    } else {
+        // If no radios (pre-filled), ensure fields are shown
+        newContactFields.style.display = 'block';
+        phoneNumberField.required = true;
+    }
     
     // Check if we have pre-filled data
     {% if prefilled_phone %}
         console.log('Pre-filling with phone: {{ prefilled_phone | safe }}');
-        
-        // Set to new contact mode
-        const newContactRadio = document.querySelector('input[name="contact_type"][value="new"]');
-        if (newContactRadio) {
-            newContactRadio.checked = true;
-            // Manually trigger the display of new contact fields
-            newContactFields.style.display = 'block';
-            phoneNumberField.required = true;
-            hiddenPhone.value = '';
-        }
         
         // Pre-fill phone number
         phoneNumberField.value = '{{ prefilled_phone | safe }}';
@@ -403,11 +409,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 contactNameField.value = '{{ prefilled_name | safe }}';
             }
             
-            // Also pre-fill company name if it's empty
+            // Also pre-fill company name
             if (companyNameField) {
                 companyNameField.value = '{{ prefilled_name | safe }}';
             }
         {% endif %}
+        
+        // Focus on company name field if phone is pre-filled
+        const companyNameField = document.getElementById('company_name');
+        if (companyNameField) {
+            companyNameField.focus();
+        }
     {% endif %}
 });
 
