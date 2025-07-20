@@ -124,10 +124,6 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <!-- Debug info - remove after testing -->
-        <div class="alert alert-info mb-3" style="font-size: 0.85rem;">
-            Debug: prefilled_phone = "{{ prefilled_phone }}", prefilled_name = "{{ prefilled_name }}"
-        </div>
         
         <h2 class="mb-4">
             {% if prefilled_phone %}
@@ -424,9 +420,9 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endif %}
         
         // Focus on company name field if phone is pre-filled
-        const companyNameField = document.getElementById('company_name');
-        if (companyNameField) {
-            companyNameField.focus();
+        const companyField = document.getElementById('company_name');
+        if (companyField) {
+            companyField.focus();
         }
     {% endif %}
 });
