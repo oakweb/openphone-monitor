@@ -610,6 +610,13 @@ def process_vendor_invoice(vendor_id):
         prompt = f"""Extract all relevant VENDOR/COMPANY information from this invoice text. 
         Return the data as a JSON object with clear field names and values.
         
+        CRITICAL: These are the CUSTOMER (not vendor) - NEVER extract these:
+        - Company: "Sin City Rentals" or "Sin City Rentals LLC" 
+        - Email: "sincityrentalsllc@gmail.com"
+        - Any info under "Bill To:" or "Customer:" sections
+        
+        The VENDOR is the company PROVIDING the service (e.g., Victor Iron Gates, Swift Garage Doors, etc.)
+        
         CRITICAL RULES FOR ADDRESS EXTRACTION:
         1. NEVER extract addresses that appear after "Service Address:", "Property:", "Location:", "Job Site:", or "Bill To:"
         2. ONLY extract addresses from:
@@ -670,6 +677,19 @@ def process_vendor_invoice(vendor_id):
         
         # Log extracted data for debugging
         app.logger.info(f"Extracted vendor data: {extracted_data}")
+        
+        # Remove Sin City Rentals if it was extracted
+        if 'name' in extracted_data:
+            name_lower = extracted_data['name'].lower()
+            if 'sin city rentals' in name_lower:
+                app.logger.warning("Detected Sin City Rentals as vendor name, removing")
+                extracted_data.pop('name', None)
+                extracted_data.pop('company_name', None)
+        
+        if 'email' in extracted_data:
+            if extracted_data['email'].lower() == 'sincityrentalsllc@gmail.com':
+                app.logger.warning("Detected Sin City Rentals email, removing")
+                extracted_data.pop('email', None)
         
         # Validate extracted address isn't a property address
         if 'address' in extracted_data:
