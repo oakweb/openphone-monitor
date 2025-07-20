@@ -1190,28 +1190,32 @@ def messages_view():
             
             # Check if conversation view is requested
             if view_type == "conversation":
-                # Group messages by phone number for conversation view
-                from collections import defaultdict
-                conversations = []
-                
-                # Get all unique phone numbers with their latest message
-                phone_numbers = db.session.query(
-                    Message.phone_number,
-                    func.max(Message.timestamp).label('last_message_time')
-                ).group_by(Message.phone_number)
-                
-                # Apply property filter if needed
-                if property_filter:
-                    phone_numbers = phone_numbers.filter(Message.property_id == property_filter)
-                
-                phone_numbers = phone_numbers.all()
+                try:
+                    # Group messages by phone number for conversation view
+                    from collections import defaultdict
+                    conversations = []
+                    
+                    # Get all unique phone numbers with their latest message
+                    phone_numbers = db.session.query(
+                        Message.phone_number,
+                        func.max(Message.timestamp).label('last_message_time')
+                    ).group_by(Message.phone_number)
+                    
+                    # Apply property filter if needed
+                    if property_filter:
+                        phone_numbers = phone_numbers.filter(Message.property_id == property_filter)
+                    
+                    phone_numbers = phone_numbers.limit(100).all()  # Limit to 100 conversations for performance
                 
                 for phone, last_time in phone_numbers:
-                    # Get all messages for this phone number
+                    # Get all messages for this phone number (limit to last 50 for performance)
                     conv_messages = Message.query.filter_by(phone_number=phone).options(
                         joinedload(Message.property),
                         joinedload(Message.contact)
-                    ).order_by(Message.timestamp.asc()).all()
+                    ).order_by(Message.timestamp.desc()).limit(50).all()
+                    
+                    # Reverse to get chronological order
+                    conv_messages.reverse()
                     
                     if conv_messages:
                         last_msg = conv_messages[-1]
@@ -1222,10 +1226,10 @@ def messages_view():
                         for msg in conv_messages:
                             formatted_msg = {
                                 'id': msg.id,
-                                'message': msg.message,
+                                'message': msg.message or '',
                                 'timestamp': msg.timestamp.isoformat(),
                                 'direction': msg.direction,
-                                'contact_name': contact.contact_name if contact else None,
+                                'contact_name': contact.contact_name if contact and contact.contact_name else phone,
                                 'media_urls': []
                             }
                             
@@ -1242,10 +1246,10 @@ def messages_view():
                         
                         conversation = {
                             'phone_number': phone,
-                            'contact_name': contact.contact_name if contact else None,
+                            'contact_name': contact.contact_name if contact and contact.contact_name else phone,
                             'property_name': last_msg.property.name if last_msg.property else None,
                             'property_id': last_msg.property_id,
-                            'last_message': (last_msg.message[:50] + '...') if last_msg.message and len(last_msg.message) > 50 else last_msg.message,
+                            'last_message': (last_msg.message[:50] + '...') if last_msg.message and len(last_msg.message) > 50 else last_msg.message or '',
                             'last_message_time': last_msg.timestamp.strftime('%I:%M %p'),
                             'last_direction': last_msg.direction,
                             'unread_count': 0,  # You can implement unread logic later
@@ -1253,13 +1257,18 @@ def messages_view():
                         }
                         conversations.append(conversation)
                 
-                # Sort conversations by last message time
-                conversations.sort(key=lambda x: x['messages'][-1]['timestamp'], reverse=True)
-                
-                return render_template("messages_conversation.html",
-                                     conversations=conversations,
-                                     properties=properties_list,
-                                     property_filter=property_filter)
+                    # Sort conversations by last message time
+                    conversations.sort(key=lambda x: x['messages'][-1]['timestamp'], reverse=True)
+                    
+                    return render_template("messages_conversation.html",
+                                         conversations=conversations,
+                                         properties=properties_list,
+                                         property_filter=property_filter)
+                except Exception as e:
+                    app.logger.error(f"Error in conversation view: {e}")
+                    flash(f"Error loading conversations: {e}", "danger")
+                    # Fall back to list view
+                    view_type = "list"
             
             # Default list view
             return render_template("messages_overview.html", 
