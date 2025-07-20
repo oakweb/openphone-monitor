@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}Tenants - {{ property.name }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    .edit-form {
+        display: none;
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-top: 10px;
+    }
+    .edit-form.active {
+        display: block;
+    }
+    .btn-group-action {
+        display: flex;
+        gap: 5px;
+    }
+    .status-badge {
+        font-size: 0.875rem;
+        padding: 0.25rem 0.75rem;
+    }
+    .tenant-card {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        transition: all 0.2s;
+    }
+    .tenant-card:hover {
+        border-color: #6cb9d3;
+    }
+    .tenant-name {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #6cb9d3;
+        margin-bottom: 0.5rem;
+    }
+    .tenant-info {
+        margin-bottom: 0.25rem;
+        color: #adb5bd;
+    }
+    .tenant-info strong {
+        color: #6c757d;
+        width: 120px;
+        display: inline-block;
+    }
+    .add-tenant-form {
+        background-color: #1a1d20;
+        border: 1px solid rgba(108, 185, 211, 0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .form-row {
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Tenants for {{ property.name }}</h1>
+            
+            <!-- Navigation -->
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('properties_list_view') }}">Properties</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('property_detail_view', property_id=property.id) }}">{{ property.name }}</a></li>
+                    <li class="breadcrumb-item active">Tenants</li>
+                </ol>
+            </nav>
+
+            <!-- Add New Tenant Form -->
+            <div class="add-tenant-form">
+                <h3 class="mb-3">Add New Tenant</h3>
+                <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}">
+                    <input type="hidden" name="action" value="add">
+                    
+                    <div class="row form-row">
+                        <div class="col-md-3">
+                            <label for="name" class="form-label">Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="phone" class="form-label">Phone</label>
+                            <input type="tel" class="form-control" id="phone" name="phone" placeholder="+17025551234">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="status" class="form-label">Status</label>
+                            <select class="form-control" id="status" name="status">
+                                <option value="current" selected>Current</option>
+                                <option value="vacated">Vacated</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row form-row">
+                        <div class="col-md-3">
+                            <label for="move_in_date" class="form-label">Move In Date</label>
+                            <input type="date" class="form-control" id="move_in_date" name="move_in_date">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="lease_start_date" class="form-label">Lease Start</label>
+                            <input type="date" class="form-control" id="lease_start_date" name="lease_start_date">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="lease_end_date" class="form-label">Lease End</label>
+                            <input type="date" class="form-control" id="lease_end_date" name="lease_end_date">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="rent_due_day" class="form-label">Rent Due Day</label>
+                            <input type="number" class="form-control" id="rent_due_day" name="rent_due_day" min="1" max="31" placeholder="1-31">
+                        </div>
+                    </div>
+                    
+                    <div class="row form-row">
+                        <div class="col-md-6">
+                            <label for="pets_info" class="form-label">Pets Information</label>
+                            <input type="text" class="form-control" id="pets_info" name="pets_info" placeholder="e.g., 1 dog (small), 2 cats">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="notes" class="form-label">Notes</label>
+                            <input type="text" class="form-control" id="notes" name="notes">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Add Tenant</button>
+                </form>
+            </div>
+
+            <!-- Current Tenants -->
+            <h3 class="mb-3">Current Tenants</h3>
+            {% set current_tenants = tenants | selectattr("status", "equalto", "current") | list %}
+            {% if current_tenants %}
+                {% for tenant in current_tenants %}
+                <div class="tenant-card">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="tenant-name">{{ tenant.name }}</div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    {% if tenant.email %}
+                                    <div class="tenant-info">
+                                        <strong>Email:</strong> <a href="mailto:{{ tenant.email }}">{{ tenant.email }}</a>
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.phone %}
+                                    <div class="tenant-info">
+                                        <strong>Phone:</strong> <a href="tel:{{ tenant.phone }}">{{ tenant.phone }}</a>
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.move_in_date %}
+                                    <div class="tenant-info">
+                                        <strong>Move In:</strong> {{ tenant.move_in_date.strftime('%Y-%m-%d') }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.pets_info %}
+                                    <div class="tenant-info">
+                                        <strong>Pets:</strong> {{ tenant.pets_info }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    {% if tenant.lease_start_date %}
+                                    <div class="tenant-info">
+                                        <strong>Lease Start:</strong> {{ tenant.lease_start_date.strftime('%Y-%m-%d') }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.lease_end_date %}
+                                    <div class="tenant-info">
+                                        <strong>Lease End:</strong> {{ tenant.lease_end_date.strftime('%Y-%m-%d') }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.rent_due_day %}
+                                    <div class="tenant-info">
+                                        <strong>Rent Due:</strong> Day {{ tenant.rent_due_day }} of each month
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.notes %}
+                                    <div class="tenant-info">
+                                        <strong>Notes:</strong> {{ tenant.notes }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="btn-group-action">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="toggleEditForm({{ tenant.id }})">Edit</button>
+                            <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}" 
+                                  style="display: inline;" onsubmit="return confirm('Delete this tenant?');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Edit Form -->
+                    <div class="edit-form" id="edit-form-{{ tenant.id }}">
+                        <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}">
+                            <input type="hidden" name="action" value="edit">
+                            <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+                            
+                            <div class="row form-row">
+                                <div class="col-md-3">
+                                    <label>Name</label>
+                                    <input type="text" class="form-control form-control-sm" name="name" value="{{ tenant.name }}" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Email</label>
+                                    <input type="email" class="form-control form-control-sm" name="email" value="{{ tenant.email or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Phone</label>
+                                    <input type="tel" class="form-control form-control-sm" name="phone" value="{{ tenant.phone or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Status</label>
+                                    <select class="form-control form-control-sm" name="status">
+                                        <option value="current" {% if tenant.status == 'current' %}selected{% endif %}>Current</option>
+                                        <option value="vacated" {% if tenant.status == 'vacated' %}selected{% endif %}>Vacated</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="row form-row mt-2">
+                                <div class="col-md-3">
+                                    <label>Move In Date</label>
+                                    <input type="date" class="form-control form-control-sm" name="move_in_date" 
+                                           value="{{ tenant.move_in_date.strftime('%Y-%m-%d') if tenant.move_in_date else '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Lease Start</label>
+                                    <input type="date" class="form-control form-control-sm" name="lease_start_date" 
+                                           value="{{ tenant.lease_start_date.strftime('%Y-%m-%d') if tenant.lease_start_date else '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Lease End</label>
+                                    <input type="date" class="form-control form-control-sm" name="lease_end_date" 
+                                           value="{{ tenant.lease_end_date.strftime('%Y-%m-%d') if tenant.lease_end_date else '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Rent Due Day</label>
+                                    <input type="number" class="form-control form-control-sm" name="rent_due_day" 
+                                           value="{{ tenant.rent_due_day or '' }}" min="1" max="31">
+                                </div>
+                            </div>
+                            
+                            <div class="row form-row mt-2">
+                                <div class="col-md-6">
+                                    <label>Pets Information</label>
+                                    <input type="text" class="form-control form-control-sm" name="pets_info" value="{{ tenant.pets_info or '' }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label>Notes</label>
+                                    <input type="text" class="form-control form-control-sm" name="notes" value="{{ tenant.notes or '' }}">
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-sm btn-success">Save Changes</button>
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="toggleEditForm({{ tenant.id }})">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-info">
+                    No current tenants. Use the form above to add tenants.
+                </div>
+            {% endif %}
+
+            <!-- Vacated Tenants -->
+            <h3 class="mb-3 mt-4">Vacated Tenants</h3>
+            {% set vacated_tenants = tenants | selectattr("status", "equalto", "vacated") | list %}
+            {% if vacated_tenants %}
+                {% for tenant in vacated_tenants %}
+                <div class="tenant-card" style="opacity: 0.7;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="tenant-name">
+                                {{ tenant.name }} 
+                                <span class="badge bg-secondary status-badge">Vacated</span>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    {% if tenant.email %}
+                                    <div class="tenant-info">
+                                        <strong>Email:</strong> {{ tenant.email }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.phone %}
+                                    <div class="tenant-info">
+                                        <strong>Phone:</strong> {{ tenant.phone }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.vacated_at %}
+                                    <div class="tenant-info">
+                                        <strong>Vacated:</strong> {{ tenant.vacated_at.strftime('%Y-%m-%d') }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    {% if tenant.lease_start_date %}
+                                    <div class="tenant-info">
+                                        <strong>Lease Start:</strong> {{ tenant.lease_start_date.strftime('%Y-%m-%d') }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.lease_end_date %}
+                                    <div class="tenant-info">
+                                        <strong>Lease End:</strong> {{ tenant.lease_end_date.strftime('%Y-%m-%d') }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.notes %}
+                                    <div class="tenant-info">
+                                        <strong>Notes:</strong> {{ tenant.notes }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="btn-group-action">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="toggleEditForm({{ tenant.id }})">Edit</button>
+                            <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}" 
+                                  style="display: inline;" onsubmit="return confirm('Delete this tenant?');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Edit Form for Vacated Tenants -->
+                    <div class="edit-form" id="edit-form-{{ tenant.id }}">
+                        <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}">
+                            <input type="hidden" name="action" value="edit">
+                            <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+                            
+                            <div class="row form-row">
+                                <div class="col-md-3">
+                                    <label>Name</label>
+                                    <input type="text" class="form-control form-control-sm" name="name" value="{{ tenant.name }}" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Email</label>
+                                    <input type="email" class="form-control form-control-sm" name="email" value="{{ tenant.email or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Phone</label>
+                                    <input type="tel" class="form-control form-control-sm" name="phone" value="{{ tenant.phone or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Status</label>
+                                    <select class="form-control form-control-sm" name="status">
+                                        <option value="current" {% if tenant.status == 'current' %}selected{% endif %}>Current</option>
+                                        <option value="vacated" {% if tenant.status == 'vacated' %}selected{% endif %}>Vacated</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="row form-row mt-2">
+                                <div class="col-md-6">
+                                    <label>Notes</label>
+                                    <input type="text" class="form-control form-control-sm" name="notes" value="{{ tenant.notes or '' }}">
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-sm btn-success">Save Changes</button>
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="toggleEditForm({{ tenant.id }})">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-secondary">
+                    No vacated tenants.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleEditForm(tenantId) {
+    const editForm = document.getElementById('edit-form-' + tenantId);
+    if (editForm) {
+        editForm.classList.toggle('active');
+    }
+}
+</script>
+{% endblock %}

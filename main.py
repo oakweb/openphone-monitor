@@ -2450,6 +2450,102 @@ def property_contacts(property_id):
                          contacts_by_type=contacts_by_type,
                          contact_types=contact_types)
 
+@app.route('/property/<int:property_id>/tenants', methods=['GET', 'POST'])
+def property_tenants(property_id):
+    """Manage tenants for a property"""
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        flash("Property not found.", "warning")
+        return redirect(url_for("properties_list_view"))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add':
+            try:
+                tenant = Tenant(
+                    property_id=property_id,
+                    name=request.form.get('name'),
+                    email=request.form.get('email'),
+                    phone=request.form.get('phone'),
+                    status=request.form.get('status', 'current'),
+                    move_in_date=datetime.strptime(request.form.get('move_in_date'), '%Y-%m-%d').date() if request.form.get('move_in_date') else None,
+                    lease_start_date=datetime.strptime(request.form.get('lease_start_date'), '%Y-%m-%d').date() if request.form.get('lease_start_date') else None,
+                    lease_end_date=datetime.strptime(request.form.get('lease_end_date'), '%Y-%m-%d').date() if request.form.get('lease_end_date') else None,
+                    rent_due_day=int(request.form.get('rent_due_day')) if request.form.get('rent_due_day') else None,
+                    pets_info=request.form.get('pets_info'),
+                    notes=request.form.get('notes')
+                )
+                db.session.add(tenant)
+                db.session.commit()
+                flash("Tenant added successfully!", "success")
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error adding tenant: {e}", "danger")
+        
+        elif action == 'edit':
+            try:
+                tenant_id = request.form.get('tenant_id')
+                if tenant_id:
+                    tenant = db.session.get(Tenant, tenant_id)
+                    if tenant and tenant.property_id == property_id:
+                        tenant.name = request.form.get('name', tenant.name)
+                        tenant.email = request.form.get('email', tenant.email)
+                        tenant.phone = request.form.get('phone', tenant.phone)
+                        
+                        old_status = tenant.status
+                        tenant.status = request.form.get('status', tenant.status)
+                        
+                        # If status changed to vacated, set vacated_at
+                        if old_status != 'vacated' and tenant.status == 'vacated':
+                            tenant.vacated_at = datetime.utcnow()
+                        
+                        # Date fields
+                        move_in_date = request.form.get('move_in_date')
+                        if move_in_date:
+                            tenant.move_in_date = datetime.strptime(move_in_date, '%Y-%m-%d').date()
+                        
+                        lease_start_date = request.form.get('lease_start_date')
+                        if lease_start_date:
+                            tenant.lease_start_date = datetime.strptime(lease_start_date, '%Y-%m-%d').date()
+                        
+                        lease_end_date = request.form.get('lease_end_date')
+                        if lease_end_date:
+                            tenant.lease_end_date = datetime.strptime(lease_end_date, '%Y-%m-%d').date()
+                        
+                        rent_due_day = request.form.get('rent_due_day')
+                        if rent_due_day:
+                            tenant.rent_due_day = int(rent_due_day)
+                        
+                        tenant.pets_info = request.form.get('pets_info', tenant.pets_info)
+                        tenant.notes = request.form.get('notes', tenant.notes)
+                        
+                        db.session.commit()
+                        flash("Tenant updated successfully!", "success")
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error updating tenant: {e}", "danger")
+        
+        elif action == 'delete':
+            tenant_id = request.form.get('tenant_id')
+            if tenant_id:
+                tenant = db.session.get(Tenant, tenant_id)
+                if tenant and tenant.property_id == property_id:
+                    db.session.delete(tenant)
+                    db.session.commit()
+                    flash("Tenant deleted.", "success")
+        
+        return redirect(url_for('property_tenants', property_id=property_id))
+    
+    # GET request
+    tenants = Tenant.query.filter_by(property_id=property_id).order_by(
+        Tenant.status.desc(), Tenant.name
+    ).all()
+    
+    return render_template('property_tenants.html', 
+                         property=property_obj, 
+                         tenants=tenants)
+
 @app.route('/property/<int:property_id>/attachments', methods=['GET', 'POST'])
 def property_attachments(property_id):
     """Manage file attachments for a property"""
