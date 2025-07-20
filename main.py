@@ -174,6 +174,17 @@ with app.app_context():
                 db.session.rollback()
                 app.logger.error(f"❌ Error adding message tracking fields: {e}")
         
+        # Add archived_at column to tenants table
+        if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+            try:
+                db.session.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP"))
+                db.session.commit()
+                app.logger.info("✅ Added archived_at column to tenants table")
+            except Exception as e:
+                db.session.rollback()
+                if "already exists" not in str(e):
+                    app.logger.warning(f"⚠️ Could not add archived_at column to tenants: {e}")
+        
         # Add property_contacts address field
         if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
             try:
@@ -2500,6 +2511,10 @@ def property_tenants(property_id):
                         if old_status != 'vacated' and tenant.status == 'vacated':
                             tenant.vacated_at = datetime.utcnow()
                         
+                        # If status changed to archived, set archived_at
+                        if old_status != 'archived' and tenant.status == 'archived':
+                            tenant.archived_at = datetime.utcnow()
+                        
                         # Date fields
                         move_in_date = request.form.get('move_in_date')
                         if move_in_date:
@@ -2526,14 +2541,15 @@ def property_tenants(property_id):
                 db.session.rollback()
                 flash(f"Error updating tenant: {e}", "danger")
         
-        elif action == 'delete':
+        elif action == 'archive':
             tenant_id = request.form.get('tenant_id')
             if tenant_id:
                 tenant = db.session.get(Tenant, tenant_id)
                 if tenant and tenant.property_id == property_id:
-                    db.session.delete(tenant)
+                    tenant.status = 'archived'
+                    tenant.archived_at = datetime.utcnow()
                     db.session.commit()
-                    flash("Tenant deleted.", "success")
+                    flash("Tenant archived.", "success")
         
         return redirect(url_for('property_tenants', property_id=property_id))
     

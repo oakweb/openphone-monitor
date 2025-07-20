@@ -110,7 +110,7 @@ class Tenant(db.Model):
     name = db.Column(db.String(150), nullable=False)
     email = db.Column(db.String(150), nullable=True, index=True)
     phone = db.Column(db.String(25), nullable=True, index=True) # Store E.164 format like +1...
-    status = db.Column(db.String(20), default='current', nullable=False, index=True) # 'current', 'vacated'
+    status = db.Column(db.String(20), default='current', nullable=False, index=True) # 'current', 'vacated', 'archived'
     move_in_date = db.Column(db.Date, nullable=True)
     lease_start_date = db.Column(db.Date, nullable=True)
     lease_end_date = db.Column(db.Date, nullable=True)
@@ -119,6 +119,7 @@ class Tenant(db.Model):
     notes = db.Column(db.Text, nullable=True) # General notes about tenant
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     vacated_at = db.Column(db.DateTime, nullable=True) # Set when status changes to 'vacated'
+    archived_at = db.Column(db.DateTime, nullable=True) # Set when tenant is archived
 
     # Foreign Key to link Tenant to a Property
     property_id = db.Column(db.Integer, db.ForeignKey("properties.id"), nullable=False, index=True)

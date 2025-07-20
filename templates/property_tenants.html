@@ -100,6 +100,7 @@
                             <select class="form-control" id="status" name="status">
                                 <option value="current" selected>Current</option>
                                 <option value="vacated">Vacated</option>
+                                <option value="archived">Archived</option>
                             </select>
                         </div>
                     </div>
@@ -197,10 +198,10 @@
                         <div class="btn-group-action">
                             <button type="button" class="btn btn-sm btn-primary" onclick="toggleEditForm({{ tenant.id }})">Edit</button>
                             <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}" 
-                                  style="display: inline;" onsubmit="return confirm('Delete this tenant?');">
-                                <input type="hidden" name="action" value="delete">
+                                  style="display: inline;" onsubmit="return confirm('Archive this tenant? They will be moved to the archived section.');">
+                                <input type="hidden" name="action" value="archive">
                                 <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
-                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                <button type="submit" class="btn btn-sm btn-warning">Archive</button>
                             </form>
                         </div>
                     </div>
@@ -229,6 +230,7 @@
                                     <select class="form-control form-control-sm" name="status">
                                         <option value="current" {% if tenant.status == 'current' %}selected{% endif %}>Current</option>
                                         <option value="vacated" {% if tenant.status == 'vacated' %}selected{% endif %}>Vacated</option>
+                                        <option value="archived" {% if tenant.status == 'archived' %}selected{% endif %}>Archived</option>
                                     </select>
                                 </div>
                             </div>
@@ -333,10 +335,10 @@
                         <div class="btn-group-action">
                             <button type="button" class="btn btn-sm btn-primary" onclick="toggleEditForm({{ tenant.id }})">Edit</button>
                             <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}" 
-                                  style="display: inline;" onsubmit="return confirm('Delete this tenant?');">
-                                <input type="hidden" name="action" value="delete">
+                                  style="display: inline;" onsubmit="return confirm('Archive this tenant? They will be moved to the archived section.');">
+                                <input type="hidden" name="action" value="archive">
                                 <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
-                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                <button type="submit" class="btn btn-sm btn-warning">Archive</button>
                             </form>
                         </div>
                     </div>
@@ -365,6 +367,7 @@
                                     <select class="form-control form-control-sm" name="status">
                                         <option value="current" {% if tenant.status == 'current' %}selected{% endif %}>Current</option>
                                         <option value="vacated" {% if tenant.status == 'vacated' %}selected{% endif %}>Vacated</option>
+                                        <option value="archived" {% if tenant.status == 'archived' %}selected{% endif %}>Archived</option>
                                     </select>
                                 </div>
                             </div>
@@ -387,6 +390,105 @@
             {% else %}
                 <div class="alert alert-secondary">
                     No vacated tenants.
+                </div>
+            {% endif %}
+
+            <!-- Archived Tenants -->
+            <h3 class="mb-3 mt-4">Archived Tenants</h3>
+            {% set archived_tenants = tenants | selectattr("status", "equalto", "archived") | list %}
+            {% if archived_tenants %}
+                {% for tenant in archived_tenants %}
+                <div class="tenant-card" style="opacity: 0.5;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="tenant-name">
+                                {{ tenant.name }} 
+                                <span class="badge bg-dark status-badge">Archived</span>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    {% if tenant.email %}
+                                    <div class="tenant-info">
+                                        <strong>Email:</strong> {{ tenant.email }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.phone %}
+                                    <div class="tenant-info">
+                                        <strong>Phone:</strong> {{ tenant.phone }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.archived_at %}
+                                    <div class="tenant-info">
+                                        <strong>Archived:</strong> {{ tenant.archived_at.strftime('%Y-%m-%d %H:%M') }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    {% if tenant.lease_start_date %}
+                                    <div class="tenant-info">
+                                        <strong>Lease Period:</strong> {{ tenant.lease_start_date.strftime('%Y-%m-%d') }} to {{ tenant.lease_end_date.strftime('%Y-%m-%d') if tenant.lease_end_date else 'N/A' }}
+                                    </div>
+                                    {% endif %}
+                                    {% if tenant.notes %}
+                                    <div class="tenant-info">
+                                        <strong>Notes:</strong> {{ tenant.notes }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="btn-group-action">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="toggleEditForm({{ tenant.id }})">Edit</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Edit Form for Archived Tenants -->
+                    <div class="edit-form" id="edit-form-{{ tenant.id }}">
+                        <form method="POST" action="{{ url_for('property_tenants', property_id=property.id) }}">
+                            <input type="hidden" name="action" value="edit">
+                            <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+                            
+                            <div class="row form-row">
+                                <div class="col-md-3">
+                                    <label>Name</label>
+                                    <input type="text" class="form-control form-control-sm" name="name" value="{{ tenant.name }}" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Email</label>
+                                    <input type="email" class="form-control form-control-sm" name="email" value="{{ tenant.email or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Phone</label>
+                                    <input type="tel" class="form-control form-control-sm" name="phone" value="{{ tenant.phone or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>Status</label>
+                                    <select class="form-control form-control-sm" name="status">
+                                        <option value="current" {% if tenant.status == 'current' %}selected{% endif %}>Current</option>
+                                        <option value="vacated" {% if tenant.status == 'vacated' %}selected{% endif %}>Vacated</option>
+                                        <option value="archived" {% if tenant.status == 'archived' %}selected{% endif %}>Archived</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="row form-row mt-2">
+                                <div class="col-md-6">
+                                    <label>Notes</label>
+                                    <input type="text" class="form-control form-control-sm" name="notes" value="{{ tenant.notes or '' }}">
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-sm btn-success">Save Changes</button>
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="toggleEditForm({{ tenant.id }})">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-dark">
+                    No archived tenants.
                 </div>
             {% endif %}
         </div>
