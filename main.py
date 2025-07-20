@@ -446,6 +446,10 @@ def vendor_create():
     prefilled_phone = request.args.get('phone', '').strip()
     prefilled_name = request.args.get('name', '').strip()
     
+    # Debug logging
+    app.logger.info(f"Vendor create GET request - phone: '{prefilled_phone}', name: '{prefilled_name}'")
+    app.logger.info(f"All query params: {dict(request.args)}")
+    
     # Get contacts that aren't already vendors
     existing_vendor_phones = [v.contact_id for v in Vendor.query.all()]
     available_contacts = Contact.query.filter(
