@@ -686,6 +686,12 @@ def process_vendor_invoice(vendor_id):
                 extracted_data.pop('name', None)
                 extracted_data.pop('company_name', None)
         
+        if 'company_name' in extracted_data:
+            name_lower = extracted_data['company_name'].lower()
+            if 'sin city rentals' in name_lower:
+                app.logger.warning("Detected Sin City Rentals as company_name, removing")
+                extracted_data.pop('company_name', None)
+        
         if 'email' in extracted_data:
             if extracted_data['email'].lower() == 'sincityrentalsllc@gmail.com':
                 app.logger.warning("Detected Sin City Rentals email, removing")
@@ -774,6 +780,10 @@ def process_vendor_invoice(vendor_id):
                     extracted_data.pop('state', None)
                     extracted_data.pop('zip_code', None)
                     break
+        
+        # Clear any existing session data for this vendor
+        session.pop(f'vendor_{vendor_id}_extracted_data', None)
+        session.pop(f'vendor_{vendor_id}_mapped_data', None)
         
         # Clear existing invoice data for this vendor
         VendorInvoiceData.query.filter_by(vendor_id=vendor_id).delete()
