@@ -522,31 +522,58 @@
     </div>
 </div>
 
-<!-- Extracted Invoice Data -->
-{% if vendor.invoice_data.count() > 0 %}
+<!-- Comments Section -->
 <div class="section-card">
-    <h2 class="section-title">
-        <i class="fas fa-file-alt"></i> Extracted Invoice Information
-    </h2>
-    
-    <div class="vendor-info-grid">
-        {% for data in vendor.invoice_data %}
-        <div class="info-item">
-            <div class="info-icon">
-                <i class="fas fa-info-circle"></i>
-            </div>
-            <div class="info-content">
-                <div class="info-label">{{ data.field_name|replace('_', ' ')|title }}</div>
-                <div class="info-value">{{ data.field_value }}</div>
-                {% if data.confidence < 0.8 %}
-                <small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Low confidence</small>
-                {% endif %}
-            </div>
-        </div>
-        {% endfor %}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h2 class="section-title" style="margin-bottom: 0;">
+            <i class="fas fa-comments"></i> Comments
+        </h2>
+        <button class="btn btn-sm btn-primary" onclick="showAddCommentForm()">
+            <i class="fas fa-plus"></i> Add Comment
+        </button>
     </div>
+    
+    <!-- Add Comment Form (Initially Hidden) -->
+    <div id="addCommentForm" style="display: none; background-color: rgba(108, 185, 211, 0.1); padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+        <form method="POST" action="{{ url_for('vendor_add_comment', vendor_id=vendor.id) }}">
+            <div class="mb-3">
+                <textarea class="form-control" name="comment" rows="3" placeholder="Enter your comment..." required></textarea>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="fas fa-save"></i> Save Comment
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="hideAddCommentForm()">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Comments List -->
+    {% if vendor.comments.count() > 0 %}
+        <div class="comments-list">
+            {% for comment in vendor.comments %}
+                <div class="comment-item" style="background-color: rgba(108, 185, 211, 0.05); padding: 1rem; border-radius: 6px; margin-bottom: 0.75rem; position: relative;">
+                    <div class="comment-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div class="comment-time" style="font-size: 0.875rem; color: #6c757d; margin-bottom: 0.5rem;">
+                            <i class="fas fa-clock"></i> {{ comment.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                        </div>
+                        <button class="btn btn-sm btn-danger" onclick="deleteComment({{ comment.id }})" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="comment-text" style="color: #e9ecef; white-space: pre-wrap;">{{ comment.comment }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-comment-slash"></i>
+            <p>No comments yet</p>
+        </div>
+    {% endif %}
 </div>
-{% endif %}
 
 <!-- Property History -->
 <div class="section-card">
@@ -655,58 +682,31 @@
 </div>
 {% endif %}
 
-<!-- Comments Section -->
+<!-- Extracted Invoice Data -->
+{% if vendor.invoice_data.count() > 0 %}
 <div class="section-card">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-        <h2 class="section-title" style="margin-bottom: 0;">
-            <i class="fas fa-comments"></i> Comments
-        </h2>
-        <button class="btn btn-sm btn-primary" onclick="showAddCommentForm()">
-            <i class="fas fa-plus"></i> Add Comment
-        </button>
-    </div>
+    <h2 class="section-title">
+        <i class="fas fa-file-alt"></i> Extracted Invoice Information
+    </h2>
     
-    <!-- Add Comment Form (Initially Hidden) -->
-    <div id="addCommentForm" style="display: none; background-color: rgba(108, 185, 211, 0.1); padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
-        <form method="POST" action="{{ url_for('vendor_add_comment', vendor_id=vendor.id) }}">
-            <div class="mb-3">
-                <textarea class="form-control" name="comment" rows="3" placeholder="Enter your comment..." required></textarea>
+    <div class="vendor-info-grid">
+        {% for data in vendor.invoice_data %}
+        <div class="info-item">
+            <div class="info-icon">
+                <i class="fas fa-info-circle"></i>
             </div>
-            <div style="display: flex; gap: 0.5rem;">
-                <button type="submit" class="btn btn-sm btn-primary">
-                    <i class="fas fa-save"></i> Save Comment
-                </button>
-                <button type="button" class="btn btn-sm btn-secondary" onclick="hideAddCommentForm()">
-                    <i class="fas fa-times"></i> Cancel
-                </button>
+            <div class="info-content">
+                <div class="info-label">{{ data.field_name|replace('_', ' ')|title }}</div>
+                <div class="info-value">{{ data.field_value }}</div>
+                {% if data.confidence < 0.8 %}
+                <small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Low confidence</small>
+                {% endif %}
             </div>
-        </form>
+        </div>
+        {% endfor %}
     </div>
-    
-    <!-- Comments List -->
-    {% if vendor.comments.count() > 0 %}
-        <div class="comments-list">
-            {% for comment in vendor.comments %}
-                <div class="comment-item" style="background-color: rgba(108, 185, 211, 0.05); padding: 1rem; border-radius: 6px; margin-bottom: 0.75rem; position: relative;">
-                    <div class="comment-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <div class="comment-time" style="font-size: 0.875rem; color: #6c757d; margin-bottom: 0.5rem;">
-                            <i class="fas fa-clock"></i> {{ comment.created_at.strftime('%B %d, %Y at %I:%M %p') }}
-                        </div>
-                        <button class="btn btn-sm btn-danger" onclick="deleteComment({{ comment.id }})" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                    <div class="comment-text" style="color: #e9ecef; white-space: pre-wrap;">{{ comment.comment }}</div>
-                </div>
-            {% endfor %}
-        </div>
-    {% else %}
-        <div class="empty-state">
-            <i class="fas fa-comment-slash"></i>
-            <p>No comments yet</p>
-        </div>
-    {% endif %}
 </div>
+{% endif %}
 
 <script>
 function showAddCommentForm() {
