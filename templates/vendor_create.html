@@ -394,10 +394,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Check if we have pre-filled data
     {% if prefilled_phone %}
-        console.log('Pre-filling with phone: {{ prefilled_phone | safe }}');
+        console.log('Pre-filled data received:');
+        console.log('Phone: {{ prefilled_phone | safe }}');
+        console.log('Name: {{ prefilled_name | safe }}');
         
         // Pre-fill phone number
         phoneNumberField.value = '{{ prefilled_phone | safe }}';
+        console.log('Phone field element:', phoneNumberField);
         console.log('Phone field filled with:', phoneNumberField.value);
         
         // Pre-fill contact name and company name

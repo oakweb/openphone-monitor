@@ -633,13 +633,25 @@
       // Get the current contact name
       const contactName = document.getElementById('chatContactName').textContent;
       
+      // Ensure phone number has country code
+      let formattedPhone = currentPhone;
+      if (!formattedPhone.startsWith('+') && formattedPhone.length === 10) {
+        formattedPhone = '+1' + formattedPhone;
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+' + formattedPhone;
+      }
+      
+      // Log for debugging
+      console.log('Creating vendor for phone:', currentPhone, 'formatted as:', formattedPhone, 'name:', contactName);
+      
       // Redirect to vendor create page with phone number and name pre-filled
       const url = new URL('/vendor/create', window.location.origin);
-      url.searchParams.append('phone', currentPhone);
+      url.searchParams.append('phone', formattedPhone);
       if (contactName && contactName !== 'Unknown') {
         url.searchParams.append('name', contactName);
       }
       
+      console.log('Redirecting to:', url.toString());
       window.location.href = url.toString();
     }
   </script>
