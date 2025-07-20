@@ -273,12 +273,16 @@ class Vendor(db.Model):
     state = db.Column(db.String(50))
     zip_code = db.Column(db.String(20))
     
+    # Additional fields
+    aka_business_name = db.Column(db.String(200))  # Also Known As / Alternative business name
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     contact = db.relationship('Contact', backref=db.backref('vendor_profile', uselist=False))
     jobs = db.relationship('VendorJob', backref='vendor', lazy='dynamic', cascade='all, delete-orphan')
+    comments = db.relationship('VendorComment', backref='vendor', lazy='dynamic', cascade='all, delete-orphan', order_by='VendorComment.created_at.desc()')
     
     @property
     def total_jobs(self):
@@ -363,3 +367,17 @@ class VendorJob(db.Model):
     
     def __repr__(self):
         return f"<VendorJob {self.vendor.company_name} at {self.property.name} - {self.status}>"
+
+
+class VendorComment(db.Model):
+    """Comments/notes for vendors with timestamps"""
+    __tablename__ = "vendor_comments"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False)
+    comment = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by = db.Column(db.String(100))  # Track who added the comment (future use)
+    
+    def __repr__(self):
+        return f"<VendorComment for vendor {self.vendor_id} at {self.created_at}>"

@@ -425,6 +425,7 @@ def vendor_edit(vendor_id):
         try:
             # Update vendor fields
             vendor.company_name = request.form.get('company_name', '').strip()
+            vendor.aka_business_name = request.form.get('aka_business_name', '').strip()
             vendor.vendor_type = request.form.get('vendor_type', '').strip()
             vendor.email = request.form.get('email', '').strip()
             vendor.license_number = request.form.get('license_number', '').strip()
@@ -2724,6 +2725,50 @@ def fix_database_paths():
     </body>
     </html>
     """
+
+@app.route('/vendor/<int:vendor_id>/add-comment', methods=['POST'])
+def vendor_add_comment(vendor_id):
+    """Add a comment to a vendor"""
+    from models import VendorComment
+    
+    vendor = Vendor.query.get_or_404(vendor_id)
+    comment_text = request.form.get('comment', '').strip()
+    
+    if not comment_text:
+        flash('Comment cannot be empty', 'error')
+        return redirect(url_for('vendor_detail', vendor_id=vendor_id))
+    
+    try:
+        comment = VendorComment(
+            vendor_id=vendor_id,
+            comment=comment_text
+        )
+        db.session.add(comment)
+        db.session.commit()
+        flash('Comment added successfully', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error adding comment: {str(e)}', 'error')
+    
+    return redirect(url_for('vendor_detail', vendor_id=vendor_id))
+
+
+@app.route('/vendor/comment/<int:comment_id>/delete', methods=['POST'])
+def vendor_delete_comment(comment_id):
+    """Delete a vendor comment"""
+    from models import VendorComment
+    
+    comment = VendorComment.query.get_or_404(comment_id)
+    vendor_id = comment.vendor_id
+    
+    try:
+        db.session.delete(comment)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route("/debug/mismatch")
 def debug_mismatch():
