@@ -162,7 +162,7 @@
                         <div class="col-md-6 mb-3">
                             <label for="phone_number" class="form-label">Phone Number <span class="text-danger">*</span></label>
                             <input type="tel" class="form-control" id="phone_number" name="phone_number" 
-                                   placeholder="+1234567890" pattern="^\+?[0-9]{10,15}$" required>
+                                   placeholder="+1234567890" required>
                             <div class="form-text">Include country code (e.g., +17025551234)</div>
                         </div>
                         
@@ -331,7 +331,7 @@
 </div>
 
 <script>
-// Handle contact type selection
+// Handle contact type selection and pre-filling
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.querySelector('form');
     const contactRadios = document.querySelectorAll('input[name="contact_type"]');
@@ -375,29 +375,24 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
     });
-});
-
-// Set vendor type from suggestions
-function setVendorType(type) {
-    document.getElementById('vendor_type').value = type;
-}
-
-// Pre-fill form fields from URL parameters
-document.addEventListener('DOMContentLoaded', function() {
+    
     // Check if we have pre-filled data
     {% if prefilled_phone %}
+        console.log('Pre-filling with phone: {{ prefilled_phone | safe }}');
+        
         // Set to new contact mode
         const newContactRadio = document.querySelector('input[name="contact_type"][value="new"]');
         if (newContactRadio) {
             newContactRadio.checked = true;
-            newContactRadio.dispatchEvent(new Event('change'));
+            // Manually trigger the display of new contact fields
+            newContactFields.style.display = 'block';
+            phoneNumberField.required = true;
+            hiddenPhone.value = '';
         }
         
         // Pre-fill phone number
-        const phoneField = document.getElementById('phone_number');
-        if (phoneField) {
-            phoneField.value = '{{ prefilled_phone }}';
-        }
+        phoneNumberField.value = '{{ prefilled_phone | safe }}';
+        console.log('Phone field filled with:', phoneNumberField.value);
         
         // Pre-fill contact name and company name
         {% if prefilled_name %}
@@ -405,15 +400,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const companyNameField = document.getElementById('company_name');
             
             if (contactNameField) {
-                contactNameField.value = '{{ prefilled_name }}';
+                contactNameField.value = '{{ prefilled_name | safe }}';
             }
             
             // Also pre-fill company name if it's empty
-            if (companyNameField && !companyNameField.value) {
-                companyNameField.value = '{{ prefilled_name }}';
+            if (companyNameField) {
+                companyNameField.value = '{{ prefilled_name | safe }}';
             }
         {% endif %}
     {% endif %}
 });
+
+// Set vendor type from suggestions
+function setVendorType(type) {
+    document.getElementById('vendor_type').value = type;
+}
 </script>
 {% endblock %}

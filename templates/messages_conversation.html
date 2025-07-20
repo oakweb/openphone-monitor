@@ -101,9 +101,6 @@
     }
     
     .edit-contact-btn {
-      position: absolute;
-      right: 1.25rem;
-      top: 1.25rem;
       padding: 0.25rem 0.75rem;
       font-size: 0.85rem;
       background-color: rgba(108, 185, 211, 0.2);
@@ -112,6 +109,7 @@
       border-radius: 4px;
       cursor: pointer;
       transition: all 0.2s;
+      white-space: nowrap;
     }
     
     .edit-contact-btn:hover {
@@ -408,12 +406,14 @@
       <div class="chat-container">
         <div class="chat-header" id="chatHeader">
           <h4 id="chatContactName">Select a conversation</h4>
-          <button class="edit-contact-btn" id="editContactBtn" style="display:none;" onclick="showEditForm()">
-            <i class="fas fa-edit"></i> Edit
-          </button>
-          <button class="edit-contact-btn" id="createVendorBtn" style="display:none; margin-left: 0.5rem; background-color: rgba(40, 167, 69, 0.2); border-color: rgba(40, 167, 69, 0.4); color: #28a745;" onclick="createVendor()">
-            <i class="fas fa-user-tie"></i> Create Vendor
-          </button>
+          <div style="position: absolute; right: 1.25rem; top: 1.25rem; display: flex; gap: 0.5rem;">
+            <button class="edit-contact-btn" id="editContactBtn" style="display:none;" onclick="showEditForm()">
+              <i class="fas fa-edit"></i> Edit
+            </button>
+            <button class="edit-contact-btn" id="createVendorBtn" style="display:none; background-color: rgba(40, 167, 69, 0.2); border-color: rgba(40, 167, 69, 0.4); color: #28a745;" onclick="createVendor()">
+              <i class="fas fa-user-tie"></i> Create Vendor
+            </button>
+          </div>
           <div class="property-info" id="chatPropertyInfo"></div>
           <div class="edit-contact-form" id="editContactForm">
             <input type="text" id="newContactName" placeholder="Enter contact name">
