@@ -230,6 +230,7 @@ class PropertyContact(db.Model):
     email = db.Column(db.String(200))
     company = db.Column(db.String(200))
     role = db.Column(db.String(100))  # e.g., 'President', 'Property Manager', 'Plumber'
+    address = db.Column(db.String(500))
     notes = db.Column(db.Text)
     is_primary = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))

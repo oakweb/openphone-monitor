@@ -74,15 +74,23 @@
                                     <input type="text" class="form-control" id="role" name="role">
                                 </div>
                             </div>
-                            <div class="col-md-5">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="address">Address</label>
+                                    <input type="text" class="form-control" id="address" name="address" placeholder="123 Main St, Las Vegas, NV 89101">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-10">
                                 <div class="form-group">
                                     <label for="notes">Notes</label>
                                     <input type="text" class="form-control" id="notes" name="notes">
                                 </div>
                             </div>
-                            <div class="col-md-1">
+                            <div class="col-md-2">
                                 <div class="form-group">
-                                    <label for="is_primary">Primary?</label>
+                                    <label for="is_primary">Primary Contact?</label>
                                     <div class="form-check">
                                         <input type="checkbox" class="form-check-input" id="is_primary" name="is_primary">
                                     </div>
@@ -110,6 +118,7 @@
                                         <th>Role</th>
                                         <th>Phone</th>
                                         <th>Email</th>
+                                        <th>Address</th>
                                         <th>Notes</th>
                                         <th>Actions</th>
                                     </tr>
@@ -139,6 +148,7 @@
                                             -
                                             {% endif %}
                                         </td>
+                                        <td>{{ contact.address or '-' }}</td>
                                         <td>{{ contact.notes or '-' }}</td>
                                         <td>
                                             <form method="POST" action="{{ url_for('property_contacts', property_id=property.id) }}" 

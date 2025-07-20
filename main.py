@@ -174,6 +174,19 @@ with app.app_context():
                 db.session.rollback()
                 app.logger.error(f"❌ Error adding message tracking fields: {e}")
         
+        # Add property_contacts address field
+        if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+            try:
+                db.session.execute(text("ALTER TABLE property_contacts ADD COLUMN IF NOT EXISTS address VARCHAR(500)"))
+                db.session.commit()
+                app.logger.info("✅ Added property_contacts.address column.")
+            except Exception as e:
+                db.session.rollback()
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    app.logger.info("✅ property_contacts.address column already exists.")
+                else:
+                    app.logger.warning(f"⚠️ Could not add 'address' column to property_contacts: {e}")
+        
         # Add vendor migrations for production
         try:
             # Add aka_business_name column if it doesn't exist
@@ -2375,6 +2388,7 @@ def property_contacts(property_id):
                     email=request.form.get('email'),
                     company=request.form.get('company'),
                     role=request.form.get('role'),
+                    address=request.form.get('address'),
                     notes=request.form.get('notes'),
                     is_primary=request.form.get('is_primary') == 'on'
                 )
