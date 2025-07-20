@@ -13,7 +13,7 @@ load_dotenv()
 
 # Import local modules
 from extensions import db
-from models import Contact, Message, Property, Tenant, NotificationHistory, PropertyCustomField, PropertyAttachment, PropertyContact, Vendor, VendorJob, VendorInvoiceData
+from models import Contact, Message, Property, Tenant, NotificationHistory, PropertyCustomField, PropertyAttachment, PropertyContact, Vendor, VendorJob, VendorInvoiceData, VendorComment
 from webhook_route import webhook_bp
 
 app = Flask(__name__)
@@ -377,6 +377,7 @@ def vendor_create():
             vendor = Vendor(
                 contact_id=phone_number,
                 company_name=company_name,
+                aka_business_name=request.form.get('aka_business_name', '').strip(),
                 vendor_type=vendor_type,
                 email=email,
                 hourly_rate=hourly_rate,
@@ -2729,8 +2730,6 @@ def fix_database_paths():
 @app.route('/vendor/<int:vendor_id>/add-comment', methods=['POST'])
 def vendor_add_comment(vendor_id):
     """Add a comment to a vendor"""
-    from models import VendorComment
-    
     vendor = Vendor.query.get_or_404(vendor_id)
     comment_text = request.form.get('comment', '').strip()
     
@@ -2756,8 +2755,6 @@ def vendor_add_comment(vendor_id):
 @app.route('/vendor/comment/<int:comment_id>/delete', methods=['POST'])
 def vendor_delete_comment(comment_id):
     """Delete a vendor comment"""
-    from models import VendorComment
-    
     comment = VendorComment.query.get_or_404(comment_id)
     vendor_id = comment.vendor_id
     
