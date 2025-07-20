@@ -308,6 +308,8 @@
                         {% endif %}
                         {% if not mapped_data.get('city') and not mapped_data.get('state') and not mapped_data.get('zip_code') %}
                         <div class="text-warning small">⚠️ No vendor address found - service address was excluded</div>
+                        {% elif mapped_data.get('address_source') == 'alternative' %}
+                        <div class="text-info small">ℹ️ Alternative address found after excluding property address</div>
                         {% endif %}
                     </div>
                     <i class="fas fa-arrow-right arrow-icon"></i>

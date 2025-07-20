@@ -725,6 +725,44 @@ def process_vendor_invoice(vendor_id):
                         extracted_data.pop('zip_code', None)
                         break
         
+        # If address was blocked, try to find alternative addresses
+        if 'address' not in extracted_data or not extracted_data.get('address'):
+            app.logger.info("Primary address was blocked, looking for alternative vendor addresses...")
+            
+            # Ask AI to find any other addresses that might be vendor addresses
+            alt_prompt = f"""The invoice contains a service address that we've excluded. 
+            Please look for OTHER addresses in this invoice that might be the vendor's business address.
+            Look for addresses in letterhead, "From:", "Remit to:", footer, or company info sections.
+            Exclude any address containing: {', '.join(blocked_patterns[:5])}
+            
+            Return a JSON object with 'alternative_addresses' array containing any vendor addresses found.
+            Each should have: address, city, state, zip_code, location (where found)
+            
+            Invoice text: {extracted_text[:2000]}"""
+            
+            try:
+                alt_response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "Extract alternative vendor addresses."},
+                        {"role": "user", "content": alt_prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=500
+                )
+                alt_data = json.loads(alt_response.choices[0].message.content)
+                if alt_data.get('alternative_addresses'):
+                    # Use the first alternative address if found
+                    alt_addr = alt_data['alternative_addresses'][0]
+                    extracted_data['address'] = alt_addr.get('address', '')
+                    extracted_data['city'] = alt_addr.get('city', '')
+                    extracted_data['state'] = alt_addr.get('state', '')
+                    extracted_data['zip_code'] = alt_addr.get('zip_code', '')
+                    extracted_data['address_source'] = alt_addr.get('location', 'alternative')
+                    app.logger.info(f"Found alternative address: {alt_addr}")
+            except Exception as e:
+                app.logger.error(f"Error finding alternative addresses: {e}")
+        
         # Also check city/state/zip independently for "4365" or blocked patterns
         for field in ['city', 'state', 'zip_code']:
             if field in extracted_data and extracted_data[field]:
